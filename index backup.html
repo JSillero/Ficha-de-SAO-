@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAO Ficha</title>
+
+    <link rel="stylesheet" href="./css/main.min.css">
+
+
+    <script type="module" src="./scripts/test.js"></script>
+    <script type="module" src="./scripts/interfaz.js"></script>
+
+    <!-- Bootstrap CSS v5.2.1 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous" />
+
+</head>
+
+<body>
+    <header>
+        <div id="datosPrincipalesDiv">
+            <label>
+                Nombre: <input type="text" name="nombre" id="nombre">
+            </label>
+            <label>
+                Nivel: <input type="number" name="nivel" id="nivel">
+            </label>
+            <label>
+                Experiencia: <input type="number" name="experiencia" id="experiencia">
+            </label>
+            <label>
+                Vida: <input type="text" name="" id="vida">/<span id="vidaMax"></span>
+            </label>
+            <label>
+                Arte: <input type="text" name="" id="arte">/<span id="arteMax"></span>
+            </label>
+            <label>
+                Profesion:
+                <select name="" id="">
+                    <option value="">Armero</option>
+                    <option value="">Herrero</option>
+                    <option value="">Cocinero</option>
+                    <option value="">Alquimista</option>
+                </select>
+            </label>
+        </div>
+
+        <div id="guardadoDiv">
+            <label>
+                <button id="botonGuardar">Guardar</button>
+                <input type="file" id="fileInput" value="Cargar" />
+            </label>
+        </div>
+
+    </header>
+
+    <main id="pag1">
+
+        <div id="numeritos">
+
+            <div>
+                <h2>Caracteristicas</h2>
+                <div id="atributosDiv">
+                    <h4>Fortaleza: <input type="number" id="fortaleza" /></h4>
+                    <h4>Reflejos: <input type="number" id="reflejos" /> </h4>
+                    <h4>Voluntad: <input type="number" id="voluntad" /> </h4>
+                    <h4>Mente: <input type="number" id="inteligencia" /></h4>
+                </div>
+
+                <div id="caracteristicasDiv">
+                    <div>Iniciativa: <span id="iniciativa"></span> </div>
+                    <div>Defensa: <span id="defensa"></span> </div>
+                    <div>Armadura: <span id="armadura"></span> </div>
+                    <div>Movimiento: <span id="vMovimiento"></span> </div>
+                    <div>Daño CaC: <span id="dFisico"></span> </div>
+                    <div>Daño Distancia: <span id="dDistancia"></span> </div>
+                    <div>Daño Magico: <span id="dMagico"></span> </div>
+                    <div>Aguante: <span id="aguante"></span> </div>
+                </div>
+
+            </div>
+
+            <div>
+                <h2>Habilidades</h2>
+                <div id="habilidadesDiv">
+
+                    <div>
+                        <img src="./imgs/atletismo.jpg">
+                        <h3>Atletismo</h3>
+                        <input type="number" id="atletismo">
+                    </div>
+                    <div>
+                        <img src="./imgs/combate.jpg">
+                        <h3>Combate</h3>
+                        <input type="number" id="combate">
+                    </div>
+                    <div>
+                        <img src="./imgs/percepcion.jpg">
+                        <h3>Percepcion</h3>
+                        <input type="number" id="percepcion">
+                    </div>
+                    <div>
+                        <img src="./imgs/sigilo.png">
+                        <h3>Sigilo</h3>
+                        <input type="number" id="subterfugio">
+                    </div>
+                    <div>
+                        <img src="./imgs/carisma.jpg">
+                        <h3>Carisma</h3>
+                        <input type="number" id="comunicacion">
+                    </div>
+                    <div>
+                        <img src="./imgs/cultura.jpg">
+                        <h3>Cultura</h3>
+                        <input type="number" id="cultura">
+                    </div>
+                    <div>
+                        <img src="./imgs/profesion.jpg">
+                        <h3>Profesion</h3>
+                        <input type="number" id="profesion">
+                    </div>
+                    <div>
+                        <img src="./imgs/sacro.jpg">
+                        <h3>Sacro</h3>
+                        <input type="number" id="sacro">
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <div id="modificadoresDiv">
+                    <h3>Modificadores: <button id="anadirMod">+</button></h3>
+                    <div id="listadoModificadores">
+
+                    </div>
+                    <!-- <div>
+                        Modificador: <input type="text" class=""> Atributo: <select class="listValores"> 
+                            <option value="atletismo">Atletismo</option>
+                            <option value="combate">Combate</option>
+                            <option value="percepcion">Percepción</option>
+                            <option value="subterfugio">Sigilo</option>
+                            <option value="comunicacion">Carisma</option>
+                            <option value="cutlura">Cultura</option>
+                            <option value="profesion">Profesion</option>
+                            <option value="sacro">Sacro</option>
+                            <option value="armadura">Armadura</option>
+                            <option value="defensa">Defensa</option>
+                            <option value="defensa">Defensa</option>
+                            <option value="puntosArteMax">P.Arte Max</option>
+                            <option value="vMovimiento">Movimiento</option>
+                        </select> Cantidad:
+                        <input type="number" value="0" class="cantidadMod"> Duracion: <input type="text"
+                            class="duracionMod">
+                        <div class="eliminarMod">-</div>
+                    </div> -->
+                </div>
+
+
+                <div id="divEquipamiento">
+                    <h2>Equipamiento</h2>
+
+                    <div class="manoDerecha equipamiento"> <b> Mano derecha:</b> <input type="text"
+                            placeholder="Nombre">
+                        <select class="tipoTirada">
+                            <option value="alta">Alta</option>
+                            <option value="media">Media</option>
+                            <option value="baja">Baja</option>
+                            <option value="ninguna">Ninguna</option>
+                        </select>
+                        <button>+</button>
+                        <ul class="modificadoresEquipo">
+
+                        </ul>
+
+                    </div>
+
+                    <div class="manoIzquierda equipamiento"> <b>Mano izquierda:</b> <input type="text"
+                            placeholder="Nombre">
+                        <select class="tipoTirada">
+                            <option value="alta">Alta</option>
+                            <option value="media">Media</option>
+                            <option value="baja">Baja</option>
+                            <option value="ninguna">Ninguna</option>
+                        </select>
+                        <button>+</button>
+
+                        <ul class="modificadoresEquipo">
+
+                        </ul>
+
+                    </div>
+
+                    <div class="equipoArmadura equipamiento"> <b>Armadura:</b> <input type="text" placeholder="Nombre">
+                        <select class="tipoArmadura">
+                            <option value="1">Pesada</option>
+                            <option value="2">Media</option>
+                            <option value="3">Ligera</option>
+                            <option value="3">Ropa</option>
+                            <option value="3">Real</option>
+                        </select>
+                        <button>+</button>
+
+                        <ul class="modificadoresEquipo">
+
+                        </ul>
+
+                    </div>
+
+                    <div class="listaAccesorios"><b>Accesorios:</b>
+                        <ul>
+
+                        </ul>
+                    </div>
+
+                </div>
+
+
+
+            </div>
+
+        </div>
+
+
+        <div id="tiradasDados">
+            <img src="./imgs/1200px-2-Dice-Icon.svg.png" style="height: 80%;" />
+            <form id="tiradas">
+                <label>
+                    Dado bajo <input type="radio" name="tirada" value="0">
+                </label>
+                <label>
+                    Dado medio <input type="radio" name="tirada" value="1" checked>
+                </label>
+                <label>
+                    Dado alto <input type="radio" name="tirada" value="2">
+                </label>
+                <input type="button" class="tiradaDado" value="Ataque fisico">
+                <input type="button" class="tiradaDado" value="Ataque distancia">
+                <input type="button" class="tiradaDado" value="Tiradas varias">
+            </form>
+
+            <input type="text" id="dado" value="0" disabled>
+
+        </div>
+
+        <div id="inventario">
+            <h2>Inventario</h2>
+
+            <p>
+                <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name="" placeholder="0">
+            </p>
+            <p>
+                <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name="" placeholder="0">
+            </p>
+            <p>
+                <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name="" placeholder="0">
+            </p>
+            <p>
+                <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name="" placeholder="0">
+            </p>
+            <p>
+                <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name="" placeholder="0">
+            </p>
+            <p>
+                <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name="" placeholder="0">
+            </p>
+            <p>
+                <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name="" placeholder="0">
+            </p>
+            <p>
+                <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name="" placeholder="0">
+            </p>
+            <p>
+                <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name="" placeholder="0">
+            </p>
+            <p>
+                <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name="" placeholder="0">
+            </p>
+            <p>
+                <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name="" placeholder="0">
+            </p>
+
+        </div>
+
+
+        <div>
+            <h2>Notas</h2>
+            <div>
+                <h3>Notas</h3>
+                <textarea name="" id="notas"></textarea>
+            </div>
+            <div>
+                <h3>Baul</h3>
+                <textarea name="" id="baul"></textarea>
+            </div>
+            <div>
+                <h3>Recetas</h3>
+                <textarea name="" id="recetasProfesion"></textarea>
+            </div>
+            <div>
+                <h3>Amigos</h3>
+                <textarea name="" id="listaDeAmigos"></textarea>
+            </div>
+            <div>
+                <h3>Artes</h3>
+                <textarea name="" id="listadoArtes"></textarea>
+            </div>
+        </div>
+
+
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js"
+        integrity="sha384-I7E8VVD/ismYTF4hNIPjVp/Zjvgyol6VFvRkX/vR+Vc4jQkC+hVqc2pM8ODewa9r"
+        crossorigin="anonymous"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.min.js"
+        integrity="sha384-BBtl+eGJRgqQAUMxJ7pMwbEyER4l1g+O15P+16Ep7Q9Q+zqX6gSbd85u4mG4QzX+"
+        crossorigin="anonymous"></script>
+</body>
+
+</html>

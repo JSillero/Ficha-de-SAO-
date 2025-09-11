@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Ficha de Personaje - Volt</title>
+  <style>
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: #f2f2f2;
+      margin: 20px;
+      color: #222;
+    }
+    .ficha {
+      max-width: 1200px;
+      margin: auto;
+      background: #fff;
+      border: 3px solid #a00;
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 3px solid #a00;
+      padding-bottom: 10px;
+      margin-bottom: 15px;
+    }
+    .header h1 {
+      color: #a00;
+      font-size: 28px;
+      margin: 0;
+    }
+    .header .drama {
+      font-weight: bold;
+      font-size: 18px;
+      color: #a00;
+    }
+    h2 {
+      background: #a00;
+      color: #fff;
+      padding: 5px 10px;
+      font-size: 16px;
+      border-radius: 5px;
+      margin-top: 15px;
+      margin-bottom: 10px;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 20px;
+    }
+    .campo {
+      display: flex;
+      flex-direction: column;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+    .campo label {
+      font-weight: bold;
+      margin-bottom: 2px;
+    }
+    .campo input, .campo textarea {
+      background: #dce8f9;
+      border: 1px solid #777;
+      border-radius: 4px;
+      padding: 4px;
+      font-size: 13px;
+    }
+    .dado {
+      text-align: center;
+      margin-top: 15px;
+    }
+    .dado img {
+      max-width: 150px;
+      border: 2px solid #999;
+      border-radius: 8px;
+    }
+    .habilidades-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .valores {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .bloque {
+      border: 1px solid #a00;
+      border-radius: 6px;
+      padding: 8px;
+      margin-top: 10px;
+    }
+    .bloque h3 {
+      background: #a00;
+      color: #fff;
+      font-size: 14px;
+      padding: 3px 6px;
+      margin: -8px -8px 8px -8px;
+      border-radius: 6px 6px 0 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="ficha">
+    <header>
+    <!-- Encabezado -->
+    <div class="header">
+      <h1>SWORD ART ONLINE</h1>
+      <div class="campo" style="max-width:200px">
+        <label>Nombre</label>
+        <input type="text" value="">
+      </div>
+      <div class="drama"> </div>
+    </div>
+
+    </header>
+
+    <!-- Layout en tres columnas -->
+    <div class="layout">
+      
+      <!-- Columna izquierda -->
+      <div>
+        <h2>Características</h2>
+        <div class="campo"><label>Fortaleza</label><input type="text" value=""></div>
+        <div class="campo"><label>Reflejos</label><input type="text" value=""></div>
+        <div class="campo"><label>Voluntad</label><input type="text" value=""></div>
+        <div class="campo"><label>Inteligencia</label><input type="text" value=""></div>
+
+        <div class="dado">
+          
+        </div>
+      </div>
+
+      <!-- Columna central -->
+      <div>
+        <h2>Aspectos</h2>
+        <div class="campo"><label>Nivel</label><input type="text" value=""></div>
+        <div class="campo"><label>Arma der.</label><input type="text" value=""></div>
+        <div class="campo"><label>Arma izq.</label><input type="text" value=""></div>
+        <div class="campo"><label>Armadura</label><input type="text" value=""></div>
+        <div class="campo"><label>Profesión</label><input type="text" value=""></div>
+
+        <h2>Habilidades</h2>
+        <div class="habilidades-grid">
+          <div class="campo"><label>Atletismo</label><input type="text" value="0"></div>
+          <div class="campo"><label>Combate</label><input type="text" value="0"></div>
+          <div class="campo"><label>Comunicación</label><input type="text" value="0"></div>
+          <div class="campo"><label>Cultura</label><input type="text" value="0"></div>
+          <div class="campo"><label>Percepción</label><input type="text" value="0"></div>
+          <div class="campo"><label>Profesión</label><input type="text" value="0"></div>
+          <div class="campo"><label>Subterfugio</label><input type="text" value="0"></div>
+          <div class="campo"><label>Ocultismo</label><input type="text" value="0"></div>
+        </div>
+      </div>
+
+      <!-- Columna derecha -->
+      <div>
+        <h2>Especialidades</h2>
+        <textarea rows="12"></textarea>
+
+        <h2>Valores de Combate</h2>
+        <div class="valores">
+          <div class="campo"><label>Iniciativa</label><input type="text" value=""></div>
+          <div class="campo"><label>Aguante</label><input type="text" value=""></div>
+          <div class="campo"><label>Defensa</label><input type="text" value=""></div>
+          <div class="campo"><label>Entereza</label><input type="text" value=""></div>
+          <div class="campo"><label>Daño CC</label><input type="text" value=""></div>
+          <div class="campo"><label>Daño DIS</label><input type="text" value=""></div>
+        </div>
+
+        <div class="bloque">
+          <h3>Secuelas y Traumas</h3>
+          <textarea rows="8"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
