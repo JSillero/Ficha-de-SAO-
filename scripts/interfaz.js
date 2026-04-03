@@ -59,6 +59,112 @@ for (const textarea of textareas) {
     )
 }
 
+/* Eventos para la barra de vida SAO y datos principales */
+inputNombre.addEventListener('change', (e) => {
+    personaje.nombre = e.target.value;
+    actualizarTodo();
+});
+
+inputNivel.addEventListener('change', (e) => {
+    personaje.nivel = Number(e.target.value);
+    personaje.calcularCaracteristicas();
+    actualizarTodo();
+});
+
+inputVida.addEventListener('change', (e) => {
+    personaje.vida = Number(e.target.value);
+    actualizarTodo();
+});
+
+inputExperiencia.addEventListener('change', (e) => {
+    personaje.setExp(Number(e.target.value));
+    actualizarTodo();
+});
+
+arteInp.addEventListener('change', (e) => {
+    let val = Number(e.target.value);
+    if (val < 0) val = 0;
+    if (val > personaje.puntosArteMax) val = personaje.puntosArteMax;
+    personaje.puntosArte = val;
+    actualizarTodo();
+});
+
+document.getElementById('btn-arte-menos').addEventListener('click', () => {
+    personaje.puntosArte = Math.max(0, personaje.puntosArte - 1);
+    actualizarTodo();
+});
+
+document.getElementById('btn-arte-mas').addEventListener('click', () => {
+    personaje.puntosArte = Math.min(personaje.puntosArteMax, personaje.puntosArte + 1);
+    actualizarTodo();
+});
+
+const track = document.getElementById('sao-hp-track');
+let isDraggingHealth = false;
+
+function updateHealthFromMouse(e) {
+    const rect = track.getBoundingClientRect();
+    let x = e.clientX - rect.left;
+    let percentage = x / rect.width;
+    
+    if (percentage < 0) percentage = 0;
+    if (percentage > 1) percentage = 1;
+
+    personaje.vida = Math.round(percentage * personaje.vidaMax);
+    actualizarTodo();
+}
+
+track.addEventListener('mousedown', (e) => {
+    isDraggingHealth = true;
+    updateHealthFromMouse(e);
+});
+
+document.addEventListener('mousemove', (e) => {
+    if (isDraggingHealth) {
+        updateHealthFromMouse(e);
+        e.preventDefault(); // Evita la selección de texto no deseada al arrastrar
+    }
+});
+
+document.addEventListener('mouseup', () => {
+    isDraggingHealth = false;
+});
+
+/* Lógica de click en la barra de Experiencia para abrir el modal */
+const expTrack = document.getElementById('sao-exp-track');
+
+expTrack.addEventListener('click', () => {
+    const modalEl = document.getElementById('modalExperiencia');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    document.getElementById('inputModExp').value = 0;
+    modal.show();
+});
+
+document.getElementById('btnAplicarExp').addEventListener('click', () => {
+    let expToModify = Number(document.getElementById('inputModExp').value);
+    let newExp = Math.max(0, personaje.experiencia + expToModify); // Evita que la experiencia total sea menor a 0
+    personaje.setExp(newExp);
+    actualizarTodo();
+    
+    const modalEl = document.getElementById('modalExperiencia');
+    const modal = bootstrap.Modal.getInstance(modalEl);
+    if (modal) modal.hide();
+});
+
+/* Sistema de Sonido */
+const lowLifeSfx = new Audio('./sfx/low_life.wav');
+lowLifeSfx.loop = true;
+const linkStartSfx = new Audio('./sfx/link_start.mp3');
+
+let isGlobalMute = false;
+
+export function setGlobalMute(muteStatus) {
+    isGlobalMute = muteStatus;
+    lowLifeSfx.muted = isGlobalMute;
+    linkStartSfx.muted = isGlobalMute;
+    // Añadir aquí otros sonidos en el futuro si es necesario
+}
+
 function actualizarTodo() {
     actualizarInformacion();
     actualizarAtributos();
@@ -79,6 +185,48 @@ function actualizarInformacion() {
     vidaMaxSpan.innerHTML = personaje.vidaMax;
     arteInp.value = personaje.puntosArte;
     arteSpan.innerHTML = personaje.puntosArteMax;
+
+    /* Actualizar la barra de EXP visual */
+    let expSpan = document.getElementById("experienciaMax");
+    if (expSpan) expSpan.innerHTML = personaje.experienciaMax;
+
+    let expFill = document.getElementById('exp-bar-fill');
+    if (expFill) {
+        let expPct = personaje.experienciaMax > 0 ? (personaje.experiencia / personaje.experienciaMax) * 100 : 0;
+        expPct = Math.max(0, Math.min(100, expPct));
+        expFill.style.width = expPct + '%';
+    }
+
+    /* Actualizar la barra de Arte visual */
+    let arteFill = document.getElementById('arte-bar-fill');
+    if (arteFill) {
+        let artePct = personaje.puntosArteMax > 0 ? (personaje.puntosArte / personaje.puntosArteMax) * 100 : 0;
+        artePct = Math.max(0, Math.min(100, artePct));
+        arteFill.style.width = artePct + '%';
+    }
+
+    /* Actualizar la barra de vida visual */
+    let hpFill = document.getElementById('hp-bar-fill');
+    if (hpFill) {
+        let pct = personaje.vidaMax > 0 ? (personaje.vida / personaje.vidaMax) * 100 : 0;
+        pct = Math.max(0, Math.min(100, pct));
+        hpFill.style.width = pct + '%';
+
+        hpFill.classList.remove('hp-orange', 'hp-red');
+        if (pct < 15) {
+            hpFill.classList.add('hp-red');
+            if (!isGlobalMute && lowLifeSfx.paused) {
+                lowLifeSfx.play().catch(e => console.warn("El navegador bloqueó el autoplay del audio.", e));
+            }
+        } else {
+            if (pct < 40) {
+                hpFill.classList.add('hp-orange');
+            }
+            if (!lowLifeSfx.paused) {
+                lowLifeSfx.pause();
+            }
+        }
+    }
 }
 
 function actualizarAtributos() {
@@ -127,6 +275,9 @@ document.getElementById('fileInput').addEventListener('change', function (event)
                 const jsonData = JSON.parse(e.target.result);  // Parse the JSON string into an object
                 personaje.cargarJSON(jsonData);
                 actualizarTodo();
+                if (!isGlobalMute) {
+                    linkStartSfx.play().catch(e => console.warn("El navegador bloqueó el autoplay del audio.", e));
+                }
 
             } catch (error) {
                 console.error('Error parsing JSON:', error);

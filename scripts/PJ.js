@@ -6,6 +6,7 @@ export default class PJ {
         this.nombre = "nombre"; //String
         this.nivel = 15;
         this.experiencia = 0;
+        this.experienciaMax = 1600;
 
         /* Caracteristicas */
         this.fortaleza = 4;
@@ -81,14 +82,26 @@ export default class PJ {
             throw TypeError("El valor de experiencia tiene que ser numerico.")
         }
         this.experiencia = experiencia;
+        this.calcularCaracteristicas();
 
-        while (this.experiencia > this.nivel * 100) {
-            this.experiencia -= this.nivel * 100;
-            this.nivel += 1;
+        if(this.experiencia >= this.experienciaMax  && this.nivel <= 150) {
+            this.experiencia = this.experiencia - this.experienciaMax;
+            this.nivel = this.nivel + 1;
+            this.calcularCaracteristicas();
         }
+
     }
 
     calcularCaracteristicas() {
+        let nivelSiguiente = this.nivel + 1;
+        if (this.nivel >= 150) {
+            this.experienciaMax = 99999999999999999;
+        } else if (this.nivel >= 60) {
+            this.experienciaMax = nivelSiguiente * 1500;
+        } else {
+            this.experienciaMax = nivelSiguiente * 100;
+        }
+
         this.puntosArteMax = 3 + (this.nivel > 30 ? Math.floor((this.nivel - 16) / 15) : 0) + this.getModificador("arte");
         this.espaciosArte = 4 + Math.floor(this.cultura / 10) + this.getModificador("espacios");
         this.aguante = this.fortaleza + (this.voluntad / 2) + this.getModificador("aguante");;
@@ -274,5 +287,3 @@ export default class PJ {
     }
 
 }
-
-
