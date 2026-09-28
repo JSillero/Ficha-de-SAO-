@@ -1,6 +1,7 @@
 import Equipamiento from "./equipamiento.js";
 import Modificador from "./modificador.js";
 import PJ from "./PJ.js";
+import { ejecutarTirada } from "./dados.js";
 
 let personaje = new PJ(); //objeto que almaacena y define el comportamiento y limites de toda la informacion relevante
 /* Informacion */
@@ -553,9 +554,61 @@ function añadirFuncionalidadEquipoModificador() {
     }
 }
 
+/* Sistema de Tiradas de Habilidades _________________________________________ */
+const MAPEO_HABILIDADES_CARACTERISTICAS = {
+    atletismo: 'fortaleza',
+    combate: 'reflejos',
+    percepcion: 'inteligencia',
+    subterfugio: 'reflejos',
+    comunicacion: 'inteligencia',
+    cultura: 'voluntad',
+    profesion: 'voluntad',
+    sacro: 'voluntad'
+};
+
+function obtenerConfiguracionTirada() {
+    const radioSeleccionado = document.querySelector('input[name="modoTiradaRadio"]:checked');
+    const modoTirada = radioSeleccionado ? Number(radioSeleccionado.value) : 1;
+    const checkCritico = document.getElementById('checkCriticoFacil');
+    const criticoFacil = checkCritico ? checkCritico.checked : false;
+    return { modoTirada, criticoFacil };
+}
+
+function inicializarTiradasHabilidades() {
+    const contenedores = document.querySelectorAll('#habilidadesDiv > div');
+    contenedores.forEach(habDiv => {
+        const input = habDiv.querySelector('input');
+        const img = habDiv.querySelector('img');
+        const titulo = habDiv.querySelector('h3');
+
+        if (!input) return;
+
+        const habilidadId = input.id;
+        const caractClave = MAPEO_HABILIDADES_CARACTERISTICAS[habilidadId];
+        const nombreAccion = titulo ? titulo.innerText.trim() : habilidadId;
+
+        const dispararTirada = () => {
+            const { modoTirada, criticoFacil } = obtenerConfiguracionTirada();
+            const valorHab = Number(personaje[habilidadId]) || 0;
+            const valorCaract = caractClave ? (Number(personaje[caractClave]) || 0) : 0;
+
+            ejecutarTirada({
+                nombreAccion: nombreAccion,
+                valorHabilidad: valorHab,
+                valorCaracteristica: valorCaract,
+                modoTirada: modoTirada,
+                criticoFacil: criticoFacil
+            });
+        };
+
+        if (img) img.addEventListener('click', dispararTirada);
+        if (titulo) titulo.addEventListener('click', dispararTirada);
+    });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     parseModificadores();
     parseModificadoresEquipo();
     actualizarTodo();
-
+    inicializarTiradasHabilidades();
 })
