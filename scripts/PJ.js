@@ -1,5 +1,11 @@
 import Equipamiento from "./equipamiento.js";
 import Modificador from "./modificador.js";
+
+const HABILIDADES_LISTA = [
+    'atletismo', 'combate', 'percepcion', 'subterfugio',
+    'comunicacion', 'cultura', 'profesion', 'sacro'
+];
+
 export default class PJ {
     constructor() {
         /* caracteristicas base */
@@ -84,7 +90,7 @@ export default class PJ {
         this.experiencia = experiencia;
         this.calcularCaracteristicas();
 
-        if(this.experiencia >= this.experienciaMax  && this.nivel <= 150) {
+        if (this.experiencia >= this.experienciaMax && this.nivel <= 150) {
             this.experiencia = this.experiencia - this.experienciaMax;
             this.nivel = this.nivel + 1;
             this.calcularCaracteristicas();
@@ -121,6 +127,48 @@ export default class PJ {
      */
     getGenerico(atributo) {
         return parseInt(this[atributo]) + parseInt(this.getModificador(atributo));
+    }
+
+    getPuntosHabilidadTotales() {
+        return Math.max(0, 25 + this.nivel);
+    }
+
+    getPuntosHabilidadGastados() {
+        return this.atletismo + this.combate + this.percepcion + this.subterfugio +
+            this.comunicacion + this.cultura + this.profesion + this.sacro;
+        //return HABILIDADES_LISTA.reduce((total, hab) => total + (Number(this[hab]) || 0), 0);
+    }
+
+    getPuntosHabilidadDisponibles() {
+        return this.getPuntosHabilidadTotales() - this.getPuntosHabilidadGastados();
+    }
+
+    getMaxHabilidad() {
+        let divisionNivel15 = Math.trunc(this.nivel / 15);
+        let residuo = this.nivel % 15;
+        if (residuo >= 10) {
+            return (divisionNivel15 + 1) * 10;
+        } else {
+            return divisionNivel15 * 10 + residuo;
+        }
+    }
+
+    subirHabilidad(nombreHab) {
+        if (this.getPuntosHabilidadDisponibles() > 0 && this[nombreHab] < this.getMaxHabilidad()) {
+            this[nombreHab]++;
+            this.calcularCaracteristicas();
+            return true;
+        }
+        return false;
+    }
+
+    bajarHabilidad(nombreHab) {
+        if (this[nombreHab] > 0) {
+            this[nombreHab]--;
+            this.calcularCaracteristicas();
+            return true;
+        }
+        return false;
     }
 
     /**
