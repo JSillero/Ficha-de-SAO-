@@ -43,11 +43,31 @@ let inputs = document.querySelectorAll('#habilidadesDiv input, #atributosDiv inp
 
 /* Evento generico que introduce nuevos valores en el atributo del objeto personaje dependiendo del id del input que lo contiene */
 for (const element of inputs) {
-    element.addEventListener('focusout', () => {
-        personaje[element.id] = Number(element.value);
+    const validarYActualizar = () => {
+        let val = Number(element.value);
+
+        // Si es un input de habilidad, aplicar restricciones de límite máximo y puntos disponibles
+        if (element.closest('#habilidadesDiv')) {
+            const maxPermitido = personaje.getMaxHabilidad();
+            const valorAnterior = Number(personaje[element.id]) || 0;
+            const disponibles = personaje.getPuntosHabilidadDisponibles();
+            const maximoPosible = Math.min(maxPermitido, valorAnterior + disponibles);
+
+            if (val > maximoPosible) {
+                val = maximoPosible;
+            } else if (val < 0 || isNaN(val)) {
+                val = 0;
+            }
+            element.value = val;
+        }
+
+        personaje[element.id] = val;
         personaje.calcularCaracteristicas();
         actualizarTodo();
-    })
+    };
+
+    element.addEventListener('focusout', validarYActualizar);
+    element.addEventListener('change', validarYActualizar);
 }
 
 /* Introduccion de datos en textareas y manejo general */
@@ -98,6 +118,25 @@ document.getElementById('btn-arte-menos').addEventListener('click', () => {
 document.getElementById('btn-arte-mas').addEventListener('click', () => {
     personaje.puntosArte = Math.min(personaje.puntosArteMax, personaje.puntosArte + 1);
     actualizarTodo();
+});
+
+// Asignar listeners a los botones de subir (+)
+document.querySelectorAll('.btn-hab-mas').forEach(boton => {
+    boton.addEventListener('click', () => {
+        const hab = boton.dataset.hab;
+        if (personaje.subirHabilidad(hab)) {
+            actualizarTodo();
+        }
+    });
+});
+// Asignar listeners a los botones de restar (-)
+document.querySelectorAll('.btn-hab-menos').forEach(boton => {
+    boton.addEventListener('click', () => {
+        const hab = boton.dataset.hab;
+        if (personaje.bajarHabilidad(hab)) {
+            actualizarTodo();
+        }
+    });
 });
 
 const track = document.getElementById('sao-hp-track');
@@ -246,6 +285,51 @@ function actualizarHabilidades() {
     culturaInp.value = personaje.cultura;
     profesionInp.value = personaje.profesion;
     sacroInp.value = personaje.sacro;
+
+    // 2. Actualizar el contador superior
+    const disponibles = personaje.getPuntosHabilidadDisponibles();
+    const totales = personaje.getPuntosHabilidadTotales();
+    const maxPorHab = personaje.getMaxHabilidad();
+    const dispSpan = document.getElementById("puntosHabDisponibles");
+    const totSpan = document.getElementById("puntosHabTotal");
+    if (dispSpan) dispSpan.innerText = disponibles;
+    if (totSpan) totSpan.innerText = totales;
+    // 3. Controlar la visibilidad de los botones en cada habilidad
+    const contenedores = document.querySelectorAll('#habilidadesDiv > div');
+    contenedores.forEach(contenedor => {
+        const input = contenedor.querySelector('input');
+        const btnMenos = contenedor.querySelector('.btn-hab-menos');
+        const btnMas = contenedor.querySelector('.btn-hab-mas');
+        if (!input) return;
+
+        // Establecer atributos HTML5 min y max dinámicos según el nivel
+        input.min = 0;
+        input.max = maxPorHab;
+
+        // Si por cambio de nivel el valor actual del personaje supera el nuevo máximo, ajustarlo
+        if (personaje[input.id] > maxPorHab) {
+            personaje[input.id] = maxPorHab;
+            input.value = maxPorHab;
+        }
+
+        const valorActual = Number(input.value) || 0;
+        // Botón '+': solo visible si hay puntos disponibles y no se ha llegado al tope
+        if (btnMas) {
+            if (disponibles > 0 && valorActual < maxPorHab) {
+                btnMas.classList.remove('oculto');
+            } else {
+                btnMas.classList.add('oculto');
+            }
+        }
+        // Botón '-': visible si la habilidad tiene puntos (> 0)
+        if (btnMenos) {
+            if (valorActual > 0) {
+                btnMenos.classList.remove('oculto');
+            } else {
+                btnMenos.classList.add('oculto');
+            }
+        }
+    });
 }
 
 function actuaizarTextos() {

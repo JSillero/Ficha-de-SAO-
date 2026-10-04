@@ -1,6 +1,16 @@
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+    -webkit-appearance: none !important;
+    margin: 0 !important;
+}
+
+input[type="number"] {
+    -moz-appearance: textfield !important;
+    appearance: textfield !important;
+}
+
 #numeritos {
-    display: flex;
-    gap: 25px;
+    display: contents;
 }
 
 #habilidadesDiv {
