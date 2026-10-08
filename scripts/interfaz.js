@@ -180,6 +180,8 @@ expTrack.addEventListener('click', () => {
     modal.show();
 });
 
+
+//fixme: aixo es el que s'ha de modificar per a que no nomes puji el nivell
 document.getElementById('btnAplicarExp').addEventListener('click', () => {
     let expToModify = Number(document.getElementById('inputModExp').value);
     let newExp = Math.max(0, personaje.experiencia + expToModify); // Evita que la experiencia total sea menor a 0

@@ -147,8 +147,7 @@
 }
 
 .sao-input-vida,
-.sao-input-nivel,
-.sao-input-exp {
+.sao-input-nivel {
     background: transparent !important;
     border: none !important;
     color: white !important;
@@ -170,7 +169,18 @@
 }
 
 .sao-input-exp {
+    background: transparent !important;
+    border: none !important;
+    color: white !important;
+    font-family: 'SAOUI', sans-serif !important;
+    font-size: 13px !important;
+    outline: none;
     width: 50px;
+    text-shadow: 1px 1px 2px black;
+    box-shadow: none !important;
+    padding: 0 !important;
+    text-align: right;
+
 }
 
 .sao-lvl-label {
@@ -216,4 +226,3 @@
     align-items: center;
     gap: 3px;
 }
-

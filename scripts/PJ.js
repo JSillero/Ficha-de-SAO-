@@ -88,9 +88,8 @@ export default class PJ {
             throw TypeError("El valor de experiencia tiene que ser numerico.")
         }
         this.experiencia = experiencia;
-        this.calcularCaracteristicas();
 
-        if (this.experiencia >= this.experienciaMax && this.nivel <= 150) {
+        while(this.experiencia >= this.experienciaMax && this.nivel <= 150) {
             this.experiencia = this.experiencia - this.experienciaMax;
             this.nivel = this.nivel + 1;
             this.calcularCaracteristicas();
