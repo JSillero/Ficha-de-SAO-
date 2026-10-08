@@ -103,10 +103,42 @@
             <div class="columnaIzquierda">
                     <h2>Caracteristicas</h2>
                     <div id="atributosDiv">
-                        <h4>Fortaleza: <input type="number" id="fortaleza" /></h4>
-                        <h4>Reflejos: <input type="number" id="reflejos" /> </h4>
-                        <h4>Voluntad: <input type="number" id="voluntad" /> </h4>
-                        <h4>Mente: <input type="number" id="inteligencia" /></h4>
+                        <div class="atributo-fila">
+                            <div class="atributo-info">
+                                <img class="atributo-icono" id="icono-fortaleza" data-atributo="fortaleza"
+                                    src="./imgs/fortaleza.png" onmouseover="this.src='./imgs/fortaleza_on.png'"
+                                    onmouseout="this.src='./imgs/fortaleza.png'" alt="Fortaleza" title="Fortaleza">
+                                <span class="atributo-nombre">Fortaleza</span>
+                            </div>
+                            <input type="number" id="fortaleza" class="atributo-input" min="0" value="4">
+                        </div>
+                        <div class="atributo-fila">
+                            <div class="atributo-info">
+                                <img class="atributo-icono" id="icono-reflejos" data-atributo="reflejos"
+                                    src="./imgs/reflejos.png" onmouseover="this.src='./imgs/reflejos_on.png'"
+                                    onmouseout="this.src='./imgs/reflejos.png'" alt="Reflejos" title="Reflejos">
+                                <span class="atributo-nombre">Reflejos</span>
+                            </div>
+                            <input type="number" id="reflejos" class="atributo-input" min="0" value="4">
+                        </div>
+                        <div class="atributo-fila">
+                            <div class="atributo-info">
+                                <img class="atributo-icono" id="icono-voluntad" data-atributo="voluntad"
+                                    src="./imgs/voluntad.png" onmouseover="this.src='./imgs/voluntad_on.png'"
+                                    onmouseout="this.src='./imgs/voluntad.png'" alt="Voluntad" title="Voluntad">
+                                <span class="atributo-nombre">Voluntad</span>
+                            </div>
+                            <input type="number" id="voluntad" class="atributo-input" min="0" value="4">
+                        </div>
+                        <div class="atributo-fila">
+                            <div class="atributo-info">
+                                <img class="atributo-icono" id="icono-inteligencia" data-atributo="inteligencia"
+                                    src="./imgs/inteligencia.png" onmouseover="this.src='./imgs/inteligencia_on.png'"
+                                    onmouseout="this.src='./imgs/inteligencia.png'" alt="Inteligencia" title="Inteligencia">
+                                <span class="atributo-nombre">Inteligencia</span>
+                            </div>
+                            <input type="number" id="inteligencia" class="atributo-input" min="0" value="4">
+                        </div>
                     </div>
 
                     <div id="controlTurno">
@@ -147,15 +179,21 @@
                             <div class="tirada-modos-group">
                                 <label class="tirada-modo-btn">
                                     <input type="radio" name="modoTiradaRadio" value="0">
-                                    <span>Desventaja</span>
+                                    <img class="modo-icono modo-img-off" src="./imgs/desventaja.svg" alt="Desventaja">
+                                    <img class="modo-icono modo-img-on" src="./imgs/desventaja_on.svg" alt="Desventaja">
+                                    <span class="tirada-modo-tooltip">Desventaja</span>
                                 </label>
                                 <label class="tirada-modo-btn">
                                     <input type="radio" name="modoTiradaRadio" value="1" checked>
-                                    <span>Normal</span>
+                                    <img class="modo-icono modo-img-off" src="./imgs/normal.svg" alt="Normal">
+                                    <img class="modo-icono modo-img-on" src="./imgs/normal_on.svg" alt="Normal">
+                                    <span class="tirada-modo-tooltip">Normal</span>
                                 </label>
                                 <label class="tirada-modo-btn">
                                     <input type="radio" name="modoTiradaRadio" value="2">
-                                    <span>Ventaja</span>
+                                    <img class="modo-icono modo-img-off" src="./imgs/ventaja.svg" alt="Ventaja">
+                                    <img class="modo-icono modo-img-on" src="./imgs/ventaja_on.svg" alt="Ventaja">
+                                    <span class="tirada-modo-tooltip">Ventaja</span>
                                 </label>
                             </div>
                             <div class="tirada-critico-facil">

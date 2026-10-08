@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+	<g>
+		<rect x="2" y="2" width="96" height="96" rx="18" ry="18" fill="#4D4D4D" />
+		<!-- Ojos simples -->
+		<circle cx="34" cy="38" r="7.5" fill="#FBFBFB" />
+		<circle cx="66" cy="38" r="7.5" fill="#FBFBFB" />
+		<!-- Sonrisa feliz -->
+		<path d="M 30 58 Q 50 82 70 58" fill="none" stroke="#FBFBFB" stroke-width="7" stroke-linecap="round" />
+	</g>
+</svg>

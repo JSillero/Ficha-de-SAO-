@@ -2,6 +2,89 @@
    SECCIONES: EQUIPAMIENTO, MODIFICADORES, INVENTARIO, CARACTERÍSTICAS Y NOTAS
    ========================================================================== */
 
+/* Atributos / Características Principales (Fortaleza, Reflejos, Voluntad, Inteligencia) */
+#atributosDiv {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 8px 0 16px 0;
+}
+
+.atributo-fila {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 3px 6px;
+    border-radius: 6px;
+    transition: background-color 0.15s ease;
+}
+
+.atributo-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.atributo-icono {
+    width: 44px;
+    height: 44px;
+    cursor: pointer;
+    user-select: none;
+    transition: transform 0.15s ease, filter 0.15s ease;
+    flex-shrink: 0;
+}
+
+.atributo-icono:hover {
+    transform: scale(1.1);
+    filter: drop-shadow(0 2px 5px rgba(209, 171, 82, 0.45));
+}
+
+.atributo-nombre {
+    font-family: 'SAOUI', sans-serif;
+    font-size: 16px;
+    font-weight: bold;
+    color: #222;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    user-select: none;
+    transition: color 0.15s ease;
+}
+
+.atributo-fila:hover .atributo-nombre {
+    color: #d1ab52;
+}
+
+/* Input numérico cuadrado con bordes redondeados */
+#atributosDiv .atributo-input {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    min-height: 42px;
+    box-sizing: border-box;
+    text-align: center;
+    font-family: 'SAOUI', sans-serif;
+    font-size: 20px;
+    font-weight: bold;
+    color: #222;
+    background: #ffffff;
+    border: 2px solid #555555;
+    border-radius: 8px;
+    padding: 0;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+#atributosDiv .atributo-input:hover {
+    border-color: #d1ab52;
+}
+
+#atributosDiv .atributo-input:focus {
+    border-color: #d1ab52;
+    outline: none;
+    box-shadow: 0 0 6px rgba(209, 171, 82, 0.6);
+    background: #fffdf7;
+}
+
 /* Control de Turno */
 #controlTurno svg {
     max-width: 100%;

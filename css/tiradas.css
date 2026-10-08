@@ -24,41 +24,113 @@
 
 .tirada-modos-group {
     display: flex;
-    justify-content: space-between;
-    gap: 6px;
-    margin-bottom: 6px;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 10px;
+    padding: 4px 0;
 }
 
 .tirada-modo-btn {
-    flex: 1;
-    text-align: center;
+    position: relative;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
     cursor: pointer;
     margin: 0;
-    font-family: 'SAOUI', sans-serif !important;
-    font-size: 12px;
+    user-select: none;
 }
 
 .tirada-modo-btn input[type="radio"] {
     display: none;
 }
 
-.tirada-modo-btn span {
+.tirada-modo-btn .modo-icono {
+    width: 48px;
+    height: 48px;
     display: block;
-    padding: 4px 2px;
-    background: #eee;
-    border: 1.5px solid #ccc;
-    border-radius: 5px;
-    color: #444;
-    transition: all 0.2s;
-    font-weight: bold;
-    user-select: none;
+    cursor: pointer;
+    border-radius: 9px;
+    transition: transform 0.15s ease, filter 0.15s ease;
 }
 
-.tirada-modo-btn input[type="radio"]:checked + span {
-    background: #d1ab52;
-    color: white;
-    border-color: #b5903b;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+.tirada-modo-btn .modo-img-on {
+    display: none;
+}
+
+.tirada-modo-btn .modo-img-off {
+    display: block;
+}
+
+/* Hover en el botón: agranda e ilumina */
+.tirada-modo-btn:hover .modo-icono {
+    transform: scale(1.12);
+    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.3));
+}
+
+.tirada-modo-btn:hover .modo-img-off {
+    display: none;
+}
+
+.tirada-modo-btn:hover .modo-img-on {
+    display: block;
+}
+
+/* Tooltip emergente estilo SAO al pasar el ratón */
+.tirada-modo-tooltip {
+    position: absolute;
+    top: calc(100% + 7px);
+    left: 50%;
+    transform: translateX(-50%) translateY(-4px);
+    background: rgba(30, 30, 30, 0.95);
+    color: #fbfbfb;
+    border: 1.5px solid #d1ab52;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: 'SAOUI', sans-serif !important;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    z-index: 1000;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+}
+
+.tirada-modo-tooltip::after {
+    content: "";
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    margin-left: -4px;
+    border-width: 4px;
+    border-style: solid;
+    border-color: transparent transparent #d1ab52 transparent;
+}
+
+.tirada-modo-btn:hover .tirada-modo-tooltip {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* Estado seleccionado (radio checked) */
+.tirada-modo-btn input[type="radio"]:checked ~ .modo-icono,
+.tirada-modo-btn:has(input[type="radio"]:checked) .modo-icono {
+    filter: drop-shadow(0 0 6px rgba(209, 171, 82, 0.7));
+}
+
+.tirada-modo-btn input[type="radio"]:checked ~ .modo-img-off,
+.tirada-modo-btn:has(input[type="radio"]:checked) .modo-img-off {
+    display: none;
+}
+
+.tirada-modo-btn input[type="radio"]:checked ~ .modo-img-on,
+.tirada-modo-btn:has(input[type="radio"]:checked) .modo-img-on {
+    display: block;
 }
 
 .tirada-critico-facil {

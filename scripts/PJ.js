@@ -43,7 +43,33 @@ export default class PJ {
         this.dMagico = 1;
         this.iniciativa = 1;
 
+        /*Estados */
+        this.regeneracion = 0;
+        this.regeneracionPermanente= false,
+        this.regeneracionTurnos = 0;
+
+        this.veneno = 0;
+        this.venenoPermanente= false,
+        this.venenoTurnos = 0;
+
+        this.quemadura=0;
+        this.quemaduraPermanente= false,
+        this.quemaduraTurnos = 0;
+
+        this.paralisis=0;   
+        this.paralisisPermanente= false,
+        this.paralisisTurnos = 0;
+
+        this.congelacion=0;
+        this.congelacionPermanente= false,
+        this.congelacionTurnos = 0;
+
+        this.oscuridad=0;
+        this.oscuridadPermanente= false,
+        this.oscuridadTurnos = 0;
+
         /* Acciones */
+        this.numeroAcciones = 3;
         this.izquierda = true; //Boolean
         this.derecha = true; //Boolean
         this.cabeza = true; //Boolean
