@@ -117,16 +117,26 @@ h2 {
 /* Estructura en 3 columnas */
 .layout {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 310px) 3fr 2fr;
     gap: 25px;
     align-items: start;
+}
+
+.columnaIzquierda {
+    max-width: 310px;
+    width: 100%;
 }
 
 @media (max-width: 1024px) {
     .layout {
         grid-template-columns: 1fr;
     }
+
+    .columnaIzquierda {
+        max-width: 100%;
+    }
 }
+
 
 /* Campos de formulario genéricos */
 .campo {
