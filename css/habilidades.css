@@ -1,0 +1,105 @@
+/* ==========================================================================
+   SISTEMA DE HABILIDADES
+   ========================================================================== */
+
+/* Alineación y centrado de habilidades */
+#habilidadesDiv {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+#habilidadesDiv > div {
+    flex: 0 0 33.3333%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+#habilidadesDiv > div img {
+    width: 50px;
+    height: 50px;
+    margin: 0 auto;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+}
+
+#habilidadesDiv > div h3 {
+    margin: 5px 0;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+}
+
+#habilidadesDiv > div img:hover,
+#habilidadesDiv > div h3:hover {
+    transform: scale(1.08);
+    color: #d1ab52;
+}
+
+#habilidadesDiv > div input {
+    width: 40px;
+    text-align: center;
+    margin: 0 auto;
+}
+
+/* Contenedor del control de habilidad */
+.hab-control {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+/* Botones +/- estilo SAO */
+.btn-hab {
+    background: #4a4a4a;
+    border: 1px solid #bbb;
+    color: white;
+    font-family: 'SAOUI', sans-serif;
+    font-size: 14px;
+    font-weight: bold;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 0;
+    line-height: 1;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    user-select: none;
+}
+
+.btn-hab:hover {
+    background: #d1ab52;
+    border-color: #d1ab52;
+    color: #222;
+}
+
+/* Ocultar manteniendo el espacio físico para evitar saltos del input */
+.btn-hab.oculto {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+/* Contador en la cabecera */
+.contador-puntos-hab {
+    font-size: 14px;
+    font-weight: normal;
+    color: #fbfbfb;
+    margin-left: 10px;
+}
+
+.contador-puntos-hab strong {
+    color: #ffe680;
+}
+
+.habilidades-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+

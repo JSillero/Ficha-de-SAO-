@@ -1,0 +1,128 @@
+/* ==========================================================================
+   SECCIONES: EQUIPAMIENTO, MODIFICADORES, INVENTARIO, CARACTERÍSTICAS Y NOTAS
+   ========================================================================== */
+
+/* Control de Turno */
+#controlTurno svg {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 10px auto;
+}
+
+/* Equipamiento y Modificadores */
+#equipamiento .cantidadMod {
+    width: 35px;
+}
+
+#equipamiento .equipo {
+    margin-bottom: 15px;
+}
+
+#equipamiento .modificadorEquipo {
+    margin-bottom: 15px;
+}
+
+.modificador,
+.modificadorE {
+    display: flex;
+    margin-bottom: 10px;
+    gap: 5px;
+}
+
+.modificador .cantidadMod,
+.modificadorE .cantidadMod {
+    width: 35px;
+    text-align: center;
+}
+
+.modificador .duracionMod,
+.modificadorE .duracionMod {
+    width: 25px;
+    text-align: center;
+}
+
+.equipamiento .modificador {
+    display: flex;
+    margin-bottom: 10px;
+    gap: 5px;
+}
+
+.equipamiento .modificador .cantidadMod {
+    width: 35px;
+    text-align: center;
+}
+
+.equipamiento .modificador .duracionMod {
+    width: 25px;
+    text-align: center;
+}
+
+/* Inventario */
+#inventario p {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+#inventario .itemInv {
+    flex: 1;
+}
+
+#inventario input[type='number'] {
+    width: 60px;
+    text-align: center;
+}
+
+/* Panel de Características Derivadas */
+#caracteristicasDiv {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-top: 15px;
+    background: #f0f4f8;
+    border: 1px solid #d1ab52;
+    border-radius: 6px;
+    padding: 10px;
+    font-size: 14px;
+}
+
+/* Sección de Notas, Baúl, Recetas, etc. */
+.seccion-notas {
+    margin-top: 25px;
+}
+
+.seccion-notas-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+.seccion-notas-grid > div {
+    display: flex;
+    flex-direction: column;
+}
+
+.seccion-notas-grid h3 {
+    background: #d1ab52;
+    color: #fbfbfb !important;
+    font-size: 14px;
+    padding: 3px 6px;
+    margin: 0 0 6px 0;
+    border-radius: 6px 6px 0 0;
+}
+
+.seccion-notas-grid textarea {
+    width: 100%;
+    min-height: 120px;
+    background: #dce8f9;
+    border: 1px solid #777;
+    border-radius: 4px;
+    padding: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    box-sizing: border-box;
+    resize: vertical;
+}
+

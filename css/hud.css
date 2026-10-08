@@ -1,0 +1,219 @@
+/* ==========================================================================
+   BARRA DE ESTADO / HUD DE SWORD ART ONLINE
+   ========================================================================== */
+
+.sao-bar-wrapper {
+    width: 550px;
+    max-width: 550px;
+    flex-shrink: 0;
+    filter: drop-shadow(0px 4px 4px rgba(0, 0, 0, 0.3));
+    margin-bottom: 10px;
+}
+
+.sao-bar-main {
+    display: flex;
+    height: 48px;
+    background: #4a4a4a;
+    clip-path: polygon(0 0, 100% 0, 95% 100%, 0 100%);
+    align-items: center;
+    padding-left: 15px;
+}
+
+.sao-bar-content {
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.sao-input-nombre {
+    background: transparent !important;
+    border: none !important;
+    color: white !important;
+    font-family: 'SAOUI', sans-serif !important;
+    font-size: 26px !important;
+    font-weight: bold;
+    width: 120px;
+    outline: none;
+    box-shadow: none !important;
+    padding: 0 !important;
+    text-shadow: 1px 1px 2px black;
+}
+
+.sao-tracks-col {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    margin-left: 10px;
+    margin-right: 40px;
+    gap: 2px;
+}
+
+/* Barra de Vida (HP) */
+.sao-track-container {
+    width: 100%;
+    height: 20px;
+    background: #222;
+    border: 2px solid #ddd;
+    position: relative;
+    cursor: pointer;
+    clip-path: polygon(0 0, 100% 0, 97% 100%, 0 100%);
+}
+
+.sao-track-fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(to bottom, #8ee134, #5ca013);
+    pointer-events: none;
+    transition: background 0.3s ease, width 0.1s linear;
+}
+
+.sao-track-fill.hp-orange {
+    background: linear-gradient(to bottom, #f39c12, #d35400);
+}
+
+.sao-track-fill.hp-red {
+    background: linear-gradient(to bottom, #e74c3c, #c0392b);
+}
+
+/* Brillo superior en las barras */
+.sao-track-glass {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 40%;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.05));
+    pointer-events: none;
+}
+
+/* Barra de Puntos de Arte (PA) */
+.sao-arte-track {
+    width: 70%;
+    height: 8px;
+    background: #222;
+    border: 1px solid #ddd;
+    position: relative;
+    clip-path: polygon(0 0, 100% 0, 97% 100%, 0 100%);
+}
+
+.sao-arte-fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(to bottom, #00d2ff, #0088cc);
+    pointer-events: none;
+    transition: width 0.2s linear;
+}
+
+.btn-arte {
+    background: #4a4a4a;
+    border: 2px solid #ddd;
+    color: white;
+    font-family: 'SAOUI', sans-serif;
+    font-size: 16px;
+    line-height: 0.8;
+    padding: 0 6px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background 0.2s, color 0.2s;
+}
+
+.btn-arte:hover {
+    background: #ddd;
+    color: #222;
+}
+
+/* Sección inferior del HUD (Vida, Nivel y Puntos de Arte) */
+.sao-bar-bottom {
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-start;
+    margin-top: -8px;
+    padding-right: 25px;
+    gap: 15px;
+}
+
+.sao-sub-content {
+    background: #888;
+    color: white;
+    font-family: 'SAOUI', sans-serif;
+    font-size: 18px;
+    padding: 4px 12px;
+    border-radius: 6px 0 6px 6px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    border: 2px solid #ddd;
+    border-top: none;
+}
+
+.sao-input-vida,
+.sao-input-nivel,
+.sao-input-exp {
+    background: transparent !important;
+    border: none !important;
+    color: white !important;
+    font-family: 'SAOUI', sans-serif !important;
+    font-size: 18px !important;
+    outline: none;
+    box-shadow: none !important;
+    padding: 0 !important;
+    text-align: right;
+}
+
+.sao-input-vida {
+    width: 60px;
+}
+
+.sao-input-nivel {
+    width: 40px;
+    text-align: left;
+}
+
+.sao-input-exp {
+    width: 50px;
+}
+
+.sao-lvl-label {
+    margin-left: 10px;
+    padding-left: 10px;
+    border-left: 2px solid white;
+}
+
+/* Barra de Experiencia (EXP) */
+.sao-exp-container {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    margin-top: 48px;
+    flex-shrink: 0;
+}
+
+.sao-exp-track {
+    width: 140px;
+    height: 12px;
+    background: #222;
+    border: 2px solid #ddd;
+    position: relative;
+    cursor: pointer;
+    clip-path: polygon(0 0, 100% 0, 96% 100%, 0 100%);
+}
+
+.sao-exp-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(to bottom, #3498db, #2980b9);
+    pointer-events: none;
+    transition: width 0.2s linear;
+}
+
+.sao-exp-text {
+    color: white;
+    font-family: 'SAOUI', sans-serif;
+    font-size: 13px;
+    text-shadow: 1px 1px 2px black;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+

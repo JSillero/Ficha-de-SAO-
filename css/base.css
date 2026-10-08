@@ -1,0 +1,187 @@
+@font-face {
+    font-family: 'SAOUI';
+    src: url('../fonts/SAOUITT-Regular.ttf') format('opentype');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'SAOUI';
+    src: url('../fonts/SAOUITT-Bold.ttf') format('opentype');
+    font-weight: bold;
+    font-style: normal;
+}
+
+body {
+    font-family: "SAOUI", "Segoe UI", Arial, sans-serif !important;
+    background: #fbfbfb;
+    margin: 0;
+    padding: 0;
+    color: #222;
+    min-height: 100vh;
+    box-sizing: border-box;
+}
+
+/* Ocultar flechas de subir y bajar en inputs de números */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+    -webkit-appearance: none !important;
+    margin: 0 !important;
+}
+
+input[type="number"] {
+    -moz-appearance: textfield !important;
+    appearance: textfield !important;
+}
+
+/* Contenedor principal de la ficha */
+.ficha {
+    width: 100%;
+    max-width: 100%;
+    min-height: 100vh;
+    margin: 0;
+    background: #fbfbfb;
+    border: 3px solid #999999;
+    border-top: none;
+    border-radius: 10px;
+    padding: 15px 25px;
+    box-sizing: border-box;
+}
+
+/* Encabezado fijo / sticky */
+header {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: #fbfbfb;
+    margin-top: -15px;
+    margin-left: -25px;
+    margin-right: -25px;
+    margin-bottom: 15px;
+    padding-top: 15px;
+    padding-left: 25px;
+    padding-right: 25px;
+    border-top: 3px solid #999999;
+    border-bottom: 3px solid #999999;
+    border-top-left-radius: 10px;
+    border-top-right-radius: 10px;
+    box-shadow: 0 4px 10px -2px rgba(0, 0, 0, 0.08);
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
+    padding-bottom: 12px;
+    margin-bottom: 0;
+}
+
+.header-left {
+    display: flex;
+    align-items: flex-start;
+    flex-wrap: nowrap;
+    gap: 40px;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.header h1 {
+    color: #d1ab52;
+    font-size: 28px;
+    margin: 0;
+}
+
+.header .drama {
+    font-weight: bold;
+    font-size: 18px;
+    color: #d1ab52;
+}
+
+h2 {
+    background: #d1ab52;
+    color: #fbfbfb !important;
+    padding: 5px 10px;
+    font-size: 16px;
+    border-radius: 5px;
+    margin-top: 15px;
+    margin-bottom: 10px;
+}
+
+/* Estructura en 3 columnas */
+.layout {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 25px;
+    align-items: start;
+}
+
+@media (max-width: 1024px) {
+    .layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Campos de formulario genéricos */
+.campo {
+    display: flex;
+    flex-direction: column;
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+
+.campo label {
+    font-weight: bold;
+    margin-bottom: 2px;
+}
+
+.campo input,
+.campo textarea {
+    background: #dce8f9;
+    border: 1px solid #777;
+    border-radius: 4px;
+    padding: 4px;
+    font-size: 13px;
+}
+
+.valores {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+/* Bloques de sección */
+.bloque {
+    border: 1px solid #d1ab52;
+    border-radius: 6px;
+    padding: 8px;
+    margin-top: 10px;
+}
+
+.bloque h3 {
+    background: #d1ab52;
+    color: #fbfbfb !important;
+    font-size: 14px;
+    padding: 3px 6px;
+    margin: -8px -8px 8px -8px;
+    border-radius: 6px 6px 0 0;
+}
+
+/* Silueta anatómica SVG interactiva */
+.parte {
+    fill: #d1ab52;
+    cursor: pointer;
+    transition: fill 0.3s ease;
+}
+
+.gris {
+    cursor: default;
+    fill: #555555;
+}
+

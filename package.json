@@ -58,7 +58,9 @@
     "whatwg-encoding": "^2.0.0"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:css": "npx sass css/main.scss:css/main.min.css --style=compressed",
+    "watch:css": "npx sass --watch css/main.scss:css/main.min.css --style=compressed"
   },
   "author": "",
   "license": "ISC",
