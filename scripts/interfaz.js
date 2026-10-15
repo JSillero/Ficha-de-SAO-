@@ -68,6 +68,7 @@ for (const element of inputs) {
 
     element.addEventListener('focusout', validarYActualizar);
     element.addEventListener('change', validarYActualizar);
+    element.addEventListener('input', validarYActualizar);
 }
 
 /* Introduccion de datos en textareas y manejo general */
@@ -272,10 +273,43 @@ function actualizarInformacion() {
 }
 
 function actualizarAtributos() {
+
+    const disponibles = personaje.getPuntosCaracteristicasDisponibles();
+    const totales = personaje.getPuntosCaracteristicasTotales();
+    const dispSpanCar = document.getElementById("puntosCarDisponibles");
+    const totSpanCar = document.getElementById("puntosCarTotal");
+    const contadorCar = document.getElementById("contadorPuntosCar");
+    const maxPorCar = personaje.getMaxCaracteristicas();
+    if (dispSpanCar) dispSpanCar.innerText = disponibles;
+    if (totSpanCar) totSpanCar.innerText = totales;
+    if (contadorCar) {
+        contadorCar.style.display = disponibles == 0 ? 'none' : '';
+    }
+    
     spanFortaleza.value = personaje.fortaleza;
     spanReflejos.value = personaje.reflejos;
     spanVoluntad.value = personaje.voluntad;
     spanMente.value = personaje.inteligencia;
+    
+
+
+    
+    const contenedores = document.querySelectorAll('#atributosDiv > div');
+    contenedores.forEach(contenedor => {
+        const input = contenedor.querySelector('input');
+        if (!input) return;
+
+        // Establecer atributos HTML5 min y max dinámicos según el nivel
+        input.min = 1;
+        input.max = maxPorCar;
+
+        // Si por cambio de nivel el valor actual del personaje supera el nuevo máximo, ajustarlo
+        if (personaje[input.id] > maxPorCar) {
+            personaje[input.id] = maxPorCar;
+            input.value = maxPorCar;
+        }
+
+    });
 }
 
 function actualizarHabilidades() {

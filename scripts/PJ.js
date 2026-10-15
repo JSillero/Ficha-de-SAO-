@@ -158,10 +158,22 @@ export default class PJ {
         return Math.max(0, 25 + this.nivel);
     }
 
+    getPuntosCaracteristicasTotales() {
+        return 18;
+    }
+
+    getPuntosCaracteristicasDisponibles() {
+        return this.getPuntosCaracteristicasTotales() - this.getPuntosCaracteristicasGastados();
+    }
+
     getPuntosHabilidadGastados() {
         return this.atletismo + this.combate + this.percepcion + this.subterfugio +
             this.comunicacion + this.cultura + this.profesion + this.sacro;
         //return HABILIDADES_LISTA.reduce((total, hab) => total + (Number(this[hab]) || 0), 0);
+    }
+
+    getPuntosCaracteristicasGastados() {
+        return this.fortaleza + this.reflejos + this.voluntad + this.inteligencia;
     }
 
     getPuntosHabilidadDisponibles() {
@@ -176,6 +188,10 @@ export default class PJ {
         } else {
             return divisionNivel15 * 10 + residuo;
         }
+    }
+
+    getMaxCaracteristicas() {
+        return 9;
     }
 
     subirHabilidad(nombreHab) {

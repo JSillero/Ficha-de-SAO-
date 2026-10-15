@@ -101,7 +101,7 @@
 
             <!-- Columna 1: Características y Acciones -->
             <div class="columnaIzquierda">
-                    <h2>Caracteristicas</h2>
+                    <h2>Caracteristicas<span id="contadorPuntosCar" class="contador-puntos-hab">(Puntos: <strong id="puntosCarDisponibles">12</strong> / <span id="puntosCarTotal">12</span>)</span></h2>
                     <div id="atributosDiv">
                         <div class="atributo-fila">
                             <div class="atributo-info">
@@ -310,16 +310,6 @@
                             </div>
                         </div>
                         <div>
-                            <img src="./imgs/combate.svg" onmouseover="this.src='./imgs/combate_on.svg'"
-                                onmouseout="this.src='./imgs/combate.svg'">
-                            <h3>Combate</h3>
-                            <div class="hab-control">
-                                <button type="button" class="btn-hab btn-hab-menos" data-hab="combate" title="Restar punto">-</button>
-                                <input type="number" id="combate" min="0">
-                                <button type="button" class="btn-hab btn-hab-mas" data-hab="combate" title="Añadir punto">+</button>
-                            </div>
-                        </div>
-                        <div>
                             <img src="./imgs/percepcion.svg" onmouseover="this.src='./imgs/percepcion_on.svg'"
                                 onmouseout="this.src='./imgs/percepcion.svg'">
                             <h3>Percepcion</h3>
@@ -327,26 +317,6 @@
                                 <button type="button" class="btn-hab btn-hab-menos" data-hab="percepcion" title="Restar punto">-</button>
                                 <input type="number" id="percepcion" min="0">
                                 <button type="button" class="btn-hab btn-hab-mas" data-hab="percepcion" title="Añadir punto">+</button>
-                            </div>
-                        </div>
-                        <div>
-                            <img src="./imgs/sigilo.svg" onmouseover="this.src='./imgs/sigilo_on.svg'"
-                                onmouseout="this.src='./imgs/sigilo.svg'">
-                            <h3>Sigilo</h3>
-                            <div class="hab-control">
-                                <button type="button" class="btn-hab btn-hab-menos" data-hab="subterfugio" title="Restar punto">-</button>
-                                <input type="number" id="subterfugio" min="0">
-                                <button type="button" class="btn-hab btn-hab-mas" data-hab="subterfugio" title="Añadir punto">+</button>
-                            </div>
-                        </div>
-                        <div>
-                            <img src="./imgs/carisma.svg" onmouseover="this.src='./imgs/carisma_on.svg'"
-                                onmouseout="this.src='./imgs/carisma.svg'">
-                            <h3>Carisma</h3>
-                            <div class="hab-control">
-                                <button type="button" class="btn-hab btn-hab-menos" data-hab="comunicacion" title="Restar punto">-</button>
-                                <input type="number" id="comunicacion" min="0">
-                                <button type="button" class="btn-hab btn-hab-mas" data-hab="comunicacion" title="Añadir punto">+</button>
                             </div>
                         </div>
                         <div>
@@ -367,6 +337,37 @@
                                 <button type="button" class="btn-hab btn-hab-menos" data-hab="profesion" title="Restar punto">-</button>
                                 <input type="number" id="profesion" min="0">
                                 <button type="button" class="btn-hab btn-hab-mas" data-hab="profesion" title="Añadir punto">+</button>
+                            </div>
+                        </div>
+                        <div>
+                            <img src="./imgs/combate.svg" onmouseover="this.src='./imgs/combate_on.svg'"
+                                onmouseout="this.src='./imgs/combate.svg'">
+                            <h3>Combate</h3>
+                            <div class="hab-control">
+                                <button type="button" class="btn-hab btn-hab-menos" data-hab="combate" title="Restar punto">-</button>
+                                <input type="number" id="combate" min="0">
+                                <button type="button" class="btn-hab btn-hab-mas" data-hab="combate" title="Añadir punto">+</button>
+                            </div>
+                        </div>
+                    
+                        <div>
+                            <img src="./imgs/sigilo.svg" onmouseover="this.src='./imgs/sigilo_on.svg'"
+                                onmouseout="this.src='./imgs/sigilo.svg'">
+                            <h3>Sigilo</h3>
+                            <div class="hab-control">
+                                <button type="button" class="btn-hab btn-hab-menos" data-hab="subterfugio" title="Restar punto">-</button>
+                                <input type="number" id="subterfugio" min="0">
+                                <button type="button" class="btn-hab btn-hab-mas" data-hab="subterfugio" title="Añadir punto">+</button>
+                            </div>
+                        </div>
+                        <div>
+                            <img src="./imgs/carisma.svg" onmouseover="this.src='./imgs/carisma_on.svg'"
+                                onmouseout="this.src='./imgs/carisma.svg'">
+                            <h3>Carisma</h3>
+                            <div class="hab-control">
+                                <button type="button" class="btn-hab btn-hab-menos" data-hab="comunicacion" title="Restar punto">-</button>
+                                <input type="number" id="comunicacion" min="0">
+                                <button type="button" class="btn-hab btn-hab-mas" data-hab="comunicacion" title="Añadir punto">+</button>
                             </div>
                         </div>
                         <div>
