@@ -61,10 +61,42 @@ for (const element of inputs) {
             element.value = val;
         }
 
+        // Si es un input de atributo/característica, aplicar restricciones de límite máximo (9) y límite total de puntos (22)
+        if (element.closest('#atributosDiv')) {
+            // Si se introdujo más de un dígito (por ejemplo, al escribir detrás del número existente), conservar el último dígito
+            if (element.value.length > 1) {
+                element.value = element.value.slice(-1);
+            }
+            val = Number(element.value);
+
+            const maxPermitido = personaje.getMaxCaracteristicas();
+            const valorAnterior = Number(personaje[element.id]) || 0;
+            const gastadosOtros = personaje.getPuntosCaracteristicasGastados() - valorAnterior;
+            const limiteTotal = personaje.getPuntosCaracteristicasLimite();
+            const maximoPosible = Math.min(maxPermitido, limiteTotal - gastadosOtros);
+
+            if (val > maximoPosible) {
+                val = maximoPosible;
+            } else if (val < 1 || isNaN(val)) {
+                val = 1;
+            }
+            element.value = val;
+        }
+
         personaje[element.id] = val;
         personaje.calcularCaracteristicas();
         actualizarTodo();
     };
+
+    if (element.closest('#atributosDiv')) {
+        element.addEventListener('keydown', (e) => {
+            if (e.key >= '0' && e.key <= '9' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                e.preventDefault();
+                element.value = e.key;
+                validarYActualizar();
+            }
+        });
+    }
 
     element.addEventListener('focusout', validarYActualizar);
     element.addEventListener('change', validarYActualizar);
@@ -276,14 +308,27 @@ function actualizarAtributos() {
 
     const disponibles = personaje.getPuntosCaracteristicasDisponibles();
     const totales = personaje.getPuntosCaracteristicasTotales();
+    const gastados = personaje.getPuntosCaracteristicasGastados();
     const dispSpanCar = document.getElementById("puntosCarDisponibles");
     const totSpanCar = document.getElementById("puntosCarTotal");
     const contadorCar = document.getElementById("contadorPuntosCar");
     const maxPorCar = personaje.getMaxCaracteristicas();
-    if (dispSpanCar) dispSpanCar.innerText = disponibles;
+    const limiteTotal = personaje.getPuntosCaracteristicasLimite();
+
+    if (dispSpanCar) {
+        dispSpanCar.innerText = disponibles;
+        if (gastados === 19 || gastados === 20) {
+            dispSpanCar.style.color = '#ff4d4d'; // Rojo cuando se usan 19 o 20 puntos
+        } else if (gastados === 21 || gastados === 22) {
+            dispSpanCar.style.color = '#c040fb'; // Morado cuando se usan 21 o 22 puntos
+        } else {
+            dispSpanCar.style.color = ''; // Color por defecto
+        }
+    }
+
     if (totSpanCar) totSpanCar.innerText = totales;
     if (contadorCar) {
-        contadorCar.style.display = disponibles == 0 ? 'none' : '';
+        contadorCar.style.display = disponibles === 0 ? 'none' : '';
     }
     
     spanFortaleza.value = personaje.fortaleza;
@@ -299,14 +344,18 @@ function actualizarAtributos() {
         const input = contenedor.querySelector('input');
         if (!input) return;
 
-        // Establecer atributos HTML5 min y max dinámicos según el nivel
+        // Establecer atributos HTML5 min y max dinámicos según el nivel y el límite total de 22 puntos
         input.min = 1;
-        input.max = maxPorCar;
+        const valorActual = Number(personaje[input.id]) || 0;
+        const gastadosOtros = gastados - valorActual;
+        const maximoPorPuntos = limiteTotal - gastadosOtros;
+        const maxPermitido = Math.min(maxPorCar, maximoPorPuntos);
+        input.max = maxPermitido;
 
-        // Si por cambio de nivel el valor actual del personaje supera el nuevo máximo, ajustarlo
-        if (personaje[input.id] > maxPorCar) {
-            personaje[input.id] = maxPorCar;
-            input.value = maxPorCar;
+        // Si por cambio de nivel o límite el valor actual del personaje supera el nuevo máximo, ajustarlo
+        if (personaje[input.id] > maxPermitido) {
+            personaje[input.id] = maxPermitido;
+            input.value = maxPermitido;
         }
 
     });

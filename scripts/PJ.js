@@ -162,6 +162,10 @@ export default class PJ {
         return 18;
     }
 
+    getPuntosCaracteristicasLimite() {
+        return 22;
+    }
+
     getPuntosCaracteristicasDisponibles() {
         return this.getPuntosCaracteristicasTotales() - this.getPuntosCaracteristicasGastados();
     }

@@ -85,6 +85,10 @@
     background: #fffdf7;
 }
 
+#atributosDiv .atributo-input::selection {
+    background: transparent;
+}
+
 /* Control de Turno */
 #controlTurno svg {
     max-width: 100%;
