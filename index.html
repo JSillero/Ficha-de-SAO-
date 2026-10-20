@@ -212,52 +212,83 @@
                     <div id="divEquipamiento">
                         <h2>Equipamiento</h2>
 
-                        <div class="manoDerecha equipamiento"> <b> Mano derecha:</b> <input type="text"
-                                placeholder="Nombre">
-                            <select class="tipoTirada">
-                                <option value="alta">Alta</option>
-                                <option value="media">Media</option>
-                                <option value="baja">Baja</option>
-                                <option value="ninguna">Ninguna</option>
-                            </select>
-                            <button>+</button>
-                            <ul class="modificadoresEquipo">
-
-                            </ul>
-
+                        <div class="equipamiento-manos-grid">
+                            <!-- Generado dinámicamente mediante templateManoEquipamiento -->
                         </div>
 
-                        <div class="manoIzquierda equipamiento"> <b>Mano izquierda:</b> <input type="text"
-                                placeholder="Nombre">
-                            <select class="tipoTirada">
-                                <option value="alta">Alta</option>
-                                <option value="media">Media</option>
-                                <option value="baja">Baja</option>
-                                <option value="ninguna">Ninguna</option>
-                            </select>
-                            <button>+</button>
+                        <!-- Template reutilizable para manos de equipamiento -->
+                        <template id="templateManoEquipamiento">
+                            <div class="equipamiento">
+                                <div class="equipamiento-tipo-row">
+                                    <label><b class="tituloMano"></b></label>
+                                    <select class="tipoEquipo tipoArma">
+                                        <option value="">-- Dejar vacío --</option>
+                                        <option value="cuchillo">Cuchillo</option>
+                                        <option value="espada">Espada</option>
+                                        <option value="estoque">Estoque</option>
+                                        <option value="garrote">Garrote</option>
+                                        <option value="lanza">Lanza</option>
+                                        <option value="espadon">Espadón</option>
+                                        <option value="martillo_guerra">Martillo de guerra</option>
+                                        <option value="hacha">Hacha</option>
+                                        <option value="escudo">Escudo</option>
+                                        <option value="gran_escudo">Gran escudo</option>
+                                        <option value="otros">Otros</option>
+                                    </select>
+                                </div>
+                                <div class="equipamiento-detalles" style="display: none;">
+                                    <div class="equipamiento-main-inputs">
+                                        <input type="text" class="inputNombreEquipo" placeholder="Nombre">
+                                        <div class="campo-numero">
+                                            <label>Daño:</label>
+                                            <input type="number" class="inputDannoEquipo" min="0" value="0">
+                                        </div>
+                                        <div class="campo-numero campo-defensa" style="display: none;">
+                                            <label>Defensa:</label>
+                                            <input type="number" class="inputDefensaEquipo" min="0" value="0">
+                                        </div>
+                                        <button type="button" class="btn-usar-equipo">Usar</button>
+                                    </div>
+                                    <div class="equipamiento-mods-header">
+                                        <span>Modificadores:</span>
+                                        <button type="button" class="btn-anadir-mod-equipo">+</button>
+                                    </div>
+                                    <ul class="modificadoresEquipo"></ul>
+                                </div>
+                            </div>
+                        </template>
 
-                            <ul class="modificadoresEquipo">
-
-                            </ul>
-
-                        </div>
-
-                        <div class="equipoArmadura equipamiento"> <b>Armadura:</b> <input type="text"
-                                placeholder="Nombre">
-                            <select class="tipoArmadura">
-                                <option value="1">Pesada</option>
-                                <option value="2">Media</option>
-                                <option value="3">Ligera</option>
-                                <option value="3">Ropa</option>
-                                <option value="3">Real</option>
-                            </select>
-                            <button>+</button>
-
-                            <ul class="modificadoresEquipo">
-
-                            </ul>
-
+                        <!-- Fila 2: Armadura -->
+                        <div class="equipoArmadura equipamiento">
+                            <div class="equipamiento-tipo-row">
+                                <label><b>Armadura:</b></label>
+                                <select class="tipoEquipo tipoArmadura">
+                                    <option value="">-- Dejar vacío --</option>
+                                    <option value="pesada">Pesada</option>
+                                    <option value="media">Media</option>
+                                    <option value="ligera">Ligera</option>
+                                    <option value="ropa">Ropa</option>
+                                    <option value="real">Real</option>
+                                </select>
+                            </div>
+                            <div class="equipamiento-detalles" style="display: none;">
+                                <div class="equipamiento-main-inputs">
+                                    <input type="text" class="inputNombreEquipo" placeholder="Nombre">
+                                    <div class="campo-numero">
+                                        <label>Pen. Atletismo:</label>
+                                        <input type="number" class="inputPenalizacionAtletismo" min="0" value="0">
+                                    </div>
+                                    <div class="campo-numero">
+                                        <label>Armadura:</label>
+                                        <input type="number" class="inputValorArmadura" min="0" value="0">
+                                    </div>
+                                </div>
+                                <div class="equipamiento-mods-header">
+                                    <span>Modificadores:</span>
+                                    <button type="button" class="btn-anadir-mod-equipo">+</button>
+                                </div>
+                                <ul class="modificadoresEquipo"></ul>
+                            </div>
                         </div>
 
                         <div class="listaAccesorios"><b>Accesorios:</b>
@@ -494,6 +525,33 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                     <button type="button" class="btn" id="btnAplicarExp"
                         style="background: #d1ab52; color: white; font-weight: bold;">Aplicar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Confirmar Cambio de Equipamiento -->
+    <div class="modal fade" id="modalConfirmarCambioEquipo" tabindex="-1" aria-labelledby="modalConfirmarCambioEquipoLabel"
+        aria-hidden="true" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="border: 3px solid #d1ab52; border-radius: 10px;">
+                <div class="modal-header" style="border-bottom: 2px solid #d1ab52; background: #fbfbfb;">
+                    <h5 class="modal-title" id="modalConfirmarCambioEquipoLabel"
+                        style="color: #d1ab52; font-weight: bold; font-family: 'SAOUI', sans-serif;">Cambiar Tipo de Equipamiento</h5>
+                    <button type="button" class="btn-close" id="btnCancelarCambioEquipoX" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" style="background: #fbfbfb;">
+                    <p style="font-weight: bold; color: #333; margin-bottom: 8px;">
+                        ¿Deseas cambiar el tipo de equipamiento?
+                    </p>
+                    <p style="color: #666; font-size: 14px; margin-bottom: 0;">
+                        Se borrará todo el contenido actual asignado a este espacio (nombre, valores numéricos y modificadores).
+                    </p>
+                </div>
+                <div class="modal-footer" style="border-top: none; background: #fbfbfb;">
+                    <button type="button" class="btn btn-secondary" id="btnCancelarCambioEquipo">Cancelar</button>
+                    <button type="button" class="btn" id="btnConfirmarCambioEquipo"
+                        style="background: #d1ab52; color: white; font-weight: bold;">Borrar y Cambiar</button>
                 </div>
             </div>
         </div>

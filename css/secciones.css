@@ -98,6 +98,207 @@
 }
 
 /* Equipamiento y Modificadores */
+#divEquipamiento {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.equipamiento-manos-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.equipamiento-manos-grid.dos-manos {
+    grid-template-columns: 1fr;
+}
+
+@media (max-width: 680px) {
+    .equipamiento-manos-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.equipamiento {
+    background: #ffffff;
+    border: 1px solid #e2e2e2;
+    border-radius: 8px;
+    padding: 10px 12px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.04);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.equipamiento-tipo-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.equipamiento-tipo-row label {
+    margin: 0;
+    font-size: 14px;
+    color: #444;
+}
+
+.equipamiento-tipo-row select {
+    flex: 1;
+    min-width: 130px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    background: #fafafa;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.equipamiento-tipo-row select:focus {
+    border-color: #d1ab52;
+    box-shadow: 0 0 0 2px rgba(209, 171, 82, 0.2);
+}
+
+.equipamiento-detalles {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 6px;
+    border-top: 1px dashed #e5e5e5;
+}
+
+.equipamiento-main-inputs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.inputNombreEquipo {
+    flex: 2;
+    min-width: 100px;
+    padding: 4px 8px;
+    font-size: 13px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    outline: none;
+}
+
+.inputNombreEquipo:focus {
+    border-color: #d1ab52;
+}
+
+.campo-numero {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: #555;
+    font-weight: 600;
+}
+
+.campo-numero input {
+    width: 48px;
+    text-align: center;
+    padding: 3px 4px;
+    font-size: 13px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+.btn-usar-equipo {
+    background: #d1ab52;
+    color: #ffffff;
+    border: none;
+    border-radius: 5px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+}
+
+.btn-usar-equipo:hover {
+    background: #b8933b;
+    transform: translateY(-1px);
+}
+
+.btn-usar-equipo:active {
+    transform: translateY(0);
+}
+
+.equipamiento-mods-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    font-weight: bold;
+    color: #666;
+    margin-top: 4px;
+}
+
+.btn-anadir-mod-equipo {
+    background: #eef2f5;
+    border: 1px solid #c9d2db;
+    border-radius: 4px;
+    width: 22px;
+    height: 22px;
+    line-height: 18px;
+    font-size: 14px;
+    font-weight: bold;
+    color: #2c3e50;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+
+.btn-anadir-mod-equipo:hover {
+    background: #d1ab52;
+    color: #ffffff;
+    border-color: #d1ab52;
+}
+
+.modificadoresEquipo {
+    list-style: none;
+    padding-left: 0;
+    margin-bottom: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.listaAccesorios {
+    background: #ffffff;
+    border: 1px solid #e2e2e2;
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+
+.listaAccesorios ul {
+    list-style: none;
+    padding-left: 0;
+    margin-bottom: 0;
+    margin-top: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.listaAccesorios li.accesorio {
+    border-bottom: 1px solid #f0f0f0;
+    padding-bottom: 6px;
+}
+
+.listaAccesorios li.accesorio:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
 #equipamiento .cantidadMod {
     width: 35px;
 }

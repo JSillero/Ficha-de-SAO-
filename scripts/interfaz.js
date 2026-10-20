@@ -246,6 +246,7 @@ function actualizarTodo() {
     actualizarHabilidades();
     actualizarCaracteristicas();
     actuaizarTextos();
+    actualizarEquipamiento();
     parseModificadores();
     parseModificadoresEquipo();
     generarAccesorios();
@@ -512,66 +513,520 @@ function parseModificadores() {
 }
 
 /* Equipo ___________________________________________________________________________________ */
-function parseModificadoresEquipo() {
-    for (const elemento of document.getElementsByClassName("equipamiento")) {
-        /* Resetean valores internos del listado de modificadores  */
-        let listaModsEquipo = elemento.getElementsByClassName("modificadoresEquipo")[0];
-        listaModsEquipo.innerHTML = "";
-        personaje[elemento.classList[0]].modificadores.forEach((modificador, index) => {
-            listaModsEquipo.innerHTML += ` 
-            <li id="modificadorE${index}" class="modificadorE">
-              <input type="text" class="" style="display:none" value="${modificador.nombre}"> Atributo:
-              <select class="listValores" > 
-                    <option ${modificador.modificado == "atletismo" ? "selected" : ""} value="atletismo">Atletismo</option>
-                    <option ${modificador.modificado == "combate" ? "selected" : ""} value="combate">Combate</option>
-                    <option ${modificador.modificado == "percepcion" ? "selected" : ""} value="percepcion">Percepción</option>
-                    <option ${modificador.modificado == "subterfugio" ? "selected" : ""} value="subterfugio">Sigilo</option>
-                    <option ${modificador.modificado == "comunicacion" ? "selected" : ""} value="comunicacion">Carisma</option>
-                    <option ${modificador.modificado == "cutlura" ? "selected" : ""}value="cutlura">Cultura</option>
-                    <option ${modificador.modificado == "profesion" ? "selected" : ""}value="profesion">Profesion</option>
-                    <option ${modificador.modificado == "sacro" ? "selected" : ""}value="sacro">Sacro</option>
-                    <option ${modificador.modificado == "armadura" ? "selected" : ""}value="armadura">Armadura</option>
-                </select> 
-                Cantidad:<input type="number"  class="cantidadMod" value="${modificador.numero}"/> 
-                <input style="display:none" class="duracionMod" value="${modificador.turnos}"/>
-                <div class="eliminarMod">-</div>
-            </li>`;
-        });
+function getPropiedadEquipo(elemento) {
+    if (!elemento) return null;
+    if (elemento.classList.contains("manoIzquierda")) return "manoIzquierda";
+    if (elemento.classList.contains("manoDerecha")) return "manoDerecha";
+    if (elemento.classList.contains("equipoArmadura")) return "equipoArmadura";
+    return null;
+}
 
+function getCantidadAccesoriosPorArmadura(tipoArmadura) {
+    const tipo = (tipoArmadura || "").toLowerCase().trim();
+    switch (tipo) {
+        case "pesada": return 0;
+        case "media": return 1;
+        case "ligera": return 2;
+        case "ropa":
+        case "real": return 3;
+        default: return 0;
+    }
+}
+
+function equipamientoTieneContenido(propEquipo) {
+    const item = personaje[propEquipo];
+    if (!item) return false;
+    const tieneNombre = Boolean(item.nombre && item.nombre.trim().length > 0);
+    const tieneDanno = Boolean(item.danno && Number(item.danno) !== 0);
+    const tienePen = Boolean(item.penalizacionAtletismo && Number(item.penalizacionAtletismo) !== 0);
+    const tieneArm = Boolean(item.armadura && Number(item.armadura) !== 0) || Boolean(item.defensa && Number(item.defensa) !== 0);
+    const tieneMods = Boolean(Array.isArray(item.modificadores) && item.modificadores.length > 0);
+    return tieneNombre || tieneDanno || tienePen || tieneArm || tieneMods;
+}
+
+function limpiarContenidoEquipamiento(propEquipo) {
+    const item = personaje[propEquipo];
+    if (!item) return;
+    item.nombre = "";
+    item.danno = 0;
+    item.penalizacionAtletismo = 0;
+    item.armadura = 0;
+    item.defensa = 0;
+    item.enUso = false;
+    item.modificadores = [];
+}
+
+const TIPOS_DOS_MANOS = ["lanza", "espadon", "martillo_guerra", "hacha", "gran_escudo"];
+
+const TIPOS_ESCUDO = ["escudo", "gran_escudo"];
+
+const CONFIG_MANOS = [
+    { prop: "manoIzquierda", titulo: "Mano izquierda:" },
+    { prop: "manoDerecha", titulo: "Mano derecha:" }
+];
+
+function construirManosEquipamiento() {
+    const grid = document.querySelector(".equipamiento-manos-grid");
+    const template = document.getElementById("templateManoEquipamiento");
+    if (!grid || !template) return;
+
+    grid.innerHTML = "";
+    CONFIG_MANOS.forEach(cfg => {
+        const clon = template.content.cloneNode(true);
+        const card = clon.querySelector(".equipamiento");
+        card.classList.add(cfg.prop);
+        const titulo = clon.querySelector(".tituloMano");
+        if (titulo) titulo.innerText = cfg.titulo;
+        grid.appendChild(clon);
+    });
+}
+
+let cambioEquipoPendiente = null;
+
+function inicializarEquipamiento() {
+    const modalEl = document.getElementById("modalConfirmarCambioEquipo");
+    const modalInstance = modalEl && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(modalEl) : null;
+
+    const cancelarCambio = () => {
+        if (cambioEquipoPendiente) {
+            cambioEquipoPendiente.selectElement.value = cambioEquipoPendiente.valorAnterior;
+            cambioEquipoPendiente = null;
+        }
+        if (modalInstance) modalInstance.hide();
+    };
+
+    const btnCancelar = document.getElementById("btnCancelarCambioEquipo");
+    const btnCancelarX = document.getElementById("btnCancelarCambioEquipoX");
+    const btnConfirmar = document.getElementById("btnConfirmarCambioEquipo");
+
+    if (btnCancelar) btnCancelar.addEventListener("click", cancelarCambio);
+    if (btnCancelarX) btnCancelarX.addEventListener("click", cancelarCambio);
+    if (modalEl) {
+        modalEl.addEventListener("hidden.bs.modal", () => {
+            if (cambioEquipoPendiente) {
+                cambioEquipoPendiente.selectElement.value = cambioEquipoPendiente.valorAnterior;
+                cambioEquipoPendiente = null;
+            }
+        });
     }
 
-    /* Se añaden funcionalidad a los elementos TODO : hacer que el evento se lanze en los contenedores de modificadores y que haga bubbling para ver si esta donde debe  */
+    if (btnConfirmar) {
+        btnConfirmar.addEventListener("click", () => {
+            if (cambioEquipoPendiente) {
+                const { selectElement, propEquipo, nuevoTipo } = cambioEquipoPendiente;
+                limpiarContenidoEquipamiento(propEquipo);
+                selectElement.dataset.valorActual = nuevoTipo;
+                personaje[propEquipo].tipo = nuevoTipo;
+                cambioEquipoPendiente = null;
+                if (modalInstance) modalInstance.hide();
+                personaje.calcularCaracteristicas();
+                actualizarTodo();
+            }
+        });
+    }
+
+    document.querySelectorAll(".equipamiento").forEach(elemento => {
+        const propEquipo = getPropiedadEquipo(elemento);
+        if (!propEquipo) return;
+
+        const select = elemento.querySelector(".tipoEquipo");
+        const inputNombre = elemento.querySelector(".inputNombreEquipo");
+        const inputDanno = elemento.querySelector(".inputDannoEquipo");
+        const inputDefensa = elemento.querySelector(".inputDefensaEquipo");
+        const inputPen = elemento.querySelector(".inputPenalizacionAtletismo");
+        const inputArm = elemento.querySelector(".inputValorArmadura");
+        const btnUsar = elemento.querySelector(".btn-usar-equipo");
+        const btnAddMod = elemento.querySelector(".btn-anadir-mod-equipo");
+
+        if (select) {
+            select.dataset.valorActual = select.value;
+            select.addEventListener("change", (e) => {
+                const nuevoTipo = e.target.value;
+                const valorAnterior = e.target.dataset.valorActual || "";
+
+                if (propEquipo === "manoIzquierda" || propEquipo === "manoDerecha") {
+                    const otraMano = (propEquipo === "manoIzquierda") ? "manoDerecha" : "manoIzquierda";
+                    const otroItem = personaje[otraMano];
+                    const otroTipo = otroItem?.tipo || "";
+                    const otraManoOcupada = Boolean(otroTipo !== "") || equipamientoTieneContenido(otraMano);
+
+                    // Validación de armas a dos manos: solo permitir si no hay nada en la otra mano
+                    if (TIPOS_DOS_MANOS.includes(nuevoTipo)) {
+                        if (otraManoOcupada) {
+                            alert("Solo puedes equipar un equipamiento a dos manos si no hay nada en la otra mano.");
+                            e.target.value = valorAnterior;
+                            return;
+                        }
+                    }
+
+                    // Validación de estoque: solo se puede equipar si la otra mano está vacía o tiene un escudo
+                    if (nuevoTipo === "estoque") {
+                        if (otraManoOcupada && otroTipo !== "escudo") {
+                            alert("El estoque solo se puede equipar si la otra mano está vacía o tiene un escudo.");
+                            e.target.value = valorAnterior;
+                            return;
+                        }
+                    }
+
+                    // Validación si la otra mano ya tiene un estoque: la mano actual solo puede ser vacía o escudo
+                    if (otroTipo === "estoque" && nuevoTipo !== "" && nuevoTipo !== "escudo") {
+                        alert("Con un estoque equipado en la otra mano, solo puedes equipar un escudo o dejar la mano vacía.");
+                        e.target.value = valorAnterior;
+                        return;
+                    }
+                }
+
+                if (equipamientoTieneContenido(propEquipo)) {
+                    cambioEquipoPendiente = {
+                        selectElement: e.target,
+                        propEquipo: propEquipo,
+                        nuevoTipo: nuevoTipo,
+                        valorAnterior: valorAnterior
+                    };
+                    if (modalInstance) {
+                        modalInstance.show();
+                    } else if (confirm("Al cambiar el tipo de equipamiento se borrará el contenido actual asignado a este espacio. ¿Deseas continuar?")) {
+                        limpiarContenidoEquipamiento(propEquipo);
+                        e.target.dataset.valorActual = nuevoTipo;
+                        personaje[propEquipo].tipo = nuevoTipo;
+                        cambioEquipoPendiente = null;
+                        personaje.calcularCaracteristicas();
+                        actualizarTodo();
+                    } else {
+                        e.target.value = valorAnterior;
+                        cambioEquipoPendiente = null;
+                    }
+                } else {
+                    e.target.dataset.valorActual = nuevoTipo;
+                    personaje[propEquipo].tipo = nuevoTipo;
+                    personaje[propEquipo].enUso = false;
+                    personaje.calcularCaracteristicas();
+                    actualizarTodo();
+                }
+            });
+        }
+
+        if (inputNombre) {
+            inputNombre.addEventListener("input", (e) => {
+                personaje[propEquipo].nombre = e.target.value;
+            });
+        }
+
+        if (inputDanno) {
+            inputDanno.addEventListener("input", (e) => {
+                personaje[propEquipo].danno = Number(e.target.value) || 0;
+            });
+        }
+
+        if (inputDefensa) {
+            inputDefensa.addEventListener("input", (e) => {
+                personaje[propEquipo].defensa = Number(e.target.value) || 0;
+                personaje.calcularCaracteristicas();
+                actualizarCaracteristicas();
+            });
+        }
+
+        if (inputPen) {
+            inputPen.addEventListener("input", (e) => {
+                personaje[propEquipo].penalizacionAtletismo = Number(e.target.value) || 0;
+                personaje.calcularCaracteristicas();
+                actualizarCaracteristicas();
+            });
+        }
+
+        if (inputArm) {
+            inputArm.addEventListener("input", (e) => {
+                personaje[propEquipo].armadura = Number(e.target.value) || 0;
+                personaje.calcularCaracteristicas();
+                actualizarCaracteristicas();
+            });
+        }
+
+        if (btnUsar) {
+            btnUsar.addEventListener("click", () => {
+                const item = personaje[propEquipo];
+                if (TIPOS_ESCUDO.includes(item?.tipo)) {
+                    // Alterna el escudo: en uso suma su defensa, al repetir vuelve al estado original
+                    item.enUso = !item.enUso;
+                    personaje.calcularCaracteristicas();
+                    actualizarTodo();
+                    return;
+                }
+                const nombreArma = item?.nombre?.trim() || "Arma sin nombre";
+                const danno = item?.danno || 0;
+                const tipo = item?.tipo || "Sin tipo";
+                const esDosManos = TIPOS_DOS_MANOS.includes(item?.tipo);
+                const etiquetaMano = esDosManos ? 'Dos manos' : (propEquipo === 'manoIzquierda' ? 'Mano izquierda' : 'Mano derecha');
+                alert(`Usando equipamiento (${etiquetaMano}):\nNombre: ${nombreArma}\nTipo: ${tipo}\nDaño: ${danno}`);
+            });
+        }
+
+        if (btnAddMod) {
+            btnAddMod.addEventListener("click", () => {
+                if (!Array.isArray(personaje[propEquipo].modificadores)) {
+                    personaje[propEquipo].modificadores = [];
+                }
+                personaje[propEquipo].modificadores.push(new Modificador("Nombre", "atletismo", 0, -1));
+                parseModificadoresEquipo();
+                personaje.calcularCaracteristicas();
+                actualizarTodo();
+            });
+        }
+    });
+}
+
+function actualizarEquipamiento() {
+    const manosGrid = document.querySelector(".equipamiento-manos-grid");
+    const elIzq = document.querySelector(".manoIzquierda.equipamiento");
+    const elDer = document.querySelector(".manoDerecha.equipamiento");
+
+    const esDosManosIzq = TIPOS_DOS_MANOS.includes(personaje.manoIzquierda?.tipo);
+    const esDosManosDer = TIPOS_DOS_MANOS.includes(personaje.manoDerecha?.tipo);
+
+    if (esDosManosIzq) {
+        if (manosGrid) manosGrid.classList.add("dos-manos");
+        if (elIzq) {
+            elIzq.style.display = "flex";
+            const titulo = elIzq.querySelector(".tituloMano");
+            if (titulo) titulo.innerText = "Dos manos:";
+        }
+        if (elDer) elDer.style.display = "none";
+    } else if (esDosManosDer) {
+        if (manosGrid) manosGrid.classList.add("dos-manos");
+        if (elDer) {
+            elDer.style.display = "flex";
+            const titulo = elDer.querySelector(".tituloMano");
+            if (titulo) titulo.innerText = "Dos manos:";
+        }
+        if (elIzq) elIzq.style.display = "none";
+    } else {
+        if (manosGrid) manosGrid.classList.remove("dos-manos");
+        if (elIzq) {
+            elIzq.style.display = "flex";
+            const titulo = elIzq.querySelector(".tituloMano");
+            if (titulo) titulo.innerText = "Mano izquierda:";
+        }
+        if (elDer) {
+            elDer.style.display = "flex";
+            const titulo = elDer.querySelector(".tituloMano");
+            if (titulo) titulo.innerText = "Mano derecha:";
+        }
+    }
+
+    // Deshabilitar opciones no permitidas según el equipamiento de la otra mano
+    const tipoIzq = personaje.manoIzquierda?.tipo || "";
+    const tipoDer = personaje.manoDerecha?.tipo || "";
+    const izqTieneAlgo = Boolean(tipoIzq !== "") || equipamientoTieneContenido("manoIzquierda");
+    const derTieneAlgo = Boolean(tipoDer !== "") || equipamientoTieneContenido("manoDerecha");
+    const izqEsEstoque = (tipoIzq === "estoque");
+    const derEsEstoque = (tipoDer === "estoque");
+
+    // Opciones para Mano Derecha según Mano Izquierda
+    if (elDer) {
+        const selectDer = elDer.querySelector(".tipoEquipo");
+        if (selectDer) {
+            Array.from(selectDer.options).forEach(opt => {
+                if (izqEsEstoque) {
+                    // Si en la mano izquierda hay un estoque, en la derecha solo puede haber vacío o escudo
+                    opt.disabled = (opt.value !== "" && opt.value !== "escudo");
+                } else {
+                    if (TIPOS_DOS_MANOS.includes(opt.value)) {
+                        opt.disabled = izqTieneAlgo;
+                    } else if (opt.value === "estoque") {
+                        // El estoque solo se permite si la otra mano está vacía o tiene un escudo
+                        opt.disabled = izqTieneAlgo && (tipoIzq !== "escudo");
+                    } else {
+                        opt.disabled = false;
+                    }
+                }
+            });
+        }
+    }
+
+    // Opciones para Mano Izquierda según Mano Derecha
+    if (elIzq) {
+        const selectIzq = elIzq.querySelector(".tipoEquipo");
+        if (selectIzq) {
+            Array.from(selectIzq.options).forEach(opt => {
+                if (derEsEstoque) {
+                    // Si en la mano derecha hay un estoque, en la izquierda solo puede haber vacío o escudo
+                    opt.disabled = (opt.value !== "" && opt.value !== "escudo");
+                } else {
+                    if (TIPOS_DOS_MANOS.includes(opt.value)) {
+                        opt.disabled = derTieneAlgo;
+                    } else if (opt.value === "estoque") {
+                        // El estoque solo se permite si la otra mano está vacía o tiene un escudo
+                        opt.disabled = derTieneAlgo && (tipoDer !== "escudo");
+                    } else {
+                        opt.disabled = false;
+                    }
+                }
+            });
+        }
+    }
+
+    document.querySelectorAll(".equipamiento").forEach(elemento => {
+        const propEquipo = getPropiedadEquipo(elemento);
+        if (!propEquipo || !personaje[propEquipo]) return;
+
+        const item = personaje[propEquipo];
+        const select = elemento.querySelector(".tipoEquipo");
+        const detalles = elemento.querySelector(".equipamiento-detalles");
+        const inputNombre = elemento.querySelector(".inputNombreEquipo");
+        const inputDanno = elemento.querySelector(".inputDannoEquipo");
+        const inputPen = elemento.querySelector(".inputPenalizacionAtletismo");
+        const inputArm = elemento.querySelector(".inputValorArmadura");
+        const inputDefensa = elemento.querySelector(".inputDefensaEquipo");
+        const campoDanno = inputDanno?.closest(".campo-numero");
+        const campoDefensa = inputDefensa?.closest(".campo-numero");
+        const btnUsar = elemento.querySelector(".btn-usar-equipo");
+        const esEscudo = TIPOS_ESCUDO.includes(item.tipo);
+
+        // Un escudo no tiene daño, solo defensa
+        if (campoDanno) campoDanno.style.display = esEscudo ? "none" : "";
+        if (campoDefensa) campoDefensa.style.display = esEscudo ? "" : "none";
+        if (inputDefensa && document.activeElement !== inputDefensa) {
+            inputDefensa.value = item.defensa ?? 0;
+        }
+        if (btnUsar && esEscudo) {
+            btnUsar.textContent = item.enUso ? "Guardar" : "Usar";
+            btnUsar.classList.toggle("en-uso", Boolean(item.enUso));
+        } else if (btnUsar) {
+            btnUsar.textContent = "Usar";
+            btnUsar.classList.remove("en-uso");
+        }
+
+        if (select) {
+            select.value = item.tipo || "";
+            select.dataset.valorActual = select.value;
+        }
+
+        const tieneTipo = Boolean(item.tipo && item.tipo !== "");
+        if (detalles) {
+            detalles.style.display = tieneTipo ? "flex" : "none";
+        }
+
+        if (inputNombre && document.activeElement !== inputNombre) {
+            inputNombre.value = item.nombre || "";
+        }
+        if (inputDanno && document.activeElement !== inputDanno) {
+            inputDanno.value = item.danno ?? 0;
+        }
+        if (inputPen && document.activeElement !== inputPen) {
+            inputPen.value = item.penalizacionAtletismo ?? 0;
+        }
+        if (inputArm && document.activeElement !== inputArm) {
+            inputArm.value = item.armadura ?? 0;
+        }
+    });
+}
+
+function parseModificadoresEquipo() {
+    for (const elemento of document.getElementsByClassName("equipamiento")) {
+        const propEquipo = getPropiedadEquipo(elemento);
+        if (!propEquipo || !personaje[propEquipo]) continue;
+
+        let listaModsEquipo = elemento.getElementsByClassName("modificadoresEquipo")[0];
+        if (!listaModsEquipo) continue;
+        listaModsEquipo.innerHTML = "";
+
+        if (Array.isArray(personaje[propEquipo].modificadores)) {
+            personaje[propEquipo].modificadores.forEach((modificador, index) => {
+                listaModsEquipo.innerHTML += ` 
+                <li id="modificadorE${index}" class="modificadorE">
+                  <input type="text" class="" style="display:none" value="${modificador.nombre}"> Atributo:
+                  <select class="listValores" > 
+                        <option ${modificador.modificado == "atletismo" ? "selected" : ""} value="atletismo">Atletismo</option>
+                        <option ${modificador.modificado == "combate" ? "selected" : ""} value="combate">Combate</option>
+                        <option ${modificador.modificado == "percepcion" ? "selected" : ""} value="percepcion">Percepción</option>
+                        <option ${modificador.modificado == "subterfugio" ? "selected" : ""} value="subterfugio">Sigilo</option>
+                        <option ${modificador.modificado == "comunicacion" ? "selected" : ""} value="comunicacion">Carisma</option>
+                        <option ${modificador.modificado == "cutlura" ? "selected" : ""} value="cutlura">Cultura</option>
+                        <option ${modificador.modificado == "profesion" ? "selected" : ""} value="profesion">Profesion</option>
+                        <option ${modificador.modificado == "sacro" ? "selected" : ""} value="sacro">Sacro</option>
+                        <option ${modificador.modificado == "armadura" ? "selected" : ""} value="armadura">Armadura</option>
+                    </select> 
+                    Cantidad:<input type="number" class="cantidadMod" value="${modificador.numero}"/> 
+                    <input style="display:none" class="duracionMod" value="${modificador.turnos}"/>
+                    <div class="eliminarMod">-</div>
+                </li>`;
+            });
+        }
+    }
+
     añadirFuncionalidadEquipoModificador();
 }
 
-let selectTipoArmadura = document.querySelector("#divEquipamiento > div.equipoArmadura.equipamiento > select");
-let listaAccesorios = document.querySelector("#divEquipamiento > div.listaAccesorios > ul");
 function generarAccesorios() {
+    const listaAccesorios = document.querySelector("#divEquipamiento .listaAccesorios ul");
+    if (!listaAccesorios) return;
     listaAccesorios.innerHTML = "";
-    for (let index = 0; index < Number(selectTipoArmadura.value); index++) {
-        listaAccesorios.innerHTML += `<li class="accesorio " id="accesorio${index}"> <b>Accesorio ${index + 1}:</b> <input type="text"
-                            placeholder="Nombre">
-                        <button>+</button>
 
-                        <ul class="modificadoresAccesorio">
+    const cantAccesorios = getCantidadAccesoriosPorArmadura(personaje.equipoArmadura?.tipo);
 
-                        </ul>
-                        </li>`;
+    if (!Array.isArray(personaje.accesorios)) {
+        personaje.accesorios = [];
+    }
 
-        /* Añadir modificador a accesorio  */
-        document.querySelector(`#accesorio${index} > button`).addEventListener("click", () => {
-            personaje.accesorios[index].modificadores.push(new Modificador("Nombre", "Atletismo", 0, 0));
-            actualizarTodo();
-        });
+    while (personaje.accesorios.length < cantAccesorios) {
+        personaje.accesorios.push(new Equipamiento("Accesorio", "", "accesorio"));
+    }
+    if (personaje.accesorios.length > cantAccesorios) {
+        personaje.accesorios = personaje.accesorios.slice(0, cantAccesorios);
+    }
 
+    if (cantAccesorios === 0) {
+        listaAccesorios.innerHTML = `<li style="color: #888; font-style: italic; font-size: 13px; padding: 4px 0;">No hay ranuras de accesorios disponibles para esta armadura.</li>`;
+        return;
+    }
 
+    for (let index = 0; index < cantAccesorios; index++) {
+        const acc = personaje.accesorios[index] || {};
+        listaAccesorios.innerHTML += `<li class="accesorio" id="accesorio${index}">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                <b>Accesorio ${index + 1}:</b>
+                <input type="text" class="inputNombreAccesorio" placeholder="Nombre" value="${acc.nombre || ''}">
+                <button type="button" class="btn-anadir-mod-equipo btn-anadir-mod-acc">+</button>
+            </div>
+            <ul class="modificadoresAccesorio"></ul>
+        </li>`;
+    }
+
+    for (let index = 0; index < cantAccesorios; index++) {
+        const itemAcc = document.getElementById(`accesorio${index}`);
+        if (!itemAcc) continue;
+
+        const inputNombre = itemAcc.querySelector(".inputNombreAccesorio");
+        if (inputNombre) {
+            inputNombre.addEventListener("input", (e) => {
+                if (personaje.accesorios[index]) {
+                    personaje.accesorios[index].nombre = e.target.value;
+                }
+            });
+        }
+
+        const btnAdd = itemAcc.querySelector(".btn-anadir-mod-acc");
+        if (btnAdd) {
+            btnAdd.addEventListener("click", () => {
+                if (!Array.isArray(personaje.accesorios[index].modificadores)) {
+                    personaje.accesorios[index].modificadores = [];
+                }
+                personaje.accesorios[index].modificadores.push(new Modificador("Nombre", "atletismo", 0, 0));
+                parseModificadoresAccesorios();
+                personaje.calcularCaracteristicas();
+                actualizarTodo();
+            });
+        }
     }
 }
+
 function parseModificadoresAccesorios() {
     for (const [indexAccesorio, modificadoresAccesorio] of Array.from(document.getElementsByClassName("modificadoresAccesorio")).entries()) {
+        if (!personaje.accesorios[indexAccesorio] || !Array.isArray(personaje.accesorios[indexAccesorio].modificadores)) continue;
+        modificadoresAccesorio.innerHTML = "";
         personaje.accesorios[indexAccesorio].modificadores.forEach((modificador, index) => {
             modificadoresAccesorio.innerHTML += ` 
-            <li class="modificadorA" >
+            <li class="modificadorA">
               <input type="text" class="" style="display:none" value="${modificador.nombre}"> Atributo:
               <select class="listValores" > 
                     <option ${modificador.modificado == "atletismo" ? "selected" : ""} value="atletismo">Atletismo</option>
@@ -579,73 +1034,59 @@ function parseModificadoresAccesorios() {
                     <option ${modificador.modificado == "percepcion" ? "selected" : ""} value="percepcion">Percepción</option>
                     <option ${modificador.modificado == "subterfugio" ? "selected" : ""} value="subterfugio">Sigilo</option>
                     <option ${modificador.modificado == "comunicacion" ? "selected" : ""} value="comunicacion">Carisma</option>
-                    <option ${modificador.modificado == "cutlura" ? "selected" : ""}value="cutlura">Cultura</option>
-                    <option ${modificador.modificado == "profesion" ? "selected" : ""}value="profesion">Profesion</option>
-                    <option ${modificador.modificado == "sacro" ? "selected" : ""}value="sacro">Sacro</option>
-                    <option ${modificador.modificado == "armadura" ? "selected" : ""}value="armadura">Armadura</option>
+                    <option ${modificador.modificado == "cutlura" ? "selected" : ""} value="cutlura">Cultura</option>
+                    <option ${modificador.modificado == "profesion" ? "selected" : ""} value="profesion">Profesion</option>
+                    <option ${modificador.modificado == "sacro" ? "selected" : ""} value="sacro">Sacro</option>
+                    <option ${modificador.modificado == "armadura" ? "selected" : ""} value="armadura">Armadura</option>
                 </select> 
-                Cantidad:<input type="number"  class="cantidadMod" value="${modificador.numero}"/> 
+                Cantidad:<input type="number" class="cantidadMod" value="${modificador.numero}"/> 
                 <input style="display:none" class="duracionMod" value="${modificador.turnos}"/>
-                <button class="eliminarMod">-</button>
+                <button type="button" class="eliminarMod">-</button>
             </li>`;
-
-            let elementoModificadorAccesorio = modificadoresAccesorio.parentElement.id.substring(8);
-
         });
-
-        /* 
-                let indexAccesorio = modificadoresAccesorio.parentElement.id.substring(8);
-                let tipoEquipo = modificador.parentElement.parentElement.classList[0];
-        
-                modificador.children[0].addEventListener('focusout', (evt) => {
-                    personaje[tipoEquipo].modificadores[index].nombre = evt.currentTarget.value;
-                    console.log(personaje.modificadores);
-                })
-                modificador.children[1].addEventListener('focusout', (evt) => {
-                    personaje[tipoEquipo].modificadores[index].modificado = evt.currentTarget.value;
-                    console.log(personaje.modificadores);
-                })
-                modificador.children[2].addEventListener('focusout', (evt) => {
-                    personaje[tipoEquipo].modificadores[index].numero = parseInt(evt.currentTarget.value);
-                    personaje.calcularCaracteristicas();
-                    console.log(personaje.modificadores);
-                    actualizarTodo();//cuando se cambia el numero el valor numerico ded algo puede variar.
-                })
-                modificador.children[3].addEventListener('focusout', (evt) => {
-                    personaje[tipoEquipo].modificadores[index].turnos = parseInt(evt.currentTarget.value);
-                    personaje.calcularCaracteristicas();
-                    actualizarTodo();//puede que haya desaparecido un modificador por lo que hay que recalcular
-                })
-        
-                modificador.children[4].addEventListener('click', (evt) => {
-                    personaje[tipoEquipo].modificadores.splice(index, 1);
-                    parseModificadoresEquipo();
-                    personaje.calcularCaracteristicas();
-                    actualizarTodo();//cuando se cambia el numero el valor numerico ded algo puede variar.
-        
-                }) */
     }
 
-
-
-
-
+    añadirFuncionalidadAccesorioModificador();
 }
 
+function añadirFuncionalidadAccesorioModificador() {
+    for (const [indexAccesorio, modificadoresAccesorio] of Array.from(document.getElementsByClassName("modificadoresAccesorio")).entries()) {
+        const lis = modificadoresAccesorio.getElementsByClassName("modificadorA");
+        Array.from(lis).forEach((modificador, index) => {
+            const select = modificador.querySelector(".listValores");
+            const inputCantidad = modificador.querySelector(".cantidadMod");
+            const btnEliminar = modificador.querySelector(".eliminarMod");
 
-
-/* Funcion que añade funcionalidad de */
-for (const elemento of document.getElementsByClassName("equipamiento")) {
-
-    let elementoModificadores = elemento.getElementsByClassName("modificadoresEquipo");
-    /* array.forEach(element => {
-        
-    }); */
-    elemento.getElementsByTagName("button")[0].addEventListener("click", () => {
-        personaje[elemento.classList[0]].modificadores.push(new Modificador("nombre", "atletismo", 0, -1));
-        console.log(personaje[elemento.classList[0]]);
-        parseModificadoresEquipo();
-    })
+            if (select) {
+                select.addEventListener("change", (e) => {
+                    if (personaje.accesorios[indexAccesorio]?.modificadores[index]) {
+                        personaje.accesorios[indexAccesorio].modificadores[index].modificado = e.target.value;
+                        personaje.calcularCaracteristicas();
+                        actualizarTodo();
+                    }
+                });
+            }
+            if (inputCantidad) {
+                inputCantidad.addEventListener("input", (e) => {
+                    if (personaje.accesorios[indexAccesorio]?.modificadores[index]) {
+                        personaje.accesorios[indexAccesorio].modificadores[index].numero = parseInt(e.target.value) || 0;
+                        personaje.calcularCaracteristicas();
+                        actualizarTodo();
+                    }
+                });
+            }
+            if (btnEliminar) {
+                btnEliminar.addEventListener("click", () => {
+                    if (personaje.accesorios[indexAccesorio]?.modificadores) {
+                        personaje.accesorios[indexAccesorio].modificadores.splice(index, 1);
+                        parseModificadoresAccesorios();
+                        personaje.calcularCaracteristicas();
+                        actualizarTodo();
+                    }
+                });
+            }
+        });
+    }
 }
 
 
@@ -691,35 +1132,45 @@ function añadirFuncionalidadElementoModificador() {
 function añadirFuncionalidadEquipoModificador() {
     for (const modificador of document.getElementsByClassName("modificadorE")) {
         let index = Number(modificador.id.substring(12));
-        let tipoEquipo = modificador.parentElement.parentElement.classList[0];
+        let contenedor = modificador.closest(".equipamiento");
+        let tipoEquipo = getPropiedadEquipo(contenedor);
+        if (!tipoEquipo || !personaje[tipoEquipo]) continue;
+
         modificador.children[0].addEventListener('focusout', (evt) => {
-            personaje[tipoEquipo].modificadores[index].nombre = evt.currentTarget.value;
-            console.log(personaje.modificadores);
-        })
-        modificador.children[1].addEventListener('focusout', (evt) => {
-            personaje[tipoEquipo].modificadores[index].modificado = evt.currentTarget.value;
-            console.log(personaje.modificadores);
-        })
-        modificador.children[2].addEventListener('focusout', (evt) => {
-            personaje[tipoEquipo].modificadores[index].numero = parseInt(evt.currentTarget.value);
-            personaje.calcularCaracteristicas();
-            console.log(personaje.modificadores);
-            actualizarTodo();//cuando se cambia el numero el valor numerico ded algo puede variar.
-        })
-        modificador.children[3].addEventListener('focusout', (evt) => {
-            personaje[tipoEquipo].modificadores[index].turnos = parseInt(evt.currentTarget.value);
-            personaje.calcularCaracteristicas();
-            actualizarTodo();//puede que haya desaparecido un modificador por lo que hay que recalcular
-        })
+            if (personaje[tipoEquipo]?.modificadores[index]) {
+                personaje[tipoEquipo].modificadores[index].nombre = evt.currentTarget.value;
+            }
+        });
+        modificador.children[1].addEventListener('change', (evt) => {
+            if (personaje[tipoEquipo]?.modificadores[index]) {
+                personaje[tipoEquipo].modificadores[index].modificado = evt.currentTarget.value;
+                personaje.calcularCaracteristicas();
+                actualizarTodo();
+            }
+        });
+        modificador.children[2].addEventListener('input', (evt) => {
+            if (personaje[tipoEquipo]?.modificadores[index]) {
+                personaje[tipoEquipo].modificadores[index].numero = parseInt(evt.currentTarget.value) || 0;
+                personaje.calcularCaracteristicas();
+                actualizarTodo();
+            }
+        });
+        modificador.children[3].addEventListener('input', (evt) => {
+            if (personaje[tipoEquipo]?.modificadores[index]) {
+                personaje[tipoEquipo].modificadores[index].turnos = parseInt(evt.currentTarget.value) || 0;
+                personaje.calcularCaracteristicas();
+                actualizarTodo();
+            }
+        });
 
         modificador.children[4].addEventListener('click', (evt) => {
-            personaje[tipoEquipo].modificadores.splice(index, 1);
-            parseModificadoresEquipo();
-            personaje.calcularCaracteristicas();
-            actualizarTodo();//cuando se cambia el numero el valor numerico ded algo puede variar.
-
-        })
-
+            if (personaje[tipoEquipo]?.modificadores) {
+                personaje[tipoEquipo].modificadores.splice(index, 1);
+                parseModificadoresEquipo();
+                personaje.calcularCaracteristicas();
+                actualizarTodo();
+            }
+        });
     }
 }
 
@@ -776,8 +1227,10 @@ function inicializarTiradasHabilidades() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+    construirManosEquipamiento();
+    inicializarEquipamiento();
     parseModificadores();
     parseModificadoresEquipo();
     actualizarTodo();
     inicializarTiradasHabilidades();
-})
+});

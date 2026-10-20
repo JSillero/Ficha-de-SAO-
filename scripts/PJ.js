@@ -78,11 +78,11 @@ export default class PJ {
         /* Array de modificaciones */
         this.modificadores;
 
-        /* Equipamiento */ /* Se creará una clase equipamiento? */
-        this.equipoArmadura = new Equipamiento("Armadura base", "Descripcion base base", "Pesada"); /* Todos estos son objetos de tipo equipamiento */
-        this.manoDerecha = new Equipamiento("Mano derecha", "", "Arma");;
-        this.manoIzquierda = new Equipamiento("Mano izquierda", "", "Arma");;
-        this.accesorios = [new Equipamiento("Accesorio", "", "Accesorio"), new Equipamiento("Accesorio", "", "Accesorio"), new Equipamiento("Accesorio", "", "Accesorio")];
+        /* Equipamiento */
+        this.equipoArmadura = new Equipamiento("", "", "");
+        this.manoIzquierda = new Equipamiento("", "", "");
+        this.manoDerecha = new Equipamiento("", "", "");
+        this.accesorios = [];
 
         this.puntosArteMax = this.puntosArteMax;
         this.puntosArte = this.puntosArte;
@@ -137,8 +137,8 @@ export default class PJ {
         this.espaciosArte = 4 + Math.floor(this.cultura / 10) + this.getModificador("espacios");
         this.aguante = this.fortaleza + (this.voluntad / 2) + this.getModificador("aguante");;
         this.vidaMax = this.aguante * (Math.floor((this.nivel - 1) / 5) + 1) + this.getModificador("vidaMax");;
-        this.armadura = this.getModificador("armadura");
-        this.defensa = (5 + this.reflejos) + this.getGenerico("atletismo") + this.getModificador("defensa");;
+        this.armadura = (Number(this.equipoArmadura?.armadura) || 0) + this.getModificador("armadura");
+        this.defensa = (5 + this.reflejos) + this.getGenerico("atletismo") + this.getModificador("defensa") + this.getDefensaEscudos();
         this.dFisico = (this.getGenerico("combate") + this.fortaleza) / 4 + this.getModificador("dFisico");
         this.dDistancia = (this.getGenerico("combate")) / 4 + this.getModificador("dDistancia");;
         this.dMagico = (this.getGenerico("sacro") + this.inteligencia) / 4 + this.getModificador("dMagico");;
@@ -150,8 +150,17 @@ export default class PJ {
      * Introduce el nombre del atributo a obtener y se unen automaticamente los modificadores asociados al nombre 
      * @param {string} atributo 
      */
+    /* Suma la defensa de los escudos que están en uso */
+    getDefensaEscudos() {
+        return [this.manoIzquierda, this.manoDerecha].reduce((acc, mano) => {
+            const esEscudo = mano?.tipo === "escudo" || mano?.tipo === "gran_escudo";
+            return acc + (esEscudo && mano.enUso ? Number(mano.defensa) || 0 : 0);
+        }, 0);
+    }
+
     getGenerico(atributo) {
-        return parseInt(this[atributo]) + parseInt(this.getModificador(atributo));
+        let penalizacion = (atributo === 'atletismo') ? (Number(this.equipoArmadura?.penalizacionAtletismo) || 0) : 0;
+        return parseInt(this[atributo]) + parseInt(this.getModificador(atributo)) - penalizacion;
     }
 
     getPuntosHabilidadTotales() {
@@ -300,10 +309,13 @@ export default class PJ {
         this.pies = jsonObject.pies;
 
         /* Equipo */
-        this.equipoArmadura = jsonObject.equipoArmadura;
-        this.manoDerecha = jsonObject.manoDerecha;
-        this.manoIzquierda = jsonObject.manoIzquierda;
-        this.accesorios = jsonObject.accesorios;
+        this.equipoArmadura = Object.assign(new Equipamiento(), jsonObject.equipoArmadura || {});
+        if (!Array.isArray(this.equipoArmadura.modificadores)) this.equipoArmadura.modificadores = [];
+        this.manoDerecha = Object.assign(new Equipamiento(), jsonObject.manoDerecha || {});
+        if (!Array.isArray(this.manoDerecha.modificadores)) this.manoDerecha.modificadores = [];
+        this.manoIzquierda = Object.assign(new Equipamiento(), jsonObject.manoIzquierda || {});
+        if (!Array.isArray(this.manoIzquierda.modificadores)) this.manoIzquierda.modificadores = [];
+        this.accesorios = Array.isArray(jsonObject.accesorios) ? jsonObject.accesorios : [];
 
         /* Modifciaciones */
         this.modificadores = jsonObject.modificadores;
@@ -314,6 +326,7 @@ export default class PJ {
         this.listaDeAmigos = jsonObject.listaDeAmigos;
         this.recetasProfesion = jsonObject.recetasProfesion;
         this.baul = jsonObject.baul;
+        this.calcularCaracteristicas();
         console.log("personaje", this)
     }
 
@@ -348,8 +361,9 @@ export default class PJ {
             puntosArte: this.puntosArte,
             espaciosArte: this.espaciosArte,
             aguante: this.aguante,
+            armadura: this.armadura,
             vidaMax: this.vidaMax,
-            vida: this.vidaMax,
+            vida: this.vida,
             defensa: this.defensa,
             dFisico: this.dFisico,
             dDistancia: this.dDistancia,
