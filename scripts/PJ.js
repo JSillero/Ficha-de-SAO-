@@ -94,7 +94,7 @@ export default class PJ {
         this.dFisico = (this.combate + this.fortaleza) / 4;
         this.dDistancia = (this.combate) / 4;
         this.dMagico = (this.sacro + this.inteligencia) / 4;
-        this.iniciativa = (this.reflejos + this.voluntad / 2);
+        this.iniciativa = (this.reflejos + this.inteligencia / 2);
         this.vMovimiento = 3 + this.atletismo / 5;
 
         /* Bloques de texto */
@@ -142,7 +142,7 @@ export default class PJ {
         this.dFisico = (this.getGenerico("combate") + this.fortaleza) / 4 + this.getModificador("dFisico");
         this.dDistancia = (this.getGenerico("combate")) / 4 + this.getModificador("dDistancia");;
         this.dMagico = (this.getGenerico("sacro") + this.inteligencia) / 4 + this.getModificador("dMagico");;
-        this.iniciativa = (this.reflejos + this.voluntad / 2) + this.getModificador("iniciativa");;
+        this.iniciativa = (this.reflejos + this.inteligencia / 2) + this.getModificador("iniciativa");;
         this.vMovimiento = 3 + Math.floor(this.getGenerico("atletismo") / 5) + this.getModificador("vMovimiento");;
     }
 

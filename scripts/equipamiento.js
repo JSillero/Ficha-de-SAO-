@@ -33,7 +33,7 @@ export default class Equipamiento {
             "cuchillo",
             "espada",
             "estoque",
-            "garrote",
+            "maza",
             "lanza",
             "espadon",
             "martillo_guerra",
