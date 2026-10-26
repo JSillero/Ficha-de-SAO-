@@ -75,6 +75,8 @@
                 </label>
 
                 <div id="guardadoDiv" style="display: flex; gap: 15px; align-items: center;">
+                    <!-- Botón Silenciar (icono generado en interfaz.js) -->
+                    <button type="button" id="btnSonido" class="btn-sonido" title="Silenciar sonidos" aria-label="Silenciar sonidos" aria-pressed="false"></button>
                     <!-- Botón Cargar -->
                     <label style="cursor: pointer; margin: 0;" title="Cargar personaje">
                         <img src="./imgs/cargar.svg" onmouseover="this.src='./imgs/cargar_on.svg'"
@@ -268,7 +270,7 @@
                                         <span>Modificadores:</span>
                                         <button type="button" class="btn-anadir-mod-equipo">+</button>
                                     </div>
-                                    <ul class="modificadoresEquipo"></ul>
+                                    <ul class="mods-equipo"></ul>
                                 </div>
                             </div>
                         </template>
@@ -302,14 +304,14 @@
                                     <span>Modificadores:</span>
                                     <button type="button" class="btn-anadir-mod-equipo">+</button>
                                 </div>
-                                <ul class="modificadoresEquipo"></ul>
+                                <ul class="mods-equipo"></ul>
                             </div>
                         </div>
 
-                        <div class="listaAccesorios"><b>Accesorios:</b>
-                            <ul>
-
-                            </ul>
+                        <div class="listaAccesorios">
+                            <div class="accesorios-cabecera"><b>Accesorios</b> <span id="contadorAccesorios" class="contador-accesorios"></span></div>
+                            <!-- Generado según la armadura (generarAccesorios en interfaz.js) -->
+                            <div id="listaAccesorios" class="accesorios-grid"></div>
                         </div>
 
                     </div>
@@ -432,16 +434,8 @@
                     <textarea id="listadoArtes" placeholder="Artes equipadas"></textarea>
                 </div>
                 <h2>Valores de combate </h2>
-                <div id="valoresCombateDiv">
-                    <div>Iniciativa: <span id="iniciativa"></span> </div>
-                    <div>Defensa: <span id="defensa"></span> </div>
-                    <div>Armadura: <span id="armadura"></span> </div>
-                    <div>Movimiento: <span id="vMovimiento"></span> </div>
-                    <div>Daño CaC: <span id="dFisico"></span> </div>
-                    <div>Daño Distancia: <span id="dDistancia"></span> </div>
-                    <div>Daño Magico: <span id="dMagico"></span> </div>
-                    <div>Aguante: <span id="aguante"></span> </div>
-                </div>
+                <!-- Generado desde VALORES_COMBATE (interfaz.js) -->
+                <div id="valoresCombateDiv" class="valores-combate"></div>
             </div>
         </div>
         <div class="seccion-notas">

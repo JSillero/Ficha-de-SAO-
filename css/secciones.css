@@ -376,26 +376,26 @@
 }
 
 .btn-anadir-mod-equipo {
-    background: #eef2f5;
-    border: 1px solid #c9d2db;
-    border-radius: 4px;
     width: 22px;
     height: 22px;
-    line-height: 18px;
-    font-size: 14px;
-    font-weight: bold;
-    color: #2c3e50;
-    cursor: pointer;
+    padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.2s;
+    background: #d1ab52;
+    color: #ffffff;
+    border: none;
+    border-radius: 50%;
+    font-size: 16px;
+    font-weight: bold;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
 }
 
 .btn-anadir-mod-equipo:hover {
-    background: #d1ab52;
-    color: #ffffff;
-    border-color: #d1ab52;
+    background: #b8933b;
+    transform: scale(1.1);
 }
 
 .modificadoresEquipo {
@@ -412,26 +412,6 @@
     border: 1px solid #e2e2e2;
     border-radius: 8px;
     padding: 10px 12px;
-}
-
-.listaAccesorios ul {
-    list-style: none;
-    padding-left: 0;
-    margin-bottom: 0;
-    margin-top: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.listaAccesorios li.accesorio {
-    border-bottom: 1px solid #f0f0f0;
-    padding-bottom: 6px;
-}
-
-.listaAccesorios li.accesorio:last-child {
-    border-bottom: none;
-    padding-bottom: 0;
 }
 
 #equipamiento .cantidadMod {
@@ -496,19 +476,6 @@
 #listaInventario input[type='number'] {
     width: 60px;
     text-align: center;
-}
-
-/* Panel de Características Derivadas */
-#valoresCombateDiv {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-    margin-top: 15px;
-    background: #f0f4f8;
-    border: 1px solid #d1ab52;
-    border-radius: 6px;
-    padding: 10px;
-    font-size: 14px;
 }
 
 /* Sección de Notas, Baúl, Recetas, etc. */
@@ -928,4 +895,194 @@
     font-family: inherit;
     box-sizing: border-box;
     resize: vertical;
+}
+
+/* Modificadores de equipo (manos, armadura y accesorios) */
+.mods-equipo {
+    list-style: none;
+    padding: 0;
+    margin: 4px 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.mods-equipo:empty::before {
+    content: "Sin modificadores";
+    color: #aaa;
+    font-size: 12px;
+    font-style: italic;
+}
+
+.mod-equipo {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px;
+    border: 1px solid #e6dcc0;
+    border-left: 4px solid #d1ab52;
+    border-radius: 4px;
+    background: #fffdf7;
+    font-size: 12px;
+}
+
+.mod-equipo.mod-positivo {
+    border-left-color: #27ae60;
+}
+
+.mod-equipo.mod-negativo {
+    border-left-color: #c0392b;
+}
+
+.mod-equipo .listValores {
+    flex: 1;
+    min-width: 0;
+}
+
+.mod-equipo .cantidadMod {
+    width: 52px;
+    text-align: center;
+}
+
+.mod-equipo .quitar-mod {
+    background: none;
+    border: none;
+    color: #c0392b;
+    font-size: 16px;
+    font-weight: bold;
+    line-height: 1;
+    cursor: pointer;
+}
+
+/* Accesorios: tarjetas, con las ranuras bloqueadas por la armadura visibles */
+.accesorios-cabecera {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.contador-accesorios {
+    color: #888;
+    font-size: 12px;
+}
+
+.accesorios-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 10px;
+}
+
+.tarjeta-accesorio {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    border: 1px solid #d1ab52;
+    border-radius: 8px;
+    background: #fffdf7;
+}
+
+.tarjeta-accesorio.bloqueada {
+    border-style: dashed;
+    border-color: #cccccc;
+    background: #f6f6f6;
+    color: #999999;
+}
+
+.tarjeta-accesorio.bloqueada .icono-sao {
+    opacity: 0.45;
+}
+
+.accesorio-cabecera {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.accesorio-icono {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+}
+
+.inputNombreAccesorio {
+    flex: 1;
+    min-width: 0;
+    padding: 3px 6px;
+    font-size: 13px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+.accesorio-bloqueo {
+    font-size: 13px;
+    font-weight: bold;
+}
+
+.accesorio-motivo {
+    margin: 0;
+    font-size: 12px;
+    font-style: italic;
+}
+
+/* Valores de combate: tarjetas con icono */
+.valores-combate {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.valor-combate {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid #d1ab52;
+    border-radius: 8px;
+    background: #fffdf7;
+    cursor: help;
+}
+
+.valor-icono {
+    width: 38px;
+    height: 38px;
+    flex-shrink: 0;
+}
+
+.valor-texto {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.1;
+}
+
+.valor-etiqueta {
+    font-size: 11px;
+    font-weight: bold;
+    color: #8a6d2a;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.valor-numero {
+    font-size: 24px;
+    font-weight: bold;
+    color: #333333;
+}
+
+.valor-numero small {
+    font-size: 11px;
+    font-weight: normal;
+    color: #888888;
+}
+
+.valor-nota {
+    font-size: 11px;
+    font-style: italic;
+    color: #b8933b;
+}
+
+.valor-combate:not(.con-nota) .valor-nota {
+    display: none;
 }

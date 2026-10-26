@@ -156,6 +156,64 @@ const GLIFOS = {
         <path class="s" d="M50 16H73V58C73 72 63 81 50 86Z"/>
         <circle class="f" cx="50" cy="48" r="9"/>
         <circle class="p" cx="50" cy="48" r="4"/>`,
+    /* Sonido (botón de silencio de la cabecera) */
+    sonido: `
+        <polygon class="p" points="20,40 34,40 52,24 52,76 34,60 20,60"/>
+        <path class="t o" d="M62 38A16 16 0 0 1 62 62"/>
+        <path class="t o" d="M70 29A28 28 0 0 1 70 71"/>`,
+    silencio: `
+        <polygon class="p" points="20,40 34,40 52,24 52,76 34,60 20,60"/>
+        <path class="t" d="M62 40L80 60M80 40L62 60"/>`,
+
+    /* Accesorios */
+    accesorio: `
+        <circle class="t" cx="50" cy="60" r="18" style="stroke-width:8"/>
+        <polygon class="p" points="50,18 61,30 50,42 39,30"/>
+        <polygon class="s" points="50,18 61,30 50,42"/>`,
+    bloqueado: `
+        <path class="t" d="M38 46V37A12 12 0 0 1 62 37V46"/>
+        <rect class="p" x="30" y="45" width="40" height="32" rx="5"/>
+        <circle class="f" cx="50" cy="57" r="4.5"/>
+        <rect class="f" x="48" y="58" width="4" height="11" rx="1"/>`,
+
+    /* Valores de combate (defensa usa "escudo" y daño CaC usa "espada") */
+    iniciativa: `
+        <rect class="p" x="28" y="14" width="44" height="6" rx="2"/>
+        <rect class="p" x="28" y="80" width="44" height="6" rx="2"/>
+        <path class="t" style="stroke-width:5" d="M35 20C35 38 47 42 47 50C47 58 35 62 35 80M65 20C65 38 53 42 53 50C53 58 65 62 65 80"/>
+        <polygon class="s" points="40,30 60,30 50,44"/>
+        <polygon class="p" points="38,78 62,78 50,64"/>`,
+    armadura: `
+        <path class="p" d="M30 22L42 18C44 24 56 24 58 18L70 22L80 36L70 42V80H30V42L20 36Z"/>
+        <path class="s" d="M50 23C55 23 57 21 58 18L70 22L80 36L70 42V80H50Z"/>
+        <path class="t" style="stroke:var(--fondo);stroke-width:4" d="M38 54H62M38 66H62"/>`,
+    movimiento: `
+        <path class="p" d="M36 16H56V54L76 62C82 64 84 70 84 76V78H36Z"/>
+        <rect class="s" x="33" y="14" width="26" height="9" rx="2"/>
+        <rect class="s" x="36" y="78" width="48" height="7" rx="2"/>`,
+    distancia: enDiagonal(`
+        <rect class="p" x="48.5" y="24" width="3" height="58"/>
+        <polygon class="p" points="50,8 59,26 41,26"/>
+        <polygon class="s" points="48.5,70 39,80 39,90 48.5,80"/>
+        <polygon class="s" points="51.5,70 61,80 61,90 51.5,80"/>`),
+    magia: `
+        ${enDiagonal(`<rect class="p" x="46.5" y="42" width="7" height="46" rx="3"/>
+        <rect class="s" x="46.5" y="42" width="7" height="9"/>`)}
+        ${estrella(38, 36, 15)}
+        ${estrella(70, 22, 7, "s")}
+        ${estrella(18, 66, 6, "s")}`,
+    aguante: `
+        <path class="p" d="M50 80C22 61 19 41 31 32C40 26 47 30 50 37C53 30 60 26 69 32C81 41 78 61 50 80Z"/>
+        <path class="tf" style="stroke-width:5;stroke-linejoin:round" d="M22 52H37L43 41L51 63L57 50H78"/>`,
+    perspicacia: `
+        <path class="p" d="M54 16C38 16 26 28 26 44C26 52 29 58 32 62V84H56V75H64C68 75 70 71 70 67V59L77 55L70 46C70 28 66 16 54 16Z"/>
+        <path class="f" d="M48 30L59 34V45C59 51 55 56 48 59C41 56 37 51 37 45V34Z"/>`,
+    percepcion: `
+        <path class="p" d="M14 50C29 27 71 27 86 50C71 73 29 73 14 50Z"/>
+        <circle class="f" cx="50" cy="50" r="14"/>
+        <circle class="p" cx="50" cy="50" r="7"/>
+        <circle class="f" cx="54" cy="46" r="2.5"/>`,
+
     otros: enDiagonal(`
         <rect class="p" x="46.5" y="24" width="7" height="64" rx="3"/>
         <path class="p" d="M18 34C34 14 66 14 82 34L78 38C62 26 38 26 22 38Z"/>

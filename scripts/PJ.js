@@ -180,6 +180,10 @@ export default class PJ {
         this.dMagico = Math.floor((this.getGenerico("sacro") + this.inteligencia) / 4) + this.getModificador("dMagico");
         this.iniciativa = (this.reflejos + this.inteligencia / 2) + this.getModificador("iniciativa");;
         this.vMovimiento = 3 + Math.floor(this.getGenerico("atletismo") / 5) + this.getModificador("vMovimiento");;
+        // Las tiradas para manipular tus emociones deben igualar o superar la Perspicacia
+        this.perspicacia = this.voluntad + this.getGenerico("cultura") + 5 + this.getModificador("perspicacia");
+        // Detectar trampas, objetos y enemigos en sigilo sin tirar
+        this.percepcionPasiva = this.inteligencia + this.getGenerico("percepcion") + 5 + this.getModificador("percepcionPasiva");
     }
 
     /**
@@ -387,6 +391,8 @@ export default class PJ {
             dMagico: this.dMagico,
             iniciativa: this.iniciativa,
             vMovimiento: this.vMovimiento,
+            perspicacia: this.perspicacia,
+            percepcionPasiva: this.percepcionPasiva,
 
             estados: this.estados,
             inventario: this.inventario,

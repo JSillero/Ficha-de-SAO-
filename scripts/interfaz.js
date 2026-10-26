@@ -11,6 +11,7 @@ import {
 } from "./turno.js";
 import { ESTADOS_INFO, TIPOS_DANNO, aplicarDanno, activarEstado, quitarEstado, estaActivo, estiloColor } from "./estados.js";
 import { iconoSao } from "./iconos.js";
+import { reproducir, iniciarBucle, pararBucle, precargarSonidos, estaSilenciado, setSilenciado } from "./sonidos.js";
 import { ejecutarDebug, crearPersonajePrueba, validarFicha } from "./debug.js";
 
 let personaje = new PJ(); //objeto que almaacena y define el comportamiento y limites de toda la informacion relevante
@@ -40,14 +41,6 @@ let profesionInp = document.getElementById("profesion")
 let sacroInp = document.getElementById("sacro")
 
 /* Caracteristicas */
-let cantAguante = document.getElementById("aguante");
-let cantDefensa = document.getElementById("defensa");
-let cantIniciativa = document.getElementById("iniciativa");
-let cantMovimiento = document.getElementById("vMovimiento");
-let cantDannoCac = document.getElementById("dFisico");
-let cantDannoDist = document.getElementById("dDistancia");
-let cantDannoMagic = document.getElementById("dMagico");
-let cantArmadura = document.getElementById("armadura");
 
 let inputs = document.querySelectorAll('#habilidadesDiv input, #atributosDiv input');
 
@@ -168,6 +161,7 @@ document.querySelectorAll('.btn-hab-mas').forEach(boton => {
     boton.addEventListener('click', () => {
         const hab = boton.dataset.hab;
         if (personaje.subirHabilidad(hab)) {
+            reproducir("click");
             actualizarTodo();
         }
     });
@@ -177,6 +171,7 @@ document.querySelectorAll('.btn-hab-menos').forEach(boton => {
     boton.addEventListener('click', () => {
         const hab = boton.dataset.hab;
         if (personaje.bajarHabilidad(hab)) {
+            reproducir("click");
             actualizarTodo();
         }
     });
@@ -236,18 +231,29 @@ document.getElementById('btnAplicarExp').addEventListener('click', () => {
     if (modal) modal.hide();
 });
 
-/* Sistema de Sonido */
-const lowLifeSfx = new Audio('./sfx/low_life.wav');
-lowLifeSfx.loop = true;
-const linkStartSfx = new Audio('./sfx/link_start.mp3');
+/* Sonido (scripts/sonidos.js) ________________________________________________ */
 
-let isGlobalMute = false;
+// Cualquier ventana de Bootstrap suena al abrirse y al cerrarse (sus eventos suben hasta document)
+document.addEventListener("show.bs.modal", () => reproducir("menuAbrir"));
+document.addEventListener("hide.bs.modal", () => reproducir("menuCerrar"));
 
-export function setGlobalMute(muteStatus) {
-    isGlobalMute = muteStatus;
-    lowLifeSfx.muted = isGlobalMute;
-    linkStartSfx.muted = isGlobalMute;
-    // Añadir aquí otros sonidos en el futuro si es necesario
+function inicializarSonido() {
+    precargarSonidos();
+    const boton = document.getElementById("btnSonido");
+    if (!boton) return;
+    const pintar = () => {
+        const silencio = estaSilenciado();
+        boton.innerHTML = iconoSao(silencio ? "silencio" : "sonido");
+        boton.title = silencio ? "Activar sonidos" : "Silenciar sonidos";
+        boton.setAttribute("aria-label", boton.title);
+        boton.setAttribute("aria-pressed", String(silencio));
+        boton.classList.toggle("silenciado", silencio);
+    };
+    boton.addEventListener("click", () => {
+        setSilenciado(!estaSilenciado());
+        pintar();
+    });
+    pintar();
 }
 
 function actualizarTodo() {
@@ -258,9 +264,8 @@ function actualizarTodo() {
     actuaizarTextos();
     actualizarEquipamiento();
     actualizarModificadores();
-    parseModificadoresEquipo();
     generarAccesorios();
-    parseModificadoresAccesorios();
+    parseModificadoresEquipo();
     actualizarInventario();
     actualizarAcciones();
     actualizarEstados();
@@ -337,16 +342,12 @@ function actualizarInformacion() {
         hpFill.classList.remove('hp-orange', 'hp-red');
         if (pct < 15) {
             hpFill.classList.add('hp-red');
-            if (!isGlobalMute && lowLifeSfx.paused) {
-                lowLifeSfx.play().catch(e => console.warn("El navegador bloqueó el autoplay del audio.", e));
-            }
+            iniciarBucle("vidaBaja");
         } else {
             if (pct < 40) {
                 hpFill.classList.add('hp-orange');
             }
-            if (!lowLifeSfx.paused) {
-                lowLifeSfx.pause();
-            }
+            pararBucle("vidaBaja");
         }
     }
 }
@@ -470,15 +471,69 @@ function actuaizarTextos() {
     }
 }
 
+/* Valores de combate _________________________________________________________ */
+
+/* clave = propiedad de PJ; ayuda = fórmula que se ve al pasar el ratón */
+const VALORES_COMBATE = [
+    { clave: "defensa", etiqueta: "Defensa", icono: "escudo",
+        ayuda: "Reflejos + Atletismo efectivo + 5 (+ escudo en uso). El atacante debe igualarla para hacer daño." },
+    { clave: "armadura", etiqueta: "Armadura", icono: "armadura",
+        ayuda: "Daño que la armadura resta a cada impacto." },
+    { clave: "iniciativa", etiqueta: "Iniciativa", icono: "iniciativa",
+        ayuda: "Reflejos + Inteligencia / 2. Orden de actuación en combate." },
+    { clave: "vMovimiento", etiqueta: "Movimiento", icono: "movimiento", unidad: "casillas",
+        ayuda: "Atletismo efectivo / 5 + 3. Casillas sin correr; correr las duplica." },
+    { clave: "dFisico", etiqueta: "Daño CaC", icono: "espada",
+        ayuda: "(Fortaleza + Combate) / 4, hacia abajo. En sigilo usa Sigilo en lugar de Combate." },
+    { clave: "dDistancia", etiqueta: "Daño a distancia", icono: "distancia",
+        ayuda: "Combate / 4, hacia abajo. En sigilo usa Sigilo en lugar de Combate." },
+    { clave: "dMagico", etiqueta: "Daño mágico", icono: "magia",
+        ayuda: "(Inteligencia + Sacro) / 4, hacia abajo." },
+    { clave: "aguante", etiqueta: "Aguante", icono: "aguante",
+        ayuda: "Fortaleza + Voluntad / 2. PV que ganas cada 5 niveles y resistencia al frío." },
+    { clave: "perspicacia", etiqueta: "Perspicacia", icono: "perspicacia",
+        ayuda: "Voluntad + Cultura + 5. Las tiradas para manipular tus emociones deben igualarla." },
+    { clave: "percepcionPasiva", etiqueta: "Percepción pasiva", icono: "percepcion",
+        ayuda: "Inteligencia + Percepción + 5. Detecta trampas y enemigos en sigilo sin tirar." }
+];
+
+const valoresCombateDiv = document.getElementById("valoresCombateDiv");
+
+function construirValoresCombate() {
+    valoresCombateDiv.innerHTML = VALORES_COMBATE.map(({ clave, etiqueta, icono, ayuda }) => `
+        <div class="valor-combate" data-valor="${clave}" title="${ayuda}">
+            <span class="valor-icono">${iconoSao(icono)}</span>
+            <span class="valor-texto">
+                <span class="valor-etiqueta">${etiqueta}</span>
+                <span class="valor-numero"></span>
+                <span class="valor-nota"></span>
+            </span>
+        </div>`).join("");
+}
+
+/* Números con coma decimal; los derivados que no se redondean pueden tener ,5 */
+function formatearNumero(valor) {
+    const numero = Number(valor) || 0;
+    return Number.isInteger(numero) ? String(numero) : numero.toFixed(1).replace(".", ",");
+}
+
 function actualizarCaracteristicas() {
-    cantAguante.innerHTML = personaje.aguante;
-    cantDefensa.innerHTML = personaje.defensa;
-    cantIniciativa.innerHTML = personaje.iniciativa;
-    cantMovimiento.innerHTML = personaje.vMovimiento;
-    cantDannoCac.innerHTML = personaje.dFisico;
-    cantDannoDist.innerHTML = personaje.dDistancia;
-    cantDannoMagic.innerHTML = personaje.dMagico;
-    cantArmadura.innerHTML = personaje.armadura;
+    if (!valoresCombateDiv.children.length) construirValoresCombate();
+
+    VALORES_COMBATE.forEach(({ clave, unidad }) => {
+        const tarjeta = valoresCombateDiv.querySelector(`[data-valor="${clave}"]`);
+        if (!tarjeta) return;
+        tarjeta.querySelector(".valor-numero").innerHTML =
+            formatearNumero(personaje[clave]) + (unidad ? ` <small>${unidad}</small>` : "");
+
+        // Notas de contexto: lo que cambia en sigilo o con escudo
+        let nota = "";
+        if (clave === "vMovimiento" && personaje.enSigilo) nota = `En sigilo: ${velocidadMovimiento(personaje)}`;
+        if ((clave === "dFisico" || clave === "dDistancia") && personaje.enSigilo) nota = "Con Sigilo";
+        if (clave === "defensa" && personaje.getDefensaEscudos() > 0) nota = `+${personaje.getDefensaEscudos()} escudo`;
+        tarjeta.querySelector(".valor-nota").textContent = nota;
+        tarjeta.classList.toggle("con-nota", Boolean(nota));
+    });
 }
 
 /* Funcion de carga */
@@ -492,9 +547,7 @@ document.getElementById('fileInput').addEventListener('change', function (event)
                 const jsonData = JSON.parse(e.target.result);  // Parse the JSON string into an object
                 personaje.cargarJSON(jsonData);
                 actualizarTodo();
-                if (!isGlobalMute) {
-                    linkStartSfx.play().catch(e => console.warn("El navegador bloqueó el autoplay del audio.", e));
-                }
+                reproducir("linkStart");
 
             } catch (error) {
                 console.error('Error parsing JSON:', error);
@@ -542,7 +595,8 @@ const GRUPOS_ATRIBUTOS = [
         ["dMagico", "Daño mágico"]
     ]],
     ["Otros", [
-        ["aguante", "Aguante"], ["vidaMax", "PV máximos"], ["arte", "PA máximos"], ["espacios", "Memoria de artes"]
+        ["aguante", "Aguante"], ["vidaMax", "PV máximos"], ["arte", "PA máximos"], ["espacios", "Memoria de artes"],
+        ["perspicacia", "Perspicacia"], ["percepcionPasiva", "Percepción pasiva"]
     ]]
 ];
 
@@ -701,8 +755,13 @@ function construirManosEquipamiento() {
         card.classList.add(cfg.prop);
         const titulo = clon.querySelector(".tituloMano");
         if (titulo) titulo.innerText = cfg.titulo;
+        const listaMods = clon.querySelector(".mods-equipo");
+        if (listaMods) listaMods.dataset.mods = cfg.prop;
         grid.appendChild(clon);
     });
+
+    const listaModsArmadura = document.querySelector(".equipoArmadura .mods-equipo");
+    if (listaModsArmadura) listaModsArmadura.dataset.mods = "equipoArmadura";
 }
 
 let cambioEquipoPendiente = null;
@@ -760,7 +819,6 @@ function inicializarEquipamiento() {
         const inputPen = elemento.querySelector(".inputPenalizacionAtletismo");
         const inputArm = elemento.querySelector(".inputValorArmadura");
         const btnUsar = elemento.querySelector(".btn-usar-equipo");
-        const btnAddMod = elemento.querySelector(".btn-anadir-mod-equipo");
 
         if (select) {
             select.dataset.valorActual = select.value;
@@ -873,17 +931,6 @@ function inicializarEquipamiento() {
             btnUsar.addEventListener("click", () => usarEquipo(propEquipo));
         }
 
-        if (btnAddMod) {
-            btnAddMod.addEventListener("click", () => {
-                if (!Array.isArray(personaje[propEquipo].modificadores)) {
-                    personaje[propEquipo].modificadores = [];
-                }
-                personaje[propEquipo].modificadores.push(new Modificador("Nombre", "atletismo", 0, TURNOS_PERMANENTE));
-                parseModificadoresEquipo();
-                personaje.calcularCaracteristicas();
-                actualizarTodo();
-            });
-        }
     });
 }
 
@@ -1112,199 +1159,154 @@ function actualizarBotonUsar(boton, propEquipo) {
     boton.classList.toggle("sin-accion", !(arma.escudo && item.enUso) && !puedeGastarVarias(personaje, partes));
 }
 
-function parseModificadoresEquipo() {
-    for (const elemento of document.getElementsByClassName("equipamiento")) {
-        const propEquipo = getPropiedadEquipo(elemento);
-        if (!propEquipo || !personaje[propEquipo]) continue;
+/* Modificadores de equipo (manos, armadura y accesorios) _____________________ */
+// Cada <ul class="mods-equipo" data-mods="..."> apunta a los modificadores de su objeto:
+// "manoIzquierda", "manoDerecha", "equipoArmadura" o "accesorio-N".
 
-        let listaModsEquipo = elemento.getElementsByClassName("modificadoresEquipo")[0];
-        if (!listaModsEquipo) continue;
-        listaModsEquipo.innerHTML = "";
+function listaModsEquipo(clave) {
+    if (!clave) return null;
+    const objeto = clave.startsWith("accesorio-")
+        ? personaje.accesorios[Number(clave.slice("accesorio-".length))]
+        : personaje[clave];
+    if (!objeto) return null;
+    if (!Array.isArray(objeto.modificadores)) objeto.modificadores = [];
+    return objeto.modificadores;
+}
 
-        if (Array.isArray(personaje[propEquipo].modificadores)) {
-            personaje[propEquipo].modificadores.forEach((modificador, index) => {
-                listaModsEquipo.innerHTML += ` 
-                <li id="modificadorE${index}" class="modificadorE">
-                  <input type="text" class="" style="display:none" value="${modificador.nombre}"> Atributo:
-                  <select class="listValores">${opcionesAtributo(modificador.modificado)}</select>
-                    Cantidad:<input type="number" class="cantidadMod" value="${modificador.numero}"/> 
-                    <input style="display:none" class="duracionMod" value="${modificador.turnos}"/>
-                    <div class="eliminarMod">-</div>
-                </li>`;
-            });
-        }
+function pintarModsEquipo(ul) {
+    const lista = listaModsEquipo(ul.dataset.mods);
+    if (!lista) return;
+
+    // Las filas solo se regeneran si cambia el número de modificadores, para no perder el foco
+    if (ul.children.length !== lista.length) {
+        ul.innerHTML = lista.map((mod, index) => `
+            <li class="mod-equipo" data-index="${index}">
+                <select class="listValores" aria-label="Atributo">${opcionesAtributo(mod.modificado)}</select>
+                <input type="number" class="cantidadMod" aria-label="Cantidad" title="Cantidad (negativa para restar)">
+                <button type="button" class="quitar-mod" title="Eliminar modificador" aria-label="Eliminar modificador">×</button>
+            </li>`).join("");
     }
 
-    añadirFuncionalidadEquipoModificador();
+    lista.forEach((mod, index) => {
+        const fila = ul.children[index];
+        const select = fila.querySelector(".listValores");
+        const inputCantidad = fila.querySelector(".cantidadMod");
+        const numero = Number(mod.numero) || 0;
+        if (document.activeElement !== select && select.querySelector(`option[value="${mod.modificado}"]`)) select.value = mod.modificado;
+        if (document.activeElement !== inputCantidad) inputCantidad.value = numero;
+        fila.classList.toggle("mod-positivo", numero > 0);
+        fila.classList.toggle("mod-negativo", numero < 0);
+    });
+}
+
+function parseModificadoresEquipo() {
+    document.querySelectorAll("#divEquipamiento .mods-equipo[data-mods]").forEach(pintarModsEquipo);
+}
+
+/* Un único listener por tipo de evento para toda la sección de equipamiento */
+function inicializarModsEquipo() {
+    const contenedor = document.getElementById("divEquipamiento");
+
+    contenedor.addEventListener("click", (e) => {
+        const botonAnadir = e.target.closest(".btn-anadir-mod-equipo");
+        if (botonAnadir) {
+            const ul = botonAnadir.closest(".equipamiento, .tarjeta-accesorio")?.querySelector(".mods-equipo[data-mods]");
+            const lista = ul && listaModsEquipo(ul.dataset.mods);
+            if (!lista) return;
+            // Los modificadores de equipo duran mientras se lleve el objeto
+            lista.push(new Modificador("", "atletismo", 0, TURNOS_PERMANENTE));
+            personaje.calcularCaracteristicas();
+            actualizarTodo();
+            ul.lastElementChild?.querySelector(".listValores")?.focus();
+            return;
+        }
+
+        const quitar = e.target.closest(".mods-equipo .quitar-mod");
+        if (quitar) {
+            const lista = listaModsEquipo(quitar.closest(".mods-equipo").dataset.mods);
+            if (!lista) return;
+            lista.splice(Number(quitar.closest(".mod-equipo").dataset.index), 1);
+            personaje.calcularCaracteristicas();
+            actualizarTodo();
+        }
+    });
+
+    contenedor.addEventListener("change", (e) => {
+        const fila = e.target.closest(".mods-equipo .mod-equipo");
+        if (!fila) return;
+        const mod = listaModsEquipo(fila.closest(".mods-equipo").dataset.mods)?.[Number(fila.dataset.index)];
+        if (!mod) return;
+        if (e.target.classList.contains("listValores")) mod.modificado = e.target.value;
+        if (e.target.classList.contains("cantidadMod")) mod.numero = parseInt(e.target.value) || 0;
+        personaje.calcularCaracteristicas();
+        actualizarTodo();
+    });
+
+    // Nombre de los accesorios
+    contenedor.addEventListener("input", (e) => {
+        if (!e.target.classList.contains("inputNombreAccesorio")) return;
+        const accesorio = personaje.accesorios[Number(e.target.closest(".tarjeta-accesorio").dataset.index)];
+        if (accesorio) accesorio.nombre = e.target.value;
+    });
+}
+
+/* Accesorios _________________________________________________________________ */
+const MAX_ACCESORIOS = 3;
+const NOMBRES_ARMADURA = { pesada: "pesada", media: "media", ligera: "ligera", ropa: "de ropa", real: "real" };
+
+function motivoBloqueoAccesorio(tipoArmadura, ranuras) {
+    if (!tipoArmadura) return "Equipa una armadura para tener ranuras de accesorio.";
+    if (ranuras === 0) return `La armadura ${NOMBRES_ARMADURA[tipoArmadura] ?? tipoArmadura} no permite accesorios.`;
+    return `La armadura ${NOMBRES_ARMADURA[tipoArmadura] ?? tipoArmadura} solo permite ${ranuras}.`;
 }
 
 function generarAccesorios() {
-    const listaAccesorios = document.querySelector("#divEquipamiento .listaAccesorios ul");
-    if (!listaAccesorios) return;
-    listaAccesorios.innerHTML = "";
+    const contenedor = document.getElementById("listaAccesorios");
+    if (!contenedor) return;
+    const tipoArmadura = personaje.equipoArmadura?.tipo || "";
+    const ranuras = getCantidadAccesoriosPorArmadura(tipoArmadura);
 
-    const cantAccesorios = getCantidadAccesoriosPorArmadura(personaje.equipoArmadura?.tipo);
-
-    if (!Array.isArray(personaje.accesorios)) {
-        personaje.accesorios = [];
+    if (!Array.isArray(personaje.accesorios)) personaje.accesorios = [];
+    while (personaje.accesorios.length < ranuras) {
+        personaje.accesorios.push(new Equipamiento("", "", "accesorio"));
+    }
+    // Sin cambios respecto a antes: al bajar de ranuras se pierden los accesorios sobrantes (Fase 0, punto 6)
+    if (personaje.accesorios.length > ranuras) {
+        personaje.accesorios = personaje.accesorios.slice(0, ranuras);
     }
 
-    while (personaje.accesorios.length < cantAccesorios) {
-        personaje.accesorios.push(new Equipamiento("Accesorio", "", "accesorio"));
-    }
-    if (personaje.accesorios.length > cantAccesorios) {
-        personaje.accesorios = personaje.accesorios.slice(0, cantAccesorios);
-    }
+    const contador = document.getElementById("contadorAccesorios");
+    if (contador) contador.textContent = `(${ranuras} / ${MAX_ACCESORIOS})`;
 
-    if (cantAccesorios === 0) {
-        listaAccesorios.innerHTML = `<li style="color: #888; font-style: italic; font-size: 13px; padding: 4px 0;">No hay ranuras de accesorios disponibles para esta armadura.</li>`;
-        return;
-    }
-
-    for (let index = 0; index < cantAccesorios; index++) {
-        const acc = personaje.accesorios[index] || {};
-        listaAccesorios.innerHTML += `<li class="accesorio" id="accesorio${index}">
-            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-                <b>Accesorio ${index + 1}:</b>
-                <input type="text" class="inputNombreAccesorio" placeholder="Nombre" value="${acc.nombre || ''}">
-                <button type="button" class="btn-anadir-mod-equipo btn-anadir-mod-acc">+</button>
-            </div>
-            <ul class="modificadoresAccesorio"></ul>
-        </li>`;
-    }
-
-    for (let index = 0; index < cantAccesorios; index++) {
-        const itemAcc = document.getElementById(`accesorio${index}`);
-        if (!itemAcc) continue;
-
-        const inputNombre = itemAcc.querySelector(".inputNombreAccesorio");
-        if (inputNombre) {
-            inputNombre.addEventListener("input", (e) => {
-                if (personaje.accesorios[index]) {
-                    personaje.accesorios[index].nombre = e.target.value;
-                }
-            });
-        }
-
-        const btnAdd = itemAcc.querySelector(".btn-anadir-mod-acc");
-        if (btnAdd) {
-            btnAdd.addEventListener("click", () => {
-                if (!Array.isArray(personaje.accesorios[index].modificadores)) {
-                    personaje.accesorios[index].modificadores = [];
-                }
-                personaje.accesorios[index].modificadores.push(new Modificador("Nombre", "atletismo", 0, TURNOS_PERMANENTE));
-                parseModificadoresAccesorios();
-                personaje.calcularCaracteristicas();
-                actualizarTodo();
-            });
-        }
-    }
-}
-
-function parseModificadoresAccesorios() {
-    for (const [indexAccesorio, modificadoresAccesorio] of Array.from(document.getElementsByClassName("modificadoresAccesorio")).entries()) {
-        if (!personaje.accesorios[indexAccesorio] || !Array.isArray(personaje.accesorios[indexAccesorio].modificadores)) continue;
-        modificadoresAccesorio.innerHTML = "";
-        personaje.accesorios[indexAccesorio].modificadores.forEach((modificador, index) => {
-            modificadoresAccesorio.innerHTML += ` 
-            <li class="modificadorA">
-              <input type="text" class="" style="display:none" value="${modificador.nombre}"> Atributo:
-              <select class="listValores">${opcionesAtributo(modificador.modificado)}</select>
-                Cantidad:<input type="number" class="cantidadMod" value="${modificador.numero}"/> 
-                <input style="display:none" class="duracionMod" value="${modificador.turnos}"/>
-                <button type="button" class="eliminarMod">-</button>
-            </li>`;
-        });
+    // Las tarjetas solo se regeneran si cambian las ranuras o la armadura
+    const clave = `${ranuras}|${tipoArmadura}`;
+    if (contenedor.dataset.clave !== clave) {
+        contenedor.dataset.clave = clave;
+        contenedor.innerHTML = Array.from({ length: MAX_ACCESORIOS }, (_, i) => i < ranuras ? `
+            <div class="tarjeta-accesorio" data-index="${i}">
+                <div class="accesorio-cabecera">
+                    <span class="accesorio-icono">${iconoSao("accesorio")}</span>
+                    <input type="text" class="inputNombreAccesorio" placeholder="Accesorio ${i + 1}" aria-label="Nombre del accesorio ${i + 1}">
+                </div>
+                <div class="equipamiento-mods-header">
+                    <span>Modificadores:</span>
+                    <button type="button" class="btn-anadir-mod-equipo" title="Añadir modificador" aria-label="Añadir modificador">+</button>
+                </div>
+                <ul class="mods-equipo" data-mods="accesorio-${i}"></ul>
+            </div>` : `
+            <div class="tarjeta-accesorio bloqueada" aria-disabled="true">
+                <div class="accesorio-cabecera">
+                    <span class="accesorio-icono">${iconoSao("bloqueado")}</span>
+                    <span class="accesorio-bloqueo">Ranura bloqueada</span>
+                </div>
+                <p class="accesorio-motivo">${motivoBloqueoAccesorio(tipoArmadura, ranuras)}</p>
+            </div>`).join("");
     }
 
-    añadirFuncionalidadAccesorioModificador();
-}
-
-function añadirFuncionalidadAccesorioModificador() {
-    for (const [indexAccesorio, modificadoresAccesorio] of Array.from(document.getElementsByClassName("modificadoresAccesorio")).entries()) {
-        const lis = modificadoresAccesorio.getElementsByClassName("modificadorA");
-        Array.from(lis).forEach((modificador, index) => {
-            const select = modificador.querySelector(".listValores");
-            const inputCantidad = modificador.querySelector(".cantidadMod");
-            const btnEliminar = modificador.querySelector(".eliminarMod");
-
-            if (select) {
-                select.addEventListener("change", (e) => {
-                    if (personaje.accesorios[indexAccesorio]?.modificadores[index]) {
-                        personaje.accesorios[indexAccesorio].modificadores[index].modificado = e.target.value;
-                        personaje.calcularCaracteristicas();
-                        actualizarTodo();
-                    }
-                });
-            }
-            if (inputCantidad) {
-                inputCantidad.addEventListener("input", (e) => {
-                    if (personaje.accesorios[indexAccesorio]?.modificadores[index]) {
-                        personaje.accesorios[indexAccesorio].modificadores[index].numero = parseInt(e.target.value) || 0;
-                        personaje.calcularCaracteristicas();
-                        actualizarTodo();
-                    }
-                });
-            }
-            if (btnEliminar) {
-                btnEliminar.addEventListener("click", () => {
-                    if (personaje.accesorios[indexAccesorio]?.modificadores) {
-                        personaje.accesorios[indexAccesorio].modificadores.splice(index, 1);
-                        parseModificadoresAccesorios();
-                        personaje.calcularCaracteristicas();
-                        actualizarTodo();
-                    }
-                });
-            }
-        });
-    }
-}
-
-
-
-function añadirFuncionalidadEquipoModificador() {
-    for (const modificador of document.getElementsByClassName("modificadorE")) {
-        let index = Number(modificador.id.substring(12));
-        let contenedor = modificador.closest(".equipamiento");
-        let tipoEquipo = getPropiedadEquipo(contenedor);
-        if (!tipoEquipo || !personaje[tipoEquipo]) continue;
-
-        modificador.children[0].addEventListener('focusout', (evt) => {
-            if (personaje[tipoEquipo]?.modificadores[index]) {
-                personaje[tipoEquipo].modificadores[index].nombre = evt.currentTarget.value;
-            }
-        });
-        modificador.children[1].addEventListener('change', (evt) => {
-            if (personaje[tipoEquipo]?.modificadores[index]) {
-                personaje[tipoEquipo].modificadores[index].modificado = evt.currentTarget.value;
-                personaje.calcularCaracteristicas();
-                actualizarTodo();
-            }
-        });
-        modificador.children[2].addEventListener('input', (evt) => {
-            if (personaje[tipoEquipo]?.modificadores[index]) {
-                personaje[tipoEquipo].modificadores[index].numero = parseInt(evt.currentTarget.value) || 0;
-                personaje.calcularCaracteristicas();
-                actualizarTodo();
-            }
-        });
-        modificador.children[3].addEventListener('input', (evt) => {
-            if (personaje[tipoEquipo]?.modificadores[index]) {
-                personaje[tipoEquipo].modificadores[index].turnos = parseInt(evt.currentTarget.value) || 0;
-                personaje.calcularCaracteristicas();
-                actualizarTodo();
-            }
-        });
-
-        modificador.children[4].addEventListener('click', (evt) => {
-            if (personaje[tipoEquipo]?.modificadores) {
-                personaje[tipoEquipo].modificadores.splice(index, 1);
-                parseModificadoresEquipo();
-                personaje.calcularCaracteristicas();
-                actualizarTodo();
-            }
-        });
-    }
+    personaje.accesorios.forEach((accesorio, i) => {
+        const input = contenedor.querySelector(`.tarjeta-accesorio[data-index="${i}"] .inputNombreAccesorio`);
+        if (input && document.activeElement !== input) input.value = accesorio.nombre || "";
+    });
 }
 
 /* Sistema de Tiradas de Habilidades _________________________________________ */
@@ -1770,6 +1772,7 @@ function mostrarInformeDebug() {
 document.addEventListener("DOMContentLoaded", () => {
     construirManosEquipamiento();
     inicializarEquipamiento();
+    inicializarModsEquipo();
     actualizarModificadores();
     parseModificadoresEquipo();
     actualizarTodo();
@@ -1778,6 +1781,7 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarEstados();
     inicializarDanno();
     inicializarPestanas();
+    inicializarSonido();
     inicializarDebug();
     actualizarTodo();
 });
