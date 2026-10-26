@@ -45,8 +45,7 @@
                                 <button type="button" class="btn-arte" id="btn-arte-mas">+</button>
                             </div>
                             <input type="number" id="vida" class="sao-input-vida" value="18000"> / <span
-                                id="vidaMax">18000</span>
-                            <span class="sao-lvl-label">LV.</span> <input type="number" id="nivel" class="sao-input-nivel"
+                                id="vidaMax">18000</span>                            <span class="sao-lvl-label">LV.</span> <input type="number" id="nivel" class="sao-input-nivel"
                                 value="96">
                         </div>
                     </div>
@@ -142,7 +141,16 @@
                     </div>
 
                     <div id="controlTurno">
-                        <h2>Acciones</h2>
+                        <h2>Acciones <span id="contadorAcciones" class="contador-acciones"></span></h2>
+                        <div class="silueta-wrapper">
+                        <button type="button" id="btnIniciarTurno" class="btn-icono-sao btn-turno" title="Iniciar turno: aplica estados y resetea las acciones" aria-label="Iniciar turno">
+                            <img class="icono-off" src="./imgs/turno.svg" alt="">
+                            <img class="icono-on" src="./imgs/turno_on.svg" alt="">
+                        </button>
+                        <button type="button" id="btnRecibirDanno" class="btn-icono-sao btn-danno-icono" title="Recibir daño" aria-label="Recibir daño">
+                            <img class="icono-off" src="./imgs/danno.svg" alt="">
+                            <img class="icono-on" src="./imgs/danno_on.svg" alt="">
+                        </button>
                         <svg version="1.0" width="300pt" height="300pt" viewBox="0 0 1024.000000 1024.000000"
                             preserveAspectRatio="xMidYMid meet" id="svg1" xmlns="http://www.w3.org/2000/svg"
                             xmlns:svg="http://www.w3.org/2000/svg">
@@ -173,6 +181,13 @@
                                     d="m 4162.357,6081.7222 c -78.8656,-283.0101 -144.0242,-574.7703 -214.9999,-861 l -197,-793 h -127 -127 l 59,308 c 242,1265 456.9999,2373.9997 460.9999,2377.9997 1,2 142,40 312,85 130.3695,-899.8752 -104.878,-1131.472 -166,-1116.9997 z" />
                             </g>
                         </svg>
+                        </div>
+                        <div id="estadoTurno" class="estado-turno"></div>
+                        <div class="acciones-movimiento">
+                            <button type="button" id="btnMover" class="btn-accion" title="Gasta la acción de piernas">Mover <span id="casillasMover"></span></button>
+                            <button type="button" id="btnCorrer" class="btn-accion" title="Gasta las tres acciones del turno">Correr <span id="casillasCorrer"></span></button>
+                            <button type="button" id="btnSigilo" class="btn-accion" title="Entrar en sigilo gasta la acción de piernas">Sigilo</button>
+                        </div>
                         <!-- Panel de Modo de Tirada SAO -->
                         <div id="panelTiradas" class="bloque-tiradas-sao">
                             <h3>Modo de Tirada</h3>
@@ -247,7 +262,7 @@
                                             <label>Defensa:</label>
                                             <input type="number" class="inputDefensaEquipo" min="0" value="0">
                                         </div>
-                                        <button type="button" class="btn-usar-equipo">Usar</button>
+                                        <button type="button" class="btn-usar-equipo" title="Usar">Usar</button>
                                     </div>
                                     <div class="equipamiento-mods-header">
                                         <span>Modificadores:</span>
@@ -298,35 +313,6 @@
                         </div>
 
                     </div>
-                    <div id="modificadoresDiv">
-                        <h3>Modificadores: <button id="anadirMod">+</button></h3>
-                        <div id="listadoModificadores">
-
-                        </div>
-                        <!-- <div>
-                        Modificador: <input type="text" class=""> Atributo: <select class="listValores"> 
-                            <option value="atletismo">Atletismo</option>
-                            <option value="combate">Combate</option>
-                            <option value="percepcion">Percepción</option>
-                            <option value="subterfugio">Sigilo</option>
-                            <option value="comunicacion">Carisma</option>
-                            <option value="cutlura">Cultura</option>
-                            <option value="profesion">Profesion</option>
-                            <option value="sacro">Sacro</option>
-                            <option value="armadura">Armadura</option>
-                            <option value="defensa">Defensa</option>
-                            <option value="defensa">Defensa</option>
-                            <option value="puntosArteMax">P.Arte Max</option>
-                            <option value="vMovimiento">Movimiento</option>
-                        </select> Cantidad:
-                        <input type="number" value="0" class="cantidadMod"> Duracion: <input type="text"
-                            class="duracionMod">
-                        <div class="eliminarMod">-</div>
-                    </div> -->
-                    </div>
-
-
-
                     <h2>Habilidades <span id="contadorPuntosHab" class="contador-puntos-hab">(Puntos: <strong id="puntosHabDisponibles">40</strong> / <span id="puntosHabTotal">40</span>)</span></h2>
                     <div id="habilidadesDiv">
 
@@ -416,52 +402,34 @@
 
                 <!-- Columna 3: Inventario y Valores de combate -->
                 <div id="inventario" class="columnaDerecha">
-                <h2>Inventario</h2>
-                <div>
-                    <p>
-                        <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name=""
-                            placeholder="0">
-                    </p>
-                    <p>
-                        <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name=""
-                            placeholder="0">
-                    </p>
-                    <p>
-                        <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name=""
-                            placeholder="0">
-                    </p>
-                    <p>
-                        <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name=""
-                            placeholder="0">
-                    </p>
-                    <p>
-                        <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name=""
-                            placeholder="0">
-                    </p>
-                    <p>
-                        <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name=""
-                            placeholder="0">
-                    </p>
-                    <p>
-                        <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name=""
-                            placeholder="0">
-                    </p>
-                    <p>
-                        <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name=""
-                            placeholder="0">
-                    </p>
-                    <p>
-                        <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name=""
-                            placeholder="0">
-                    </p>
-                    <p>
-                        <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name=""
-                            placeholder="0">
-                    </p>
-                    <p>
-                        <input type="text" class="itemInv" placeholder="Objeto"> <input type="number" name=""
-                            placeholder="0">
-                    </p>
+                <h2>Estados</h2>
+                <div id="panelEstados">
+                    <!-- Generado desde ESTADOS_INFO (estados.js) -->
+                    <div id="chipsEstados" class="estados-chips"></div>
+                    <div id="listaEstadosActivos" class="estados-activos"></div>
+                </div>
+                <h2 class="h2-con-boton">Modificadores <button type="button" id="anadirMod" class="btn-h2" title="Añadir modificador" aria-label="Añadir modificador">+</button></h2>
+                <div id="listadoModificadores" class="lista-modificadores"></div>
+
+                <!-- Pestañas: inventario, baúl, amigos y artes -->
+                <div class="pestanas" role="tablist" aria-label="Inventario y listas">
+                    <button type="button" class="pestana activa" role="tab" id="tab-inventario" aria-controls="panel-inventario" aria-selected="true">Inventario</button>
+                    <button type="button" class="pestana" role="tab" id="tab-baul" aria-controls="panel-baul" aria-selected="false" tabindex="-1">Baúl</button>
+                    <button type="button" class="pestana" role="tab" id="tab-amigos" aria-controls="panel-amigos" aria-selected="false" tabindex="-1">Amigos</button>
+                    <button type="button" class="pestana" role="tab" id="tab-artes" aria-controls="panel-artes" aria-selected="false" tabindex="-1">Artes</button>
+                </div>
+                <div class="panel-pestana" role="tabpanel" id="panel-inventario" aria-labelledby="tab-inventario">
+                    <!-- Generado desde personaje.inventario (interfaz.js) -->
+                    <div id="listaInventario"></div>
+                </div>
+                <div class="panel-pestana" role="tabpanel" id="panel-baul" aria-labelledby="tab-baul" hidden>
+                    <textarea id="baul" placeholder="Objetos guardados en el baúl"></textarea>
+                </div>
+                <div class="panel-pestana" role="tabpanel" id="panel-amigos" aria-labelledby="tab-amigos" hidden>
+                    <textarea id="listaDeAmigos" placeholder="Lista de amigos"></textarea>
+                </div>
+                <div class="panel-pestana" role="tabpanel" id="panel-artes" aria-labelledby="tab-artes" hidden>
+                    <textarea id="listadoArtes" placeholder="Artes equipadas"></textarea>
                 </div>
                 <h2>Valores de combate </h2>
                 <div id="valoresCombateDiv">
@@ -484,20 +452,8 @@
                     <textarea name="" id="notas"></textarea>
                 </div>
                 <div>
-                    <h3>Baul</h3>
-                    <textarea name="" id="baul"></textarea>
-                </div>
-                <div>
                     <h3>Recetas</h3>
                     <textarea name="" id="recetasProfesion"></textarea>
-                </div>
-                <div>
-                    <h3>Amigos</h3>
-                    <textarea name="" id="listaDeAmigos"></textarea>
-                </div>
-                <div>
-                    <h3>Artes</h3>
-                    <textarea name="" id="listadoArtes"></textarea>
                 </div>
             </div>
         </div>
@@ -557,6 +513,45 @@
         </div>
     </div>
 
+    <!-- Modal de daño recibido -->
+    <div class="modal fade" id="modalDanno" tabindex="-1" aria-labelledby="modalDannoLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="border: 3px solid #d1ab52; border-radius: 10px;">
+                <div class="modal-header" style="border-bottom: 2px solid #d1ab52; background: #fbfbfb;">
+                    <h5 class="modal-title" id="modalDannoLabel" style="color: #d1ab52; font-weight: bold;">Recibir daño</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body" style="background: #fbfbfb;">
+                    <div class="danno-opciones" role="radiogroup" aria-label="Tipo de daño">
+                        <label class="opcion-danno"><input type="radio" name="tipoDanno" value="fisico" checked> Físico</label>
+                        <label class="opcion-danno"><input type="radio" name="tipoDanno" value="elemental"> Elemental</label>
+                        <label class="opcion-danno"><input type="radio" name="tipoDanno" value="hemorragia"> Hemorragia</label>
+                    </div>
+                    <div id="dannoSubElemental" class="danno-opciones danno-subopciones" role="radiogroup" aria-label="Elemento" style="display: none;">
+                        <label class="opcion-danno"><input type="radio" name="elementoDanno" value="fuego" checked> Fuego</label>
+                        <label class="opcion-danno"><input type="radio" name="elementoDanno" value="electricidad"> Electricidad</label>
+                        <label class="opcion-danno"><input type="radio" name="elementoDanno" value="hielo"> Hielo</label>
+                        <label class="opcion-danno"><input type="radio" name="elementoDanno" value="luz"> Luz</label>
+                        <label class="opcion-danno"><input type="radio" name="elementoDanno" value="oscuridad"> Oscuridad</label>
+                    </div>
+                    <div class="danno-cantidad">
+                        <label for="inputCantidadDanno">Cantidad:</label>
+                        <input type="number" class="form-control" id="inputCantidadDanno" min="0" value="0">
+                        <label id="labelIgnorarArmadura" class="danno-check">
+                            <input type="checkbox" id="checkIgnorarArmadura"> Ignorar armadura
+                        </label>
+                    </div>
+                    <ul id="previewDanno" class="danno-preview"></ul>
+                </div>
+                <div class="modal-footer" style="border-top: none; background: #fbfbfb;">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn" id="btnAplicarDanno"
+                        style="background-color: #d1ab52; color: white; font-weight: bold;">Aplicar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Contenedor de Notificaciones/Popups de Tiradas SAO -->
     <div id="contenedor-popups-dados"></div>
 
@@ -568,13 +563,6 @@
         integrity="sha384-BBtl+eGJRgqQAUMxJ7pMwbEyER4l1g+O15P+16Ep7Q9Q+zqX6gSbd85u4mG4QzX+"
         crossorigin="anonymous"></script>
 
-    <script>
-        document.querySelectorAll('.parte').forEach(parte => {
-            parte.addEventListener('click', () => {
-                parte.classList.toggle('gris');
-            });
-        });
-    </script>
 </body>
 
 </html>

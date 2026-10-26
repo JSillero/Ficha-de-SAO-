@@ -1,4 +1,29 @@
 import Modificador from "./modificador.js";
+
+/**
+ * Armas y escudos que se equipan en las manos (06-equipo-y-objetos.md §2).
+ * - caracteristica: la que se suma al ataque; "mejor" = la más alta entre Reflejos y Fortaleza.
+ * - dado: 0 bajo (desventaja), 1 medio (normal), 2 alto (ventaja).
+ * - manos: 2 ocupa las dos manos y gasta las acciones de ambos brazos.
+ */
+export const ARMAS = {
+    cuchillo: { etiqueta: "Cuchillo", manos: 1, caracteristica: "reflejos", dado: 1 },
+    espada: { etiqueta: "Espada", manos: 1, caracteristica: "mejor", dado: 1 },
+    estoque: { etiqueta: "Estoque", manos: 1, caracteristica: "reflejos", dado: 2 },
+    maza: { etiqueta: "Maza", manos: 1, caracteristica: "fortaleza", dado: 0 },
+    lanza: { etiqueta: "Lanza", manos: 2, caracteristica: "reflejos", dado: 1 },
+    espadon: { etiqueta: "Espadón", manos: 2, caracteristica: "fortaleza", dado: 1 },
+    martillo_guerra: { etiqueta: "Martillo de guerra", manos: 2, caracteristica: "fortaleza", dado: 0 },
+    hacha: { etiqueta: "Hacha", manos: 2, caracteristica: "fortaleza", dado: 0 },
+    escudo: { etiqueta: "Escudo", manos: 1, escudo: true },
+    gran_escudo: { etiqueta: "Gran escudo", manos: 2, escudo: true },
+    // Herramientas: el manual no dice qué característica usan; se toma la más alta
+    otros: { etiqueta: "Otros", manos: 1, caracteristica: "mejor", dado: 1 }
+};
+
+export const TIPOS_DOS_MANOS = Object.keys(ARMAS).filter(tipo => ARMAS[tipo].manos === 2);
+export const TIPOS_ESCUDO = Object.keys(ARMAS).filter(tipo => ARMAS[tipo].escudo);
+
 export default class Equipamiento {
 
     /**

@@ -439,3 +439,34 @@
     font-size: 1em;
 }
 
+
+/* Popup de ataque: arma usada, daño y notas */
+.popup-subtitulo {
+    font-size: 12px;
+    color: #cfcfcf;
+    margin: -4px 0 8px;
+    font-family: 'SAOUI', sans-serif !important;
+}
+
+.popup-danno {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 2px solid rgba(209, 171, 82, 0.6);
+}
+
+.popup-danno .popup-total-wrapper {
+    border-top: none;
+    padding-top: 0;
+}
+
+.popup-danno .popup-total-label {
+    color: #e74c3c;
+}
+
+.popup-nota {
+    font-size: 11px;
+    color: #aaa;
+    font-style: italic;
+    margin-top: 4px;
+    font-family: 'SAOUI', sans-serif !important;
+}

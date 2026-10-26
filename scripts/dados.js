@@ -13,6 +13,13 @@
  * @property {number} total - Total final de la tirada (resultadoDados + valorHabilidad + valorCaracteristica)
  * @property {number} critico - Número de críticos obtenidos en la tirada
  * @property {number} pifia - Número de pifias obtenidas en la tirada
+ * @property {string} [subtitulo] - Línea bajo el título (p. ej. el arma usada)
+ * @property {string|null} [etiquetaHabilidad] - Texto del sumando de habilidad (null lo oculta)
+ * @property {string|null} [etiquetaCaracteristica] - Texto del sumando de característica (null lo oculta)
+ * @property {number} [bonificador] - Bonificador extra (p. ej. ventaja acumulada)
+ * @property {string} [etiquetaBonificador]
+ * @property {string} [etiquetaTotal]
+ * @property {{ total: number, desglose: string[], notas?: string[] }|null} [danno] - Daño del ataque, si lo hay
  */
 
 
@@ -23,25 +30,67 @@
  */
 
 
-export function ejecutarTirada({ nombreAccion, valorHabilidad, valorCaracteristica, modoTirada, criticoFacil }) {
+/**
+ * Opciones extra:
+ * - etiquetaHabilidad / etiquetaCaracteristica: texto en la operación del popup (null oculta ese sumando).
+ * - subtitulo: línea bajo el título (p. ej. el arma usada).
+ * - etiquetaTotal: texto junto al total (por defecto "TOTAL").
+ * - calcularDanno(resultado): si se pasa, el popup añade un bloque de daño. Se llama tras tirar,
+ *   porque el daño depende de si hay crítico. Debe devolver { total, desglose: string[], notas?: string[] }.
+ */
+export function ejecutarTirada({ nombreAccion, valorHabilidad, valorCaracteristica, modoTirada, criticoFacil,
+    bonificador = 0, etiquetaBonificador = "Bonif.",
+    etiquetaHabilidad = "Hab.", etiquetaCaracteristica = "Caract.", subtitulo = "", etiquetaTotal = "TOTAL",
+    calcularDanno = null }) {
 
     /** @type {ResultadoTirada} */
     const resultado = {
         titulo: nombreAccion,
+        subtitulo: subtitulo,
         resultadoDados: 0,
         valorHabilidad: valorHabilidad,
         valorCaracteristica: valorCaracteristica,
+        etiquetaHabilidad: etiquetaHabilidad,
+        etiquetaCaracteristica: etiquetaCaracteristica,
+        bonificador: bonificador,
+        etiquetaBonificador: etiquetaBonificador,
+        etiquetaTotal: etiquetaTotal,
         dados: [1, 1, 1], // Inicialmente vacío, se llenará después
         ventajaTirada: modoTirada,
         total: 0,
         critico: 0,
-        pifia: 0
+        pifia: 0,
+        danno: null
     };
 
-    resultado.total = tirarDados(resultado, criticoFacil);
+    const dado = tirarDados(resultado, criticoFacil);
+    resultado.total = dado + (Number(valorHabilidad) || 0) + (Number(valorCaracteristica) || 0) + (Number(bonificador) || 0);
+    if (calcularDanno) resultado.danno = calcularDanno(resultado);
 
     // Lanzar el popup visual
     crearPopupResultado(resultado);
+    return resultado;
+}
+
+/* Un crítico (de cualquier grado) es cuando el popup muestra la insignia de crítico */
+export function esCritico(resultado) {
+    return resultado.critico >= 2;
+}
+
+/**
+ * Combina varias fuentes de ventaja/desventaja (cada una 0 desventaja, 1 normal, 2 ventaja).
+ * Ventaja y desventaja se anulan entre sí; cada fuente extra del mismo signo da ±2 a la tirada.
+ * @returns {{ modo: number, bonificador: number }}
+ */
+export function combinarModos(...modos) {
+    const ventajas = modos.filter(m => m === 2).length;
+    const desventajas = modos.filter(m => m === 0).length;
+    const neto = ventajas - desventajas;
+    if (neto === 0) return { modo: 1, bonificador: 0 };
+    return {
+        modo: neto > 0 ? 2 : 0,
+        bonificador: Math.sign(neto) * 2 * (Math.abs(neto) - 1)
+    };
 }
 /**
  * @param {ResultadoTirada} objetoResultado
@@ -157,25 +206,49 @@ function crearPopupResultado(resultado) {
     const valorDado = Number(resultado.resultadoDados) || 0;
     const valorHab = Number(resultado.valorHabilidad) || 0;
     const valorCaract = Number(resultado.valorCaracteristica) || 0;
-    const totalFinal = valorDado + valorHab + valorCaract;
+    const valorBonif = Number(resultado.bonificador) || 0;
+    const totalFinal = valorDado + valorHab + valorCaract + valorBonif;
+
+    // Sumandos de la operación; una etiqueta null oculta ese sumando
+    const sumandos = [`${valorDado} (Dado)`];
+    if (resultado.etiquetaHabilidad !== null) sumandos.push(`+ ${valorHab} (${resultado.etiquetaHabilidad ?? "Hab."})`);
+    if (resultado.etiquetaCaracteristica !== null) sumandos.push(`+ ${valorCaract} (${resultado.etiquetaCaracteristica ?? "Caract."})`);
+    if (valorBonif) sumandos.push(`${valorBonif > 0 ? "+" : "−"} ${Math.abs(valorBonif)} (${resultado.etiquetaBonificador})`);
+
+    // Bloque de daño (ataques)
+    let dannoHtml = "";
+    if (resultado.danno) {
+        const { total, desglose = [], notas = [] } = resultado.danno;
+        dannoHtml = `
+        <div class="popup-danno">
+            <div class="popup-operacion">${desglose.join(" + ")}</div>
+            <div class="popup-total-wrapper">
+                <span class="popup-total-label">DAÑO</span>
+                <span class="popup-total-valor">${total}</span>
+            </div>
+            ${notas.map(nota => `<div class="popup-nota">${nota}</div>`).join("")}
+        </div>`;
+    }
 
     popup.innerHTML = `
         <div class="popup-header">
             <strong class="popup-titulo">${resultado.titulo}</strong>
             <span class="popup-modo modo-${resultado.ventajaTirada}">${nombreModo}</span>
         </div>
+        ${resultado.subtitulo ? `<div class="popup-subtitulo">${resultado.subtitulo}</div>` : ""}
         ${badgeEspecialHtml}
         <div class="popup-dados-contenedor">
             <span class="popup-dados-label">Dados:</span>
             <div class="popup-dados-chips">${dadosHtml}</div>
         </div>
         <div class="popup-operacion">
-            ${valorDado} (Dado) + ${valorHab} (Hab.) + ${valorCaract} (Caract.)
+            ${sumandos.join(" ")}
         </div>
         <div class="popup-total-wrapper">
-            <span class="popup-total-label">TOTAL</span>
+            <span class="popup-total-label">${resultado.etiquetaTotal ?? "TOTAL"}</span>
             <span class="popup-total-valor">${totalFinal}</span>
         </div>
+        ${dannoHtml}
     `;
 
     // Añadir al contenedor

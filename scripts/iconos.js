@@ -1,0 +1,173 @@
+// scripts/iconos.js
+// Iconos SAO en SVG en línea para estados y tipos de daño.
+// Mismo estilo que los ficheros de imgs/ (círculo con glifo, partes secundarias al 71 %),
+// pero los colores salen de variables CSS para poder tener tres variantes sin ficheros extra:
+//   normal  → fondo gris, glifo blanco (por defecto)
+//   hover   → fondo blanco, glifo dorado
+//   activo  → fondo del color del estado (--color), glifo --color-glifo
+// Clases dentro de cada glifo (estilos en secciones.css, bloque "Iconos SAO"):
+//   p = relleno principal, s = relleno secundario (71 %), f = recorte con el color de fondo,
+//   t = trazo del glifo, o = opacidad secundaria, tf = trazo grueso con el color de fondo (separador).
+
+function estrella(cx, cy, r, clase = "p") {
+    const puntos = Array.from({ length: 10 }, (_, i) => {
+        const angulo = (-90 + i * 36) * Math.PI / 180;
+        const radio = i % 2 ? r * 0.5 : r;
+        return `${(cx + radio * Math.cos(angulo)).toFixed(1)},${(cy + radio * Math.sin(angulo)).toFixed(1)}`;
+    });
+    return `<polygon class="${clase}" points="${puntos.join(" ")}"/>`;
+}
+
+function poligonoEstrella(cx, cy, r, rInterior, puntas, clase = "p") {
+    const puntos = Array.from({ length: puntas * 2 }, (_, i) => {
+        const angulo = (-90 + i * 180 / puntas) * Math.PI / 180;
+        const radio = i % 2 ? rInterior : r;
+        return `${(cx + radio * Math.cos(angulo)).toFixed(1)},${(cy + radio * Math.sin(angulo)).toFixed(1)}`;
+    });
+    return `<polygon class="${clase}" points="${puntos.join(" ")}"/>`;
+}
+
+/* Las armas se dibujan en vertical (punta arriba) y se giran 45° como el icono de Combate */
+const enDiagonal = (contenido) => `<g transform="rotate(45 50 50)">${contenido}</g>`;
+
+const brazoCopo = (angulo) =>
+    `<path class="t" transform="rotate(${angulo} 50 50)" d="M50 18V82M41 25L50 34L59 25M41 75L50 66L59 75"/>`;
+
+const GLIFOS = {
+    fuego: `
+        <path class="s" d="M50 16C59 31 73 40 71 60C70 74 61 83 50 83C39 83 30 74 29 62C28 49 37 43 40 32C44 40 46 45 47 50C50 39 53 29 50 16Z"/>
+        <path class="p" d="M50 48C57 57 62 62 61 70C60 77 55 82 50 82C45 82 40 77 40 70C40 63 46 58 50 48Z"/>`,
+    electricidad: `
+        <polygon class="p" points="58,14 28,56 47,56 40,86 72,42 53,42"/>
+        <polygon class="s" points="58,14 28,56 47,56"/>`,
+    hielo: brazoCopo(0) + brazoCopo(60) + brazoCopo(120),
+    luz: `
+        <circle class="p" cx="50" cy="50" r="14"/>
+        <path class="t o" d="M50 16V26M50 74V84M16 50H26M74 50H84M26 26L33 33M67 67L74 74M74 26L67 33M33 67L26 74"/>`,
+    oscuridad: `
+        <path class="p" d="M56 18A32 32 0 1 0 82 64A26 26 0 0 1 56 18Z"/>
+        ${estrella(70, 30, 8, "s")}`,
+    paralisis: `
+        <path class="t" d="M38 46V37A12 12 0 0 1 62 37V46"/>
+        <rect class="p" x="30" y="45" width="40" height="32" rx="5"/>
+        <polygon class="f" points="53,50 43,63 50,63 47,73 57,59 50,59"/>`,
+    veneno: `
+        <rect class="s" x="43" y="21" width="14" height="20"/>
+        <rect class="p" x="39" y="17" width="22" height="6" rx="2"/>
+        <circle class="p" cx="50" cy="60" r="22"/>
+        <circle class="f" cx="43" cy="63" r="4"/>
+        <circle class="f" cx="56" cy="54" r="3"/>
+        <circle class="f" cx="54" cy="69" r="5"/>`,
+    hemorragia: `
+        <path class="p" d="M44 18C44 18 24 47 24 61A20 20 0 0 0 64 61C64 47 44 18 44 18Z"/>
+        <path class="s" d="M70 44C70 44 60 58 60 64A10 10 0 0 0 80 64C80 58 70 44 70 44Z"/>`,
+    regeneracion: `
+        <path class="p" d="M50 80C22 61 19 41 31 32C40 26 47 30 50 37C53 30 60 26 69 32C81 41 78 61 50 80Z"/>
+        <rect class="f" x="46" y="40" width="8" height="24" rx="1"/>
+        <rect class="f" x="38" y="48" width="24" height="8" rx="1"/>`,
+    aturdido: `
+        <ellipse class="t o" cx="50" cy="54" rx="30" ry="13"/>
+        ${estrella(50, 38, 13)}
+        ${estrella(27, 64, 11)}
+        ${estrella(73, 64, 11)}`,
+    cegado: `
+        <path class="p" d="M16 50C30 28 70 28 84 50C70 72 30 72 16 50Z"/>
+        <circle class="f" cx="50" cy="50" r="11"/>
+        <path class="tf" d="M27 77L73 23"/>
+        <path class="t" d="M27 77L73 23"/>`,
+    dormido: `
+        <path class="t" d="M24 48H50L24 76H50"/>
+        <path class="t o" d="M56 30H72L56 48H72"/>
+        <path class="t o" d="M72 14H82L72 26H82"/>`,
+    wither: `
+        <path class="p" d="M50 20C34 20 26 32 26 45C26 54 31 60 36 63V76H64V63C69 60 74 54 74 45C74 32 66 20 50 20Z"/>
+        <circle class="f" cx="40" cy="46" r="7"/>
+        <circle class="f" cx="60" cy="46" r="7"/>
+        <polygon class="f" points="50,54 46,62 54,62"/>
+        <rect class="f" x="42" y="67" width="3" height="9"/>
+        <rect class="f" x="48.5" y="67" width="3" height="9"/>
+        <rect class="f" x="55" y="67" width="3" height="9"/>`,
+    embriaguez: `
+        <rect class="p" x="28" y="34" width="32" height="44" rx="5"/>
+        <path class="t" d="M60 44H67A7 7 0 0 1 74 51V60A7 7 0 0 1 67 67H60"/>
+        <rect class="f" x="35" y="44" width="4" height="26" rx="2"/>
+        <rect class="f" x="47" y="44" width="4" height="26" rx="2"/>
+        <path class="s" d="M25 37C24 27 35 24 40 29C42 22 53 22 55 29C60 24 68 29 63 37Z"/>`,
+    fisico: `
+        <path class="p" d="M76 15L85 24L47 62L38 53Z"/>
+        <path class="s" d="M76 15L85 24L42 58Z"/>
+        <path class="t" d="M30 49L51 70"/>
+        <path class="t" d="M37 63L28 72"/>
+        <circle class="p" cx="24" cy="76" r="6"/>`,
+    elemental: `
+        <polygon class="p" points="48,16 55,43 82,50 55,57 48,84 41,57 14,50 41,43"/>
+        <polygon class="s" points="76,14 79,21 86,24 79,27 76,34 73,27 66,24 73,21"/>
+        <polygon class="s" points="74,62 76,67 81,69 76,71 74,76 72,71 67,69 72,67"/>`,
+
+    /* Armas y escudos (botón Usar); claves = tipos de ARMAS en equipamiento.js */
+    cuchillo: enDiagonal(`
+        <polygon class="p" points="45,62 45,36 55,24 55,62"/>
+        <polygon class="s" points="50,30 55,24 55,62 50,62"/>
+        <rect class="p" x="38" y="62" width="24" height="5" rx="2"/>
+        <rect class="p" x="46" y="67" width="8" height="18" rx="3"/>`),
+    espada: enDiagonal(`
+        <polygon class="p" points="45,62 45,22 50,12 55,22 55,62"/>
+        <polygon class="s" points="50,12 55,22 55,62 50,62"/>
+        <rect class="p" x="35" y="62" width="30" height="5" rx="2"/>
+        <rect class="p" x="47" y="67" width="6" height="14"/>
+        <circle class="p" cx="50" cy="84" r="4.5"/>`),
+    estoque: enDiagonal(`
+        <polygon class="p" points="48,62 48,18 50,10 52,18 52,62"/>
+        <path class="p" d="M37 60A13 13 0 0 0 63 60Z"/>
+        <path class="s" d="M50 60H63A13 13 0 0 1 50 73Z"/>
+        <rect class="p" x="47.5" y="70" width="5" height="12"/>
+        <circle class="p" cx="50" cy="84" r="4"/>`),
+    maza: enDiagonal(`
+        <rect class="p" x="46.5" y="40" width="7" height="46" rx="3"/>
+        ${poligonoEstrella(50, 30, 19, 12, 8)}
+        <circle class="s" cx="50" cy="30" r="9"/>`),
+    lanza: enDiagonal(`
+        <rect class="p" x="47.5" y="30" width="5" height="58" rx="2"/>
+        <polygon class="p" points="50,8 58,24 50,34 42,24"/>
+        <polygon class="s" points="50,8 58,24 50,34"/>
+        <rect class="s" x="44" y="34" width="12" height="4" rx="2"/>`),
+    espadon: enDiagonal(`
+        <polygon class="p" points="43,64 43,20 50,8 57,20 57,64"/>
+        <polygon class="s" points="50,8 57,20 57,64 50,64"/>
+        <rect class="p" x="30" y="63" width="40" height="6" rx="3"/>
+        <rect class="p" x="46.5" y="69" width="7" height="16"/>
+        <circle class="p" cx="50" cy="88" r="5"/>`),
+    martillo_guerra: enDiagonal(`
+        <rect class="p" x="46.5" y="34" width="7" height="54" rx="3"/>
+        <rect class="p" x="28" y="16" width="44" height="20" rx="3"/>
+        <rect class="s" x="28" y="16" width="12" height="20" rx="3"/>
+        <polygon class="s" points="72,20 82,26 72,32"/>`),
+    hacha: enDiagonal(`
+        <rect class="p" x="46.5" y="14" width="7" height="74" rx="3"/>
+        <path class="p" d="M53 20C72 18 82 32 80 50C72 43 63 42 53 46Z"/>
+        <path class="s" d="M53 33C64 31 74 36 80 50C72 43 63 42 53 46Z"/>
+        <polygon class="s" points="46.5,26 36,30 46.5,36"/>`),
+    escudo: `
+        <path class="p" d="M50 16L76 24V46C76 64 64 76 50 84C36 76 24 64 24 46V24Z"/>
+        <path class="s" d="M50 16L76 24V46C76 64 64 76 50 84Z"/>
+        <path class="t" d="M50 30V66M38 44H62" style="stroke:var(--fondo)"/>`,
+    gran_escudo: `
+        <path class="p" d="M27 16H73V58C73 72 63 81 50 86C37 81 27 72 27 58Z"/>
+        <path class="s" d="M50 16H73V58C73 72 63 81 50 86Z"/>
+        <circle class="f" cx="50" cy="48" r="9"/>
+        <circle class="p" cx="50" cy="48" r="4"/>`,
+    otros: enDiagonal(`
+        <rect class="p" x="46.5" y="24" width="7" height="64" rx="3"/>
+        <path class="p" d="M18 34C34 14 66 14 82 34L78 38C62 26 38 26 22 38Z"/>
+        <path class="s" d="M50 19C64 19 74 25 82 34L78 38C70 31 61 27 50 27Z"/>`)
+};
+
+/**
+ * Devuelve el SVG de un icono SAO.
+ * @param {string} clave nombre del glifo en GLIFOS
+ */
+export function iconoSao(clave) {
+    const glifo = GLIFOS[clave] ?? GLIFOS.elemental;
+    return `<svg class="icono-sao" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+        <circle class="ic-fondo" cx="50" cy="50" r="50"/>${glifo}</svg>`;
+}

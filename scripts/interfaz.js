@@ -1,7 +1,17 @@
-import Equipamiento from "./equipamiento.js";
-import Modificador from "./modificador.js";
+import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ESCUDO } from "./equipamiento.js";
+import Modificador, { TURNOS_PERMANENTE } from "./modificador.js";
 import PJ from "./PJ.js";
-import { ejecutarTirada } from "./dados.js";
+import { ejecutarTirada, combinarModos, esCritico } from "./dados.js";
+import { prepararAtaque, calcularDannoAtaque } from "./ataque.js";
+import {
+    puedeGastarVarias, gastarVarias, partesDeMano, estaIncapacitado,
+    iniciarTurno, gastarAccion, devolverAccion, puedeGastar, accionesRestantes,
+    correr, puedeCorrer, puedeMoverse, velocidadMovimiento, velocidadCorrer,
+    modoSigiloPorArmadura, puedeEntrarEnSigilo, entrarEnSigilo, salirDeSigilo
+} from "./turno.js";
+import { ESTADOS_INFO, TIPOS_DANNO, aplicarDanno, activarEstado, quitarEstado, estaActivo, estiloColor } from "./estados.js";
+import { iconoSao } from "./iconos.js";
+import { ejecutarDebug, crearPersonajePrueba, validarFicha } from "./debug.js";
 
 let personaje = new PJ(); //objeto que almaacena y define el comportamiento y limites de toda la informacion relevante
 /* Informacion */
@@ -247,10 +257,46 @@ function actualizarTodo() {
     actualizarCaracteristicas();
     actuaizarTextos();
     actualizarEquipamiento();
-    parseModificadores();
+    actualizarModificadores();
     parseModificadoresEquipo();
     generarAccesorios();
     parseModificadoresAccesorios();
+    actualizarInventario();
+    actualizarAcciones();
+    actualizarEstados();
+}
+
+/* Inventario ________________________________________________________________ */
+const listaInventario = document.getElementById("listaInventario");
+
+/* Un único listener para todas las filas: sigue funcionando aunque se regeneren */
+listaInventario.addEventListener("input", (e) => {
+    const fila = e.target.closest(".filaInventario");
+    if (!fila) return;
+    const item = personaje.inventario[Number(fila.dataset.index)];
+    if (!item) return;
+    if (e.target.classList.contains("itemInv")) item.nombre = e.target.value;
+    if (e.target.classList.contains("cantidadInv")) item.cantidad = Math.max(0, Number(e.target.value) || 0);
+});
+
+function actualizarInventario() {
+    // Las filas solo se regeneran si cambia el número de huecos (p. ej. al cargar una ficha)
+    if (listaInventario.children.length !== personaje.inventario.length) {
+        listaInventario.innerHTML = personaje.inventario.map((_, index) => `
+            <p class="filaInventario" data-index="${index}">
+                <input type="text" class="itemInv" placeholder="Objeto">
+                <input type="number" class="cantidadInv" min="0" placeholder="0">
+            </p>`).join("");
+    }
+
+    personaje.inventario.forEach((item, index) => {
+        const fila = listaInventario.children[index];
+        const inputNombre = fila.querySelector(".itemInv");
+        const inputCantidad = fila.querySelector(".cantidadInv");
+        // No se pisa el campo que el usuario está editando
+        if (document.activeElement !== inputNombre) inputNombre.value = item.nombre;
+        if (document.activeElement !== inputCantidad) inputCantidad.value = item.cantidad || "";
+    });
 }
 
 function actualizarInformacion() {
@@ -472,44 +518,125 @@ document.getElementById('botonGuardar').addEventListener('click', function (even
 
 
 
-/* Modificadores */
-let listadoModificadores = document.getElementById("listadoModificadores")
-let botonAnnadir = document.getElementById("anadirMod");
-console.log("boton añadir", botonAnnadir);
+/* Modificadores ___________________________________________________________ */
+const listadoModificadores = document.getElementById("listadoModificadores");
 
-botonAnnadir.addEventListener('click', function () {
-    personaje.modificadores.push(new Modificador("nombre", "atletismo", 0, 0))
-    parseModificadores();
+document.getElementById("anadirMod").addEventListener("click", () => {
+    // Por defecto es permanente: dura hasta que el usuario lo edite o lo elimine
+    personaje.modificadores.push(new Modificador("", "atletismo", 0, TURNOS_PERMANENTE));
+    personaje.calcularCaracteristicas();
+    actualizarTodo();
+    listadoModificadores.lastElementChild?.querySelector(".nombreMod")?.focus();
 });
 
-function parseModificadores() {
-    listadoModificadores.innerHTML = "";
-    personaje.modificadores.forEach((modificador, index) => {
-        listadoModificadores.innerHTML += ` 
-                <div id="modificador${index}" class="modificador">
-                    Modificador: <input type="text" class="" value="${modificador.nombre}"> Atributo: <select class="listValores"> 
-                        <option value="atletismo">Atletismo</option>
-                        <option value="combate">Combate</option>
-                        <option value="percepcion">Percepción</option>
-                        <option value="subterfugio">Sigilo</option>
-                        <option value="comunicacion">Carisma</option>
-                        <option value="cutlura">Cultura</option>
-                        <option value="profesion">Profesion</option>
-                        <option value="sacro">Sacro</option>
-                        <option value="armadura">Armadura</option>
-                        <option value="">Regeneracion</option>
+/* Atributos que se pueden modificar (valor = nombre que usa PJ.getModificador) */
+const GRUPOS_ATRIBUTOS = [
+    ["Habilidades", [
+        ["atletismo", "Atletismo"], ["combate", "Combate"], ["percepcion", "Percepción"],
+        ["subterfugio", "Sigilo"], ["comunicacion", "Carisma"], ["cultura", "Cultura"],
+        ["profesion", "Profesión"], ["sacro", "Sacro"]
+    ]],
+    ["Combate", [
+        ["defensa", "Defensa"], ["armadura", "Armadura"], ["iniciativa", "Iniciativa"],
+        ["vMovimiento", "Movimiento"], ["dFisico", "Daño CaC"], ["dDistancia", "Daño a distancia"],
+        ["dMagico", "Daño mágico"]
+    ]],
+    ["Otros", [
+        ["aguante", "Aguante"], ["vidaMax", "PV máximos"], ["arte", "PA máximos"], ["espacios", "Memoria de artes"]
+    ]]
+];
 
-                    </select> 
-                    Cantidad:
-                    <input type="number"  class="cantidadMod" value="${modificador.numero}"/> 
-                    Duracion: <input  class="duracionMod" value="${modificador.turnos}"/>
-                    <div class="eliminarMod">-</div>
-                </div>`;
+function opcionesAtributo(seleccionado) {
+    const conocido = GRUPOS_ATRIBUTOS.some(([, atributos]) => atributos.some(([valor]) => valor === seleccionado));
+    // Un atributo que ya no está en la lista (fichas antiguas) se conserva para no perderlo
+    const desconocido = !conocido ? `<option selected value="${seleccionado ?? ""}">(${seleccionado || "sin atributo"})</option>` : "";
+    return desconocido + GRUPOS_ATRIBUTOS.map(([grupo, atributos]) =>
+        `<optgroup label="${grupo}">${atributos.map(([valor, etiqueta]) =>
+            `<option ${valor === seleccionado ? "selected" : ""} value="${valor}">${etiqueta}</option>`).join("")}</optgroup>`
+    ).join("");
+}
+
+/* Un único listener por tipo de evento para toda la lista: sigue funcionando aunque se regenere */
+function modificadorDeEvento(e) {
+    const fila = e.target.closest(".fila-modificador");
+    return fila ? personaje.modificadores[Number(fila.dataset.index)] : null;
+}
+
+listadoModificadores.addEventListener("input", (e) => {
+    const mod = modificadorDeEvento(e);
+    if (mod && e.target.classList.contains("nombreMod")) mod.nombre = e.target.value;
+});
+
+listadoModificadores.addEventListener("change", (e) => {
+    const mod = modificadorDeEvento(e);
+    if (!mod) return;
+    const fila = e.target.closest(".fila-modificador");
+    if (e.target.classList.contains("listValores")) mod.modificado = e.target.value;
+    if (e.target.classList.contains("cantidadMod")) mod.numero = parseInt(e.target.value) || 0;
+    if (e.target.classList.contains("duracionMod")) {
+        // Un modificador temporal dura al menos 1 turno
+        mod.turnos = Math.max(1, parseInt(e.target.value) || 1);
+    }
+    if (e.target.classList.contains("checkPermanenteMod")) {
+        mod.turnos = e.target.checked
+            ? TURNOS_PERMANENTE
+            : Math.max(1, parseInt(fila.querySelector(".duracionMod").value) || 1);
+    }
+    if (e.target.classList.contains("nombreMod")) return; // el nombre no cambia ningún cálculo
+    personaje.calcularCaracteristicas();
+    actualizarTodo();
+});
+
+listadoModificadores.addEventListener("click", (e) => {
+    if (!e.target.closest(".quitar-mod")) return;
+    const fila = e.target.closest(".fila-modificador");
+    personaje.modificadores.splice(Number(fila.dataset.index), 1);
+    personaje.calcularCaracteristicas();
+    actualizarTodo();
+});
+
+function actualizarModificadores() {
+    // Las filas solo se regeneran si cambia el número de modificadores, para no perder el foco
+    if (listadoModificadores.children.length !== personaje.modificadores.length) {
+        listadoModificadores.innerHTML = personaje.modificadores.map((mod, index) => `
+            <div class="fila-modificador" data-index="${index}">
+                <div class="fila-mod-cabecera">
+                    <input type="text" class="nombreMod" placeholder="Nombre del modificador" aria-label="Nombre del modificador">
+                    <button type="button" class="quitar-mod" title="Eliminar modificador" aria-label="Eliminar modificador">×</button>
+                </div>
+                <div class="fila-mod-campos">
+                    <select class="listValores" aria-label="Atributo">${opcionesAtributo(mod.modificado)}</select>
+                    <input type="number" class="cantidadMod" aria-label="Cantidad" title="Cantidad (negativa para restar)">
+                    <label>Turnos <input type="number" min="1" class="duracionMod"></label>
+                    <label><input type="checkbox" class="checkPermanenteMod"> Permanente</label>
+                </div>
+                <span class="pista-mod"></span>
+            </div>`).join("");
+    }
+
+    personaje.modificadores.forEach((mod, index) => {
+        const fila = listadoModificadores.children[index];
+        const permanente = Modificador.esPermanente(mod);
+        const numero = Number(mod.numero) || 0;
+        const inputNombre = fila.querySelector(".nombreMod");
+        const select = fila.querySelector(".listValores");
+        const inputCantidad = fila.querySelector(".cantidadMod");
+        const inputTurnos = fila.querySelector(".duracionMod");
+
+        // No se pisa el campo que el usuario está editando
+        if (document.activeElement !== inputNombre) inputNombre.value = mod.nombre === "nombre" ? "" : (mod.nombre ?? "");
+        if (document.activeElement !== select && select.querySelector(`option[value="${mod.modificado}"]`)) select.value = mod.modificado;
+        if (document.activeElement !== inputCantidad) inputCantidad.value = numero;
+        if (document.activeElement !== inputTurnos) inputTurnos.value = permanente ? "" : mod.turnos;
+        inputTurnos.disabled = permanente;
+        fila.querySelector(".checkPermanenteMod").checked = permanente;
+
+        fila.classList.toggle("mod-positivo", numero > 0);
+        fila.classList.toggle("mod-negativo", numero < 0);
+        fila.querySelector(".pista-mod").textContent = permanente
+            ? "Permanente: dura hasta que lo edites o lo borres"
+            : `Quedan ${mod.turnos} turno${mod.turnos === 1 ? "" : "s"}`;
     });
-
-    /* Se añaden funcionalidad a los elementos TODO : hacer que el evento se lanze en los contenedores de modificadores y que haga bubbling para ver si esta donde debe  */
-    añadirFuncionalidadElementoModificador();
-
 }
 
 /* Equipo ___________________________________________________________________________________ */
@@ -556,9 +683,6 @@ function limpiarContenidoEquipamiento(propEquipo) {
     item.modificadores = [];
 }
 
-const TIPOS_DOS_MANOS = ["lanza", "espadon", "martillo_guerra", "hacha", "gran_escudo"];
-
-const TIPOS_ESCUDO = ["escudo", "gran_escudo"];
 
 const CONFIG_MANOS = [
     { prop: "manoIzquierda", titulo: "Mano izquierda:" },
@@ -709,18 +833,21 @@ function inicializarEquipamiento() {
         if (inputNombre) {
             inputNombre.addEventListener("input", (e) => {
                 personaje[propEquipo].nombre = e.target.value;
+                if (btnUsar) actualizarBotonUsar(btnUsar, propEquipo);
             });
         }
 
         if (inputDanno) {
             inputDanno.addEventListener("input", (e) => {
                 personaje[propEquipo].danno = Number(e.target.value) || 0;
+                if (btnUsar) actualizarBotonUsar(btnUsar, propEquipo);
             });
         }
 
         if (inputDefensa) {
             inputDefensa.addEventListener("input", (e) => {
                 personaje[propEquipo].defensa = Number(e.target.value) || 0;
+                if (btnUsar) actualizarBotonUsar(btnUsar, propEquipo);
                 personaje.calcularCaracteristicas();
                 actualizarCaracteristicas();
             });
@@ -743,22 +870,7 @@ function inicializarEquipamiento() {
         }
 
         if (btnUsar) {
-            btnUsar.addEventListener("click", () => {
-                const item = personaje[propEquipo];
-                if (TIPOS_ESCUDO.includes(item?.tipo)) {
-                    // Alterna el escudo: en uso suma su defensa, al repetir vuelve al estado original
-                    item.enUso = !item.enUso;
-                    personaje.calcularCaracteristicas();
-                    actualizarTodo();
-                    return;
-                }
-                const nombreArma = item?.nombre?.trim() || "Arma sin nombre";
-                const danno = item?.danno || 0;
-                const tipo = item?.tipo || "Sin tipo";
-                const esDosManos = TIPOS_DOS_MANOS.includes(item?.tipo);
-                const etiquetaMano = esDosManos ? 'Dos manos' : (propEquipo === 'manoIzquierda' ? 'Mano izquierda' : 'Mano derecha');
-                alert(`Usando equipamiento (${etiquetaMano}):\nNombre: ${nombreArma}\nTipo: ${tipo}\nDaño: ${danno}`);
-            });
+            btnUsar.addEventListener("click", () => usarEquipo(propEquipo));
         }
 
         if (btnAddMod) {
@@ -766,7 +878,7 @@ function inicializarEquipamiento() {
                 if (!Array.isArray(personaje[propEquipo].modificadores)) {
                     personaje[propEquipo].modificadores = [];
                 }
-                personaje[propEquipo].modificadores.push(new Modificador("Nombre", "atletismo", 0, -1));
+                personaje[propEquipo].modificadores.push(new Modificador("Nombre", "atletismo", 0, TURNOS_PERMANENTE));
                 parseModificadoresEquipo();
                 personaje.calcularCaracteristicas();
                 actualizarTodo();
@@ -888,13 +1000,7 @@ function actualizarEquipamiento() {
         if (inputDefensa && document.activeElement !== inputDefensa) {
             inputDefensa.value = item.defensa ?? 0;
         }
-        if (btnUsar && esEscudo) {
-            btnUsar.textContent = item.enUso ? "Guardar" : "Usar";
-            btnUsar.classList.toggle("en-uso", Boolean(item.enUso));
-        } else if (btnUsar) {
-            btnUsar.textContent = "Usar";
-            btnUsar.classList.remove("en-uso");
-        }
+        if (btnUsar) actualizarBotonUsar(btnUsar, propEquipo);
 
         if (select) {
             select.value = item.tipo || "";
@@ -921,6 +1027,91 @@ function actualizarEquipamiento() {
     });
 }
 
+/* Botón Usar: atacar con el arma o activar el escudo ____________________________ */
+
+const ETIQUETAS_MANO = { manoIzquierda: "Mano izquierda", manoDerecha: "Mano derecha" };
+
+/* Gasta las acciones necesarias; si no quedan, pregunta si hacerlo igualmente (p. ej. una reacción) */
+function gastarAccionesOConfirmar(partes, descripcion) {
+    if (gastarVarias(personaje, partes)) return true;
+    const motivo = estaIncapacitado(personaje)
+        ? "No puedes actuar (paralizado o dormido)."
+        : "No te quedan acciones para hacerlo.";
+    return confirm(`${motivo}\n¿${descripcion} igualmente?`);
+}
+
+function usarEquipo(propEquipo) {
+    const item = personaje[propEquipo];
+    const arma = ARMAS[item?.tipo];
+    if (!arma) return;
+    const partes = partesDeMano(propEquipo, arma.manos === 2);
+    const nombre = item.nombre?.trim() || arma.etiqueta;
+
+    // Escudo: al usarlo suma su defensa hasta tu siguiente turno; volver a pulsar lo guarda
+    if (arma.escudo) {
+        if (item.enUso) {
+            item.enUso = false;
+        } else {
+            if (!gastarAccionesOConfirmar(partes, `Usar ${nombre}`)) return;
+            item.enUso = true;
+        }
+        personaje.calcularCaracteristicas();
+        actualizarTodo();
+        return;
+    }
+
+    const { modoTirada, criticoFacil } = obtenerConfiguracionTirada();
+    const ataque = prepararAtaque(personaje, propEquipo, modoTirada);
+    if (!ataque) return;
+    if (!gastarAccionesOConfirmar(partes, `Atacar con ${nombre}`)) return;
+
+    ejecutarTirada({
+        nombreAccion: ataque.nombre,
+        subtitulo: `Ataque con ${arma.etiqueta.toLowerCase()} · ${arma.manos === 2 ? "Dos manos" : ETIQUETAS_MANO[propEquipo]}`,
+        valorHabilidad: ataque.valorHabilidad,
+        etiquetaHabilidad: ataque.etiquetaHabilidad,
+        valorCaracteristica: ataque.valorCaracteristica,
+        etiquetaCaracteristica: ataque.etiquetaCaracteristica,
+        modoTirada: ataque.modo,
+        criticoFacil: criticoFacil,
+        bonificador: ataque.bonificador,
+        etiquetaBonificador: ataque.bonificador > 0 ? "Ventaja extra" : "Desventaja extra",
+        etiquetaTotal: "ATAQUE",
+        calcularDanno: (resultado) => calcularDannoAtaque(personaje, item, esCritico(resultado))
+    });
+    actualizarTodo();
+}
+
+function actualizarBotonUsar(boton, propEquipo) {
+    const item = personaje[propEquipo];
+    const arma = ARMAS[item?.tipo];
+    if (!arma) return;
+
+    // El icono solo se regenera si cambia el tipo
+    if (boton.dataset.icono !== item.tipo) {
+        boton.dataset.icono = item.tipo;
+        boton.innerHTML = iconoSao(item.tipo);
+    }
+
+    const nombre = item.nombre?.trim() || arma.etiqueta;
+    const partes = partesDeMano(propEquipo, arma.manos === 2);
+    let titulo;
+    if (arma.escudo) {
+        titulo = item.enUso
+            ? `${nombre} en uso: +${item.defensa || 0} de defensa hasta tu siguiente turno. Clic para guardarlo.`
+            : `Usar ${nombre}: suma ${item.defensa || 0} a tu defensa hasta tu siguiente turno.`;
+    } else {
+        titulo = `Atacar con ${nombre} (daño ${Number(item.danno) || 0} + ${Math.max(0, personaje.dFisico)} de bonificador)`;
+    }
+    if (!(arma.escudo && item.enUso) && !puedeGastarVarias(personaje, partes)) {
+        titulo += " · Sin acciones disponibles";
+    }
+    boton.title = titulo;
+    boton.setAttribute("aria-label", titulo);
+    boton.classList.toggle("en-uso", Boolean(arma.escudo && item.enUso));
+    boton.classList.toggle("sin-accion", !(arma.escudo && item.enUso) && !puedeGastarVarias(personaje, partes));
+}
+
 function parseModificadoresEquipo() {
     for (const elemento of document.getElementsByClassName("equipamiento")) {
         const propEquipo = getPropiedadEquipo(elemento);
@@ -935,17 +1126,7 @@ function parseModificadoresEquipo() {
                 listaModsEquipo.innerHTML += ` 
                 <li id="modificadorE${index}" class="modificadorE">
                   <input type="text" class="" style="display:none" value="${modificador.nombre}"> Atributo:
-                  <select class="listValores" > 
-                        <option ${modificador.modificado == "atletismo" ? "selected" : ""} value="atletismo">Atletismo</option>
-                        <option ${modificador.modificado == "combate" ? "selected" : ""} value="combate">Combate</option>
-                        <option ${modificador.modificado == "percepcion" ? "selected" : ""} value="percepcion">Percepción</option>
-                        <option ${modificador.modificado == "subterfugio" ? "selected" : ""} value="subterfugio">Sigilo</option>
-                        <option ${modificador.modificado == "comunicacion" ? "selected" : ""} value="comunicacion">Carisma</option>
-                        <option ${modificador.modificado == "cutlura" ? "selected" : ""} value="cutlura">Cultura</option>
-                        <option ${modificador.modificado == "profesion" ? "selected" : ""} value="profesion">Profesion</option>
-                        <option ${modificador.modificado == "sacro" ? "selected" : ""} value="sacro">Sacro</option>
-                        <option ${modificador.modificado == "armadura" ? "selected" : ""} value="armadura">Armadura</option>
-                    </select> 
+                  <select class="listValores">${opcionesAtributo(modificador.modificado)}</select>
                     Cantidad:<input type="number" class="cantidadMod" value="${modificador.numero}"/> 
                     <input style="display:none" class="duracionMod" value="${modificador.turnos}"/>
                     <div class="eliminarMod">-</div>
@@ -1011,7 +1192,7 @@ function generarAccesorios() {
                 if (!Array.isArray(personaje.accesorios[index].modificadores)) {
                     personaje.accesorios[index].modificadores = [];
                 }
-                personaje.accesorios[index].modificadores.push(new Modificador("Nombre", "atletismo", 0, 0));
+                personaje.accesorios[index].modificadores.push(new Modificador("Nombre", "atletismo", 0, TURNOS_PERMANENTE));
                 parseModificadoresAccesorios();
                 personaje.calcularCaracteristicas();
                 actualizarTodo();
@@ -1028,17 +1209,7 @@ function parseModificadoresAccesorios() {
             modificadoresAccesorio.innerHTML += ` 
             <li class="modificadorA">
               <input type="text" class="" style="display:none" value="${modificador.nombre}"> Atributo:
-              <select class="listValores" > 
-                    <option ${modificador.modificado == "atletismo" ? "selected" : ""} value="atletismo">Atletismo</option>
-                    <option ${modificador.modificado == "combate" ? "selected" : ""} value="combate">Combate</option>
-                    <option ${modificador.modificado == "percepcion" ? "selected" : ""} value="percepcion">Percepción</option>
-                    <option ${modificador.modificado == "subterfugio" ? "selected" : ""} value="subterfugio">Sigilo</option>
-                    <option ${modificador.modificado == "comunicacion" ? "selected" : ""} value="comunicacion">Carisma</option>
-                    <option ${modificador.modificado == "cutlura" ? "selected" : ""} value="cutlura">Cultura</option>
-                    <option ${modificador.modificado == "profesion" ? "selected" : ""} value="profesion">Profesion</option>
-                    <option ${modificador.modificado == "sacro" ? "selected" : ""} value="sacro">Sacro</option>
-                    <option ${modificador.modificado == "armadura" ? "selected" : ""} value="armadura">Armadura</option>
-                </select> 
+              <select class="listValores">${opcionesAtributo(modificador.modificado)}</select>
                 Cantidad:<input type="number" class="cantidadMod" value="${modificador.numero}"/> 
                 <input style="display:none" class="duracionMod" value="${modificador.turnos}"/>
                 <button type="button" class="eliminarMod">-</button>
@@ -1090,44 +1261,6 @@ function añadirFuncionalidadAccesorioModificador() {
 }
 
 
-
-/* Se llama cada vez que se añade un modificador */
-function añadirFuncionalidadElementoModificador() {
-    for (const modificador of document.getElementsByClassName("modificador")) {
-        let index = modificador.id.substring(11);
-
-        modificador.children[0].addEventListener('focusout', (evt) => {
-            personaje.modificadores[index].nombre = evt.currentTarget.value;
-            console.log(personaje.modificadores);
-            actualizarTodo();//cuando se cambia el numero el valor numerico ded algo puede variar.
-
-        })
-        modificador.children[1].addEventListener('focusout', (evt) => {
-            personaje.modificadores[index].modificado = evt.currentTarget.value;
-            console.log(personaje.modificadores);
-        })
-        modificador.children[2].addEventListener('focusout', (evt) => {
-            personaje.modificadores[index].numero = parseInt(evt.currentTarget.value);
-            personaje.calcularCaracteristicas();
-            console.log(personaje.modificadores);
-            actualizarTodo();//cuando se cambia el numero el valor numerico ded algo puede variar.
-        })
-        modificador.children[3].addEventListener('focusout', (evt) => {
-            personaje.modificadores[index].turnos = parseInt(evt.currentTarget.value);
-            personaje.calcularCaracteristicas();
-            actualizarTodo();//puede que haya desaparecido un modificador por lo que hay que recalcular
-        })
-
-        modificador.children[4].addEventListener('click', (evt) => {
-            personaje.modificadores.splice(index, 1);
-            parseModificadores();
-            personaje.calcularCaracteristicas();
-            actualizarTodo();//cuando se cambia el numero el valor numerico ded algo puede variar.
-
-        })
-
-    }
-}
 
 function añadirFuncionalidadEquipoModificador() {
     for (const modificador of document.getElementsByClassName("modificadorE")) {
@@ -1209,7 +1342,8 @@ function inicializarTiradasHabilidades() {
 
         const dispararTirada = () => {
             const { modoTirada, criticoFacil } = obtenerConfiguracionTirada();
-            const valorHab = Number(personaje[habilidadId]) || 0;
+            // Valor efectivo: incluye modificadores y penalización de armadura (sin bajar de 0)
+            const valorHab = Math.max(0, Number(personaje.getGenerico(habilidadId)) || 0);
             const valorCaract = caractClave ? (Number(personaje[caractClave]) || 0) : 0;
 
             ejecutarTirada({
@@ -1224,13 +1358,426 @@ function inicializarTiradasHabilidades() {
         if (img) img.addEventListener('click', dispararTirada);
         if (titulo) titulo.addEventListener('click', dispararTirada);
     });
+
+    // Tiradas de característica: dado + característica (sin habilidad)
+    document.querySelectorAll('.atributo-icono[data-atributo]').forEach(icono => {
+        const atributo = icono.dataset.atributo;
+        const nombre = icono.alt || atributo;
+        icono.title = `Tirada de ${nombre}`;
+        icono.addEventListener('click', () => {
+            const { modoTirada, criticoFacil } = obtenerConfiguracionTirada();
+            ejecutarTirada({
+                nombreAccion: nombre,
+                valorHabilidad: 0,
+                etiquetaHabilidad: null,
+                valorCaracteristica: Number(personaje[atributo]) || 0,
+                etiquetaCaracteristica: nombre,
+                modoTirada: modoTirada,
+                criticoFacil: criticoFacil
+            });
+        });
+    });
+}
+
+/* Turno y acciones __________________________________________________________ */
+
+/* Partes de la silueta → tipo de acción en PJ (el torso no gasta acción) */
+const PARTES_SILUETA = {
+    "cabeza": "cabeza",
+    "brazo-der": "derecha",
+    "brazo-izq": "izquierda",
+    "pierna-izq": "pies",
+    "pierna-der": "pies"
+};
+
+/* Popup informativo con el mismo estilo que los de dados */
+function mostrarPopupInfo(titulo, lineas) {
+    const contenedor = document.getElementById("contenedor-popups-dados");
+    if (!contenedor) return;
+    const popup = document.createElement("div");
+    popup.className = "popup-dado";
+    popup.innerHTML = `
+        <div class="popup-header"><strong class="popup-titulo">${titulo}</strong></div>
+        <ul class="popup-lista">${lineas.map(l => `<li>${l}</li>`).join("")}</ul>`;
+    popup.addEventListener("click", () => popup.remove());
+    contenedor.appendChild(popup);
+}
+
+function inicializarTurno() {
+    document.getElementById("btnIniciarTurno").addEventListener("click", () => {
+        const resumen = iniciarTurno(personaje);
+        actualizarTodo();
+        mostrarPopupInfo("Inicio de turno", resumen);
+    });
+
+    Object.entries(PARTES_SILUETA).forEach(([idSvg, parte]) => {
+        const elemento = document.getElementById(idSvg);
+        if (!elemento) return;
+        elemento.addEventListener("click", () => {
+            // Clic en una acción gastada la devuelve (para corregir errores)
+            if (personaje[parte]) gastarAccion(personaje, parte);
+            else devolverAccion(personaje, parte);
+            actualizarTodo();
+        });
+    });
+
+    document.getElementById("btnMover").addEventListener("click", () => {
+        if (gastarAccion(personaje, "pies")) actualizarTodo();
+    });
+
+    document.getElementById("btnCorrer").addEventListener("click", () => {
+        if (correr(personaje)) actualizarTodo();
+    });
+
+    document.getElementById("btnSigilo").addEventListener("click", () => {
+        if (personaje.enSigilo) {
+            salirDeSigilo(personaje);
+            actualizarTodo();
+            return;
+        }
+        const modoArmadura = modoSigiloPorArmadura(personaje.equipoArmadura?.tipo);
+        if (modoArmadura === null) {
+            alert("Con armadura pesada no se puede entrar en sigilo.");
+            return;
+        }
+        if (!puedeEntrarEnSigilo(personaje)) return;
+
+        // El dado depende de la armadura; el modo elegido en el panel cuenta como otra fuente
+        const { modoTirada, criticoFacil } = obtenerConfiguracionTirada();
+        const { modo, bonificador } = combinarModos(modoArmadura, modoTirada);
+        const resultado = ejecutarTirada({
+            nombreAccion: "Entrar en sigilo",
+            valorHabilidad: Math.max(0, Number(personaje.getGenerico("subterfugio")) || 0),
+            valorCaracteristica: Number(personaje.reflejos) || 0,
+            modoTirada: modo,
+            criticoFacil: criticoFacil,
+            bonificador: bonificador,
+            etiquetaBonificador: bonificador > 0 ? "Ventaja extra" : "Desventaja extra"
+        });
+        entrarEnSigilo(personaje, resultado.total);
+        actualizarTodo();
+    });
+}
+
+function actualizarAcciones() {
+    const restantes = accionesRestantes(personaje);
+
+    Object.entries(PARTES_SILUETA).forEach(([idSvg, parte]) => {
+        const elemento = document.getElementById(idSvg);
+        if (!elemento) return;
+        const disponible = Boolean(personaje[parte]);
+        elemento.classList.toggle("gris", !disponible);
+        elemento.classList.toggle("bloqueada", disponible && !puedeGastar(personaje, parte));
+    });
+
+    const contador = document.getElementById("contadorAcciones");
+    if (contador) contador.textContent = `(${restantes} / ${personaje.numeroAcciones})`;
+
+    const btnMover = document.getElementById("btnMover");
+    const btnCorrer = document.getElementById("btnCorrer");
+    const btnSigilo = document.getElementById("btnSigilo");
+    document.getElementById("casillasMover").textContent = `(${velocidadMovimiento(personaje)})`;
+    document.getElementById("casillasCorrer").textContent = `(${velocidadCorrer(personaje)})`;
+    btnMover.disabled = !puedeMoverse(personaje);
+    btnCorrer.disabled = !puedeCorrer(personaje);
+    btnCorrer.title = personaje.enSigilo ? "No se puede correr en sigilo" : "Gasta las tres acciones del turno";
+
+    btnSigilo.classList.toggle("activo", personaje.enSigilo);
+    btnSigilo.textContent = personaje.enSigilo ? "Salir de sigilo" : "Sigilo";
+    btnSigilo.disabled = !personaje.enSigilo && !puedeEntrarEnSigilo(personaje);
+    btnSigilo.title = modoSigiloPorArmadura(personaje.equipoArmadura?.tipo) === null
+        ? "Con armadura pesada no se puede entrar en sigilo"
+        : "Entrar en sigilo gasta la acción de piernas";
+
+    const avisos = [];
+    if (personaje.enSigilo) avisos.push(`En sigilo: ${personaje.valorSigilo}`);
+    if (estaActivo(personaje, "paralisis")) avisos.push("Paralizado: no puede actuar");
+    else if (estaActivo(personaje, "dormido")) avisos.push("Dormido: no puede actuar");
+    else if (personaje.numeroAcciones === 0) avisos.push("Sin acciones este turno");
+    document.getElementById("estadoTurno").textContent = avisos.join(" · ");
+}
+
+/* Estados ___________________________________________________________________ */
+const chipsEstados = document.getElementById("chipsEstados");
+const listaEstadosActivos = document.getElementById("listaEstadosActivos");
+
+function inicializarEstados() {
+    chipsEstados.innerHTML = Object.entries(ESTADOS_INFO).map(([clave, info]) => `
+        <button type="button" class="chip-estado" data-estado="${clave}" style="${estiloColor(info)}"
+            title="${info.etiqueta}: ${info.descripcion}" aria-pressed="false">
+            <span class="chip-icono">${iconoSao(info.icono)}</span>
+            <span class="chip-nombre">${info.etiqueta}</span>
+        </button>`
+    ).join("");
+
+    // Clic en un chip: activa el estado con sus valores por defecto o lo quita
+    chipsEstados.addEventListener("click", (e) => {
+        const chip = e.target.closest(".chip-estado");
+        if (!chip) return;
+        const estado = chip.dataset.estado;
+        if (estaActivo(personaje, estado)) quitarEstado(personaje, estado);
+        else activarEstado(personaje, estado);
+        actualizarTodo();
+    });
+
+    listaEstadosActivos.addEventListener("change", (e) => {
+        const fila = e.target.closest(".fila-estado");
+        if (!fila) return;
+        const clave = fila.dataset.estado;
+        const estado = personaje.estados[clave];
+        const inputTurnos = fila.querySelector(".turnosEstado");
+        const turnosPorDefecto = Math.max(1, ESTADOS_INFO[clave].turnos);
+
+        if (e.target.classList.contains("valorEstado")) {
+            estado.valor = Math.max(0, parseInt(e.target.value) || 0);
+        }
+        if (e.target.classList.contains("turnosEstado")) {
+            // 0 = último turno (termina al iniciar el siguiente)
+            const turnos = parseInt(e.target.value);
+            estado.turnos = Number.isFinite(turnos) ? Math.max(0, turnos) : 1;
+        }
+        if (e.target.classList.contains("checkPermanenteEstado")) {
+            estado.turnos = e.target.checked
+                ? TURNOS_PERMANENTE
+                : Math.max(1, parseInt(inputTurnos.value) || turnosPorDefecto);
+        }
+
+        // Un valor de 0 equivale a quitar el estado
+        if (estado.valor === 0) quitarEstado(personaje, clave);
+        personaje.calcularCaracteristicas();
+        actualizarTodo();
+    });
+
+    listaEstadosActivos.addEventListener("click", (e) => {
+        const boton = e.target.closest(".quitar-estado");
+        if (!boton) return;
+        quitarEstado(personaje, boton.closest(".fila-estado").dataset.estado);
+        actualizarTodo();
+    });
+}
+
+/* Texto de ayuda bajo cada estado activo con su efecto actual */
+function pistaEstado(clave) {
+    const valor = Number(personaje.estados[clave]?.valor) || 0;
+    const aguante = personaje.aguante;
+    switch (clave) {
+        case "quemadura": {
+            const combate = personaje.getGenerico("combate");
+            return `Combate efectivo: ${combate}` + (combate < 0 ? ` → −${-combate} PV por turno` : "");
+        }
+        case "electrocutado": return `Atletismo efectivo: ${personaje.getGenerico("atletismo")}`;
+        case "deslumbrado": return `Percepción efectiva: ${personaje.getGenerico("percepcion")}`;
+        case "congelacion": return `Aguante ${aguante}: −1 acción desde ${2 * aguante}, −2 desde ${3 * aguante}, PA desde ${4 * aguante}`;
+        case "hemorragia": return valor > aguante
+            ? `Supera el Aguante (${aguante}): −${valor} PV por turno`
+            : `Sin efecto hasta superar el Aguante (${aguante})`;
+        case "oscuridad": return `PV máximos: ${personaje.vidaMax}`;
+        default: return "";
+    }
+}
+
+function actualizarEstados() {
+    chipsEstados.querySelectorAll(".chip-estado").forEach(chip => {
+        const activo = estaActivo(personaje, chip.dataset.estado);
+        chip.classList.toggle("activo", activo);
+        chip.setAttribute("aria-pressed", String(activo));
+    });
+
+    // Las filas solo se regeneran si cambia qué estados están activos, para no perder el foco
+    const activos = Object.keys(ESTADOS_INFO).filter(clave => estaActivo(personaje, clave));
+    const claves = activos.join(",");
+    if (listaEstadosActivos.dataset.claves !== claves) {
+        listaEstadosActivos.dataset.claves = claves;
+        listaEstadosActivos.innerHTML = activos.map(clave => {
+            const info = ESTADOS_INFO[clave];
+            return `
+            <div class="fila-estado icono-activo" data-estado="${clave}" style="${estiloColor(info)}" title="${info.descripcion}">
+                <span class="fila-icono">${iconoSao(info.icono)}</span>
+                <span class="nombre-estado">${info.etiqueta}</span>
+                ${info.unidad ? `<label>${info.unidad} <input type="number" min="0" class="valorEstado"></label>` : ""}
+                <label>Turnos <input type="number" min="0" class="turnosEstado"></label>
+                <label><input type="checkbox" class="checkPermanenteEstado"> Permanente</label>
+                <button type="button" class="quitar-estado" title="Quitar" aria-label="Quitar ${info.etiqueta}">×</button>
+                <span class="pista-estado"></span>
+            </div>`;
+        }).join("");
+    }
+
+    listaEstadosActivos.querySelectorAll(".fila-estado").forEach(fila => {
+        const estado = personaje.estados[fila.dataset.estado];
+        // -1 = permanente; 0 = último turno (termina al iniciar el siguiente)
+        const permanente = estado.turnos < 0;
+        const inputValor = fila.querySelector(".valorEstado");
+        const inputTurnos = fila.querySelector(".turnosEstado");
+        if (inputValor && document.activeElement !== inputValor) inputValor.value = estado.valor;
+        if (document.activeElement !== inputTurnos) inputTurnos.value = permanente ? "" : estado.turnos;
+        inputTurnos.disabled = permanente;
+        fila.querySelector(".checkPermanenteEstado").checked = permanente;
+        const pista = [pistaEstado(fila.dataset.estado)];
+        if (estado.turnos === 0) pista.push("Último turno: termina al iniciar el siguiente");
+        fila.querySelector(".pista-estado").textContent = pista.filter(Boolean).join(" · ");
+    });
+}
+
+/* Ventana de daño ___________________________________________________________ */
+function inicializarDanno() {
+    const modalEl = document.getElementById("modalDanno");
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    const inputCantidad = document.getElementById("inputCantidadDanno");
+    const checkIgnorar = document.getElementById("checkIgnorarArmadura");
+    const subElemental = document.getElementById("dannoSubElemental");
+    const labelIgnorar = document.getElementById("labelIgnorarArmadura");
+    const preview = document.getElementById("previewDanno");
+
+    // Icono y color de cada opción de tipo de daño
+    modalEl.querySelectorAll(".opcion-danno").forEach(opcion => {
+        const info = TIPOS_DANNO[opcion.querySelector("input").value];
+        if (!info) return;
+        opcion.setAttribute("style", estiloColor(info));
+        opcion.insertAdjacentHTML("afterbegin", `<span class="opcion-icono">${iconoSao(info.icono)}</span>`);
+    });
+
+    const leerTipo = () => {
+        const tipo = modalEl.querySelector('input[name="tipoDanno"]:checked')?.value || "fisico";
+        if (tipo !== "elemental") return tipo;
+        return modalEl.querySelector('input[name="elementoDanno"]:checked')?.value || "fuego";
+    };
+
+    // La vista previa aplica el daño sobre una copia del personaje
+    const actualizarPreview = () => {
+        const esElemental = modalEl.querySelector('input[name="tipoDanno"]:checked')?.value === "elemental";
+        subElemental.style.display = esElemental ? "" : "none";
+        labelIgnorar.style.display = leerTipo() === "fisico" ? "" : "none";
+
+        const copia = new PJ();
+        copia.cargarJSON(JSON.parse(personaje.toJSONString()));
+        const resumen = aplicarDanno(copia, inputCantidad.value, leerTipo(), { ignorarArmadura: checkIgnorar.checked });
+        preview.innerHTML = resumen.map(linea => `<li>${linea}</li>`).join("");
+    };
+
+    const aplicar = () => {
+        const tipo = leerTipo();
+        const resumen = aplicarDanno(personaje, inputCantidad.value, tipo, { ignorarArmadura: checkIgnorar.checked });
+        modal.hide();
+        actualizarTodo();
+        mostrarPopupInfo(`Daño: ${TIPOS_DANNO[tipo].etiqueta}`, resumen);
+    };
+
+    modalEl.addEventListener("input", actualizarPreview);
+    modalEl.addEventListener("change", actualizarPreview);
+    modalEl.addEventListener("shown.bs.modal", () => {
+        inputCantidad.focus();
+        inputCantidad.select();
+    });
+    inputCantidad.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") aplicar();
+    });
+    document.getElementById("btnAplicarDanno").addEventListener("click", aplicar);
+
+    document.getElementById("btnRecibirDanno").addEventListener("click", () => {
+        inputCantidad.value = "";
+        checkIgnorar.checked = false;
+        actualizarPreview();
+        modal.show();
+    });
+}
+
+/* Pestañas (inventario, baúl, amigos, artes) _______________________________ */
+const CLAVE_PESTANA = "fichaSAO.pestana";
+
+function inicializarPestanas() {
+    const pestanas = Array.from(document.querySelectorAll(".pestanas .pestana"));
+    if (!pestanas.length) return;
+
+    const activar = (pestana, enfocar = false) => {
+        pestanas.forEach(p => {
+            const activa = p === pestana;
+            p.classList.toggle("activa", activa);
+            p.setAttribute("aria-selected", String(activa));
+            p.tabIndex = activa ? 0 : -1;
+            document.getElementById(p.getAttribute("aria-controls")).hidden = !activa;
+        });
+        if (enfocar) pestana.focus();
+        // Recordar la pestaña es solo una comodidad: si el navegador no deja guardar, no pasa nada
+        try { localStorage.setItem(CLAVE_PESTANA, pestana.id); } catch { /* sin almacenamiento */ }
+    };
+
+    pestanas.forEach((pestana, i) => {
+        pestana.addEventListener("click", () => activar(pestana));
+        // Flechas para moverse entre pestañas (patrón de accesibilidad de tabs)
+        pestana.addEventListener("keydown", (e) => {
+            const destino = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: pestanas.length - 1 }[e.key];
+            if (destino === undefined) return;
+            e.preventDefault();
+            activar(pestanas[(destino + pestanas.length) % pestanas.length], true);
+        });
+    });
+
+    try {
+        const guardada = document.getElementById(localStorage.getItem(CLAVE_PESTANA));
+        if (pestanas.includes(guardada)) activar(guardada);
+    } catch { /* sin almacenamiento: se queda en Inventario */ }
+}
+
+/* Debug: abrir la página con ?debug para ver el botón ______________________ */
+function inicializarDebug() {
+    if (!new URLSearchParams(window.location.search).has("debug")) return;
+
+    // Acceso desde la consola del navegador: fichaDebug.personaje, fichaDebug.ejecutar()...
+    window.fichaDebug = { personaje, ejecutar: () => ejecutarDebug(personaje), crearPersonajePrueba, validarFicha };
+
+    const boton = document.createElement("button");
+    boton.type = "button";
+    boton.textContent = "Debug";
+    boton.style.cssText = "position:fixed;right:16px;bottom:16px;z-index:2000;padding:6px 14px;" +
+        "border:2px solid #d1ab52;border-radius:8px;background:#fbfbfb;font-weight:bold;";
+    boton.addEventListener("click", mostrarInformeDebug);
+    document.body.appendChild(boton);
+}
+
+function mostrarInformeDebug() {
+    const informe = ejecutarDebug(personaje);
+    console.group("Debug de la ficha");
+    Object.entries(informe).forEach(([seccion, lineas]) => console.log(seccion, lineas));
+    console.groupEnd();
+
+    const secciones = [
+        ["Ida y vuelta (tu ficha)", informe.idaVueltaActual],
+        ["Ida y vuelta (ficha de prueba con todos los campos)", informe.idaVueltaPrueba],
+        ["Campos del modelo que no se guardan", informe.camposSinGuardar],
+        ["Pantalla distinta del modelo", informe.interfaz],
+        ["Avisos de reglas", informe.avisos]
+    ];
+    const escapar = (texto) => String(texto).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+    document.getElementById("panelDebug")?.remove();
+    const panel = document.createElement("div");
+    panel.id = "panelDebug";
+    panel.style.cssText = "position:fixed;right:16px;bottom:60px;z-index:2000;width:min(480px,calc(100vw - 32px));" +
+        "max-height:70vh;overflow:auto;padding:12px 16px;border:3px solid #d1ab52;border-radius:10px;" +
+        "background:#fbfbfb;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,.2);";
+    panel.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;">
+            <b>Debug de la ficha</b><button type="button" class="btn-close" aria-label="Cerrar"></button>
+        </div>` + secciones.map(([titulo, lineas]) => `
+        <div style="margin-top:10px;">
+            <b style="color:${lineas.length ? "#c0392b" : "#2e7d32"};">${lineas.length ? "✗" : "✓"} ${titulo}</b>
+            ${lineas.length ? `<ul style="margin:4px 0 0;padding-left:18px;">${lineas.map(l => `<li>${escapar(l)}</li>`).join("")}</ul>` : ""}
+        </div>`).join("");
+    panel.querySelector(".btn-close").addEventListener("click", () => panel.remove());
+    document.body.appendChild(panel);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
     construirManosEquipamiento();
     inicializarEquipamiento();
-    parseModificadores();
+    actualizarModificadores();
     parseModificadoresEquipo();
     actualizarTodo();
     inicializarTiradasHabilidades();
+    inicializarTurno();
+    inicializarEstados();
+    inicializarDanno();
+    inicializarPestanas();
+    inicializarDebug();
+    actualizarTodo();
 });

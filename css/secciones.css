@@ -97,6 +97,124 @@
     margin: 10px auto;
 }
 
+.contador-acciones {
+    font-size: 14px;
+    font-weight: normal;
+    color: #fbfbfb;
+    margin-left: 10px;
+}
+
+.silueta-wrapper {
+    position: relative;
+}
+
+/* Botones con icono SAO sobre la silueta: imagen normal y versión _on al pasar el ratón */
+.btn-icono-sao {
+    position: absolute;
+    top: 0;
+    z-index: 1;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    filter: drop-shadow(0px 2px 3px rgba(0, 0, 0, 0.3));
+    transition: transform 0.1s;
+}
+
+.btn-icono-sao:hover {
+    transform: scale(1.08);
+}
+
+.btn-icono-sao:active {
+    transform: scale(0.96);
+}
+
+.btn-icono-sao img {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.btn-icono-sao .icono-on,
+.btn-icono-sao:hover .icono-off,
+.btn-icono-sao:focus-visible .icono-off {
+    display: none;
+}
+
+.btn-icono-sao:hover .icono-on,
+.btn-icono-sao:focus-visible .icono-on {
+    display: block;
+}
+
+/* Play arriba a la izquierda, daño arriba a la derecha */
+.btn-turno {
+    left: 0;
+}
+
+.btn-danno-icono {
+    right: 0;
+}
+
+/* Acción disponible pero sin acciones restantes este turno */
+.parte.bloqueada {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.estado-turno {
+    min-height: 1.2em;
+    text-align: center;
+    font-size: 13px;
+    font-weight: bold;
+    color: #b8933b;
+}
+
+.acciones-movimiento {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.btn-accion {
+    flex: 1;
+    background: #d1ab52;
+    color: #ffffff;
+    border: none;
+    border-radius: 5px;
+    padding: 5px 8px;
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+}
+
+.btn-accion:hover:not(:disabled) {
+    background: #b8933b;
+    transform: translateY(-1px);
+}
+
+.btn-accion:disabled {
+    background: #bbbbbb;
+    cursor: not-allowed;
+}
+
+/* Sigilo activo */
+.btn-accion.activo {
+    background: #555555;
+    box-shadow: inset 0 0 0 2px #d1ab52;
+}
+
+/* Popup informativo (resumen de turno) */
+.popup-lista {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 13px;
+}
+
 /* Equipamiento y Modificadores */
 #divEquipamiento {
     display: flex;
@@ -209,25 +327,42 @@
     border-radius: 5px;
 }
 
+/* Botón Usar: icono del arma o escudo (scripts/iconos.js) */
 .btn-usar-equipo {
-    background: #d1ab52;
-    color: #ffffff;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    padding: 0;
+    background: none;
     border: none;
-    border-radius: 5px;
-    padding: 4px 10px;
-    font-size: 12px;
-    font-weight: bold;
+    border-radius: 50%;
     cursor: pointer;
-    transition: background 0.2s, transform 0.1s;
+    transition: transform 0.1s, opacity 0.2s;
 }
 
 .btn-usar-equipo:hover {
-    background: #b8933b;
-    transform: translateY(-1px);
+    transform: scale(1.08);
 }
 
 .btn-usar-equipo:active {
-    transform: translateY(0);
+    transform: scale(0.96);
+}
+
+.btn-usar-equipo:hover .icono-sao,
+.btn-usar-equipo:focus-visible .icono-sao {
+    --fondo: #FBFBFB;
+    --glifo: #EBA601;
+}
+
+/* Escudo en uso: dorado */
+.btn-usar-equipo.en-uso .icono-sao {
+    --fondo: #EBA601;
+    --glifo: #FBFBFB;
+}
+
+/* Sin acciones disponibles: se puede pulsar igualmente (pide confirmación) */
+.btn-usar-equipo.sin-accion {
+    opacity: 0.45;
 }
 
 .equipamiento-mods-header {
@@ -347,18 +482,18 @@
 }
 
 /* Inventario */
-#inventario p {
+#listaInventario p {
     display: flex;
     gap: 8px;
     align-items: center;
     margin-bottom: 6px;
 }
 
-#inventario .itemInv {
+#listaInventario .itemInv {
     flex: 1;
 }
 
-#inventario input[type='number'] {
+#listaInventario input[type='number'] {
     width: 60px;
     text-align: center;
 }
@@ -414,3 +549,383 @@
     resize: vertical;
 }
 
+
+/* Iconos SAO en línea (scripts/iconos.js): los colores salen de variables CSS */
+.icono-sao {
+    --fondo: #4D4D4D;
+    --glifo: #FBFBFB;
+    display: block;
+    width: 100%;
+    height: 100%;
+    filter: drop-shadow(0px 2px 3px rgba(0, 0, 0, 0.3));
+}
+
+.icono-sao .ic-fondo { fill: var(--fondo); }
+.icono-sao .p { fill: var(--glifo); }
+.icono-sao .s { fill: var(--glifo); opacity: 0.71; }
+.icono-sao .f { fill: var(--fondo); }
+.icono-sao .o { opacity: 0.71; }
+.icono-sao .t {
+    fill: none;
+    stroke: var(--glifo);
+    stroke-width: 6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.icono-sao .tf {
+    fill: none;
+    stroke: var(--fondo);
+    stroke-width: 14;
+    stroke-linecap: round;
+}
+
+/* Variante activa: fondo del color representativo (--color) y glifo --color-glifo */
+.icono-activo .icono-sao {
+    --fondo: var(--color);
+    --glifo: var(--color-glifo, #FBFBFB);
+}
+
+/* Panel de Estados */
+.estados-chips {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+    gap: 6px 4px;
+}
+
+.chip-estado {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 0;
+    background: none;
+    border: none;
+    color: #666;
+    font-size: 10px;
+    font-weight: bold;
+    line-height: 1.1;
+    cursor: pointer;
+}
+
+.chip-estado .chip-icono {
+    width: 40px;
+    height: 40px;
+    transition: transform 0.1s;
+}
+
+.chip-estado:hover .chip-icono {
+    transform: scale(1.08);
+}
+
+/* Inactivo con el ratón encima: versión _on (blanco y dorado), como el resto de iconos */
+.chip-estado:not(.activo):hover .icono-sao,
+.chip-estado:not(.activo):focus-visible .icono-sao {
+    --fondo: #FBFBFB;
+    --glifo: #EBA601;
+}
+
+.chip-estado.activo {
+    color: var(--color);
+}
+
+.chip-estado.activo .icono-sao {
+    --fondo: var(--color);
+    --glifo: var(--color-glifo, #FBFBFB);
+}
+
+.estados-activos {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.fila-estado {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    border: 1px solid #d1ab52;
+    border-left-width: 4px;
+    border-radius: 5px;
+    background: #fffdf7;
+    font-size: 12px;
+}
+
+.fila-estado {
+    border-left-color: var(--color, #d1ab52);
+}
+
+.fila-estado .fila-icono {
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+}
+
+.fila-estado .nombre-estado {
+    font-weight: bold;
+    min-width: 80px;
+}
+
+.fila-estado input[type='number'] {
+    width: 48px;
+    text-align: center;
+}
+
+.fila-estado .pista-estado {
+    flex-basis: 100%;
+    color: #888;
+    font-style: italic;
+}
+
+.fila-estado .quitar-estado {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: #c0392b;
+    font-size: 16px;
+    font-weight: bold;
+    line-height: 1;
+    cursor: pointer;
+}
+
+/* Modal de daño */
+.danno-opciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+.opcion-danno {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 4px;
+    border: 2px solid #d1ab52;
+    border-radius: 6px;
+    color: #8a6d2a;
+    font-weight: bold;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.opcion-danno input {
+    display: none;
+}
+
+.opcion-danno .opcion-icono {
+    width: 34px;
+    height: 34px;
+}
+
+.opcion-danno:not(:has(input:checked)):hover .icono-sao {
+    --fondo: #FBFBFB;
+    --glifo: #EBA601;
+}
+
+/* Opción elegida: fondo del color del tipo de daño e icono invertido */
+.opcion-danno:has(input:checked) {
+    background: var(--color);
+    border-color: var(--color);
+    color: var(--color-glifo, #FBFBFB);
+}
+
+.opcion-danno:has(input:checked) .icono-sao {
+    --fondo: var(--color-glifo, #FBFBFB);
+    --glifo: var(--color);
+}
+
+.danno-subopciones .opcion-danno {
+    font-size: 12px;
+    padding: 4px 2px;
+}
+
+.danno-subopciones .opcion-icono {
+    width: 28px;
+    height: 28px;
+}
+
+.danno-cantidad {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.danno-cantidad .form-control {
+    width: 90px;
+}
+
+.danno-check {
+    font-size: 13px;
+}
+
+.danno-preview {
+    margin: 12px 0 0;
+    padding: 8px 8px 8px 26px;
+    min-height: 2.5em;
+    background: #f3efe3;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+/* Título con botón (p. ej. Modificadores +) */
+.h2-con-boton {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.btn-h2 {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    background: #fbfbfb;
+    color: #d1ab52;
+    border: none;
+    border-radius: 50%;
+    font-size: 20px;
+    font-weight: bold;
+    line-height: 1;
+    cursor: pointer;
+    transition: transform 0.1s, background 0.2s;
+}
+
+.btn-h2:hover {
+    background: #ffffff;
+    transform: scale(1.1);
+}
+
+/* Lista de modificadores (debajo de Estados) */
+.lista-modificadores {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.fila-modificador {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 5px 8px;
+    border: 1px solid #d1ab52;
+    border-left-width: 4px;
+    border-radius: 5px;
+    background: #fffdf7;
+    font-size: 12px;
+}
+
+.fila-modificador.mod-positivo {
+    border-left-color: #27ae60;
+}
+
+.fila-modificador.mod-negativo {
+    border-left-color: #c0392b;
+}
+
+.fila-mod-cabecera {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.fila-mod-cabecera .nombreMod {
+    flex: 1;
+    min-width: 0;
+    padding: 2px 6px;
+    font-weight: bold;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.fila-mod-campos {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.fila-mod-campos .listValores {
+    flex: 1;
+    min-width: 110px;
+}
+
+.fila-mod-campos .cantidadMod,
+.fila-mod-campos .duracionMod {
+    width: 52px;
+    text-align: center;
+}
+
+.fila-modificador .pista-mod {
+    color: #888;
+    font-style: italic;
+}
+
+.fila-modificador .quitar-mod {
+    background: none;
+    border: none;
+    color: #c0392b;
+    font-size: 16px;
+    font-weight: bold;
+    line-height: 1;
+    cursor: pointer;
+}
+
+/* Pestañas de la columna derecha */
+.pestanas {
+    display: flex;
+    gap: 4px;
+    margin-top: 15px;
+    border-bottom: 3px solid #d1ab52;
+}
+
+.pestana {
+    flex: 1;
+    padding: 6px 4px;
+    background: #f3e7c6;
+    color: #8a6d2a;
+    border: none;
+    border-radius: 6px 6px 0 0;
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.pestana:hover:not(.activa) {
+    background: #ead7a4;
+}
+
+.pestana.activa {
+    background: #d1ab52;
+    color: #fbfbfb;
+}
+
+.pestana:focus-visible {
+    outline: 2px solid #8a6d2a;
+    outline-offset: -2px;
+}
+
+.panel-pestana {
+    padding-top: 10px;
+}
+
+.panel-pestana textarea {
+    width: 100%;
+    min-height: 320px;
+    background: #dce8f9;
+    border: 1px solid #777;
+    border-radius: 4px;
+    padding: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    box-sizing: border-box;
+    resize: vertical;
+}

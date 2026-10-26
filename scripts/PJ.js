@@ -1,10 +1,60 @@
 import Equipamiento from "./equipamiento.js";
-import Modificador from "./modificador.js";
+import Modificador, { TURNOS_PERMANENTE } from "./modificador.js";
 
 const HABILIDADES_LISTA = [
     'atletismo', 'combate', 'percepcion', 'subterfugio',
     'comunicacion', 'cultura', 'profesion', 'sacro'
 ];
+
+/* Estados alterados. Cada uno es { valor, turnos }; turnos = TURNOS_PERMANENTE (-1) es permanente.
+   - Los que controla la ficha usan valor como cantidad: PV por turno (veneno, regeneración),
+     Combate restado (quemadura), escarcha acumulada (congelacion), PV máx. reducidos (oscuridad),
+     sangrado acumulado (hemorragia).
+   - Los manuales (aturdido, cegado, dormido, wither, embriaguez) están activos con valor > 0. */
+export const ESTADOS_LISTA = [
+    'veneno', 'regeneracion', 'quemadura', 'paralisis', 'congelacion', 'oscuridad', 'hemorragia',
+    'aturdido', 'cegado', 'dormido', 'wither', 'embriaguez',
+    'electrocutado', // Atletismo restado por electricidad
+    'deslumbrado'    // Percepción restada por luz con los PV al máximo
+];
+
+/* Huecos base del inventario: 10 objetos distintos apilables */
+export const TAMANO_INVENTARIO = 10;
+
+/* Campos que se guardan y se cargan tal cual (sin conversión) */
+const CAMPOS_SIMPLES = [
+    'nombre', 'nivel', 'experiencia',
+    'fortaleza', 'reflejos', 'voluntad', 'inteligencia',
+    ...HABILIDADES_LISTA,
+    'puntosArte', 'vida',
+    'numeroAcciones', 'izquierda', 'derecha', 'cabeza', 'pies', 'reaccionGuardada',
+    'enSigilo', 'valorSigilo',
+    'notas', 'listadoArtes', 'listaDeAmigos', 'recetasProfesion', 'baul'
+];
+
+function crearEstadosVacios() {
+    return Object.fromEntries(ESTADOS_LISTA.map(estado => [estado, { valor: 0, turnos: 0 }]));
+}
+
+function crearInventarioVacio(tamano = TAMANO_INVENTARIO) {
+    return Array.from({ length: tamano }, () => ({ nombre: "", cantidad: 0 }));
+}
+
+function cargarEquipamiento(datos) {
+    const equipo = Object.assign(new Equipamiento(), datos || {});
+    equipo.modificadores = Array.isArray(equipo.modificadores)
+        ? equipo.modificadores.map(cargarModificador)
+        : [];
+    return equipo;
+}
+
+function cargarModificador(datos) {
+    const mod = Object.assign(new Modificador(), datos || {});
+    // Las fichas antiguas guardaban turnos = 0 en modificadores que en la práctica eran permanentes
+    const turnos = Number(mod.turnos);
+    mod.turnos = (!Number.isFinite(turnos) || turnos <= 0) ? TURNOS_PERMANENTE : turnos;
+    return mod;
+}
 
 export default class PJ {
     constructor() {
@@ -43,37 +93,23 @@ export default class PJ {
         this.dMagico = 1;
         this.iniciativa = 1;
 
-        /*Estados */
-        this.regeneracion = 0;
-        this.regeneracionPermanente= false,
-        this.regeneracionTurnos = 0;
+        /* Estados (ver ESTADOS_LISTA) */
+        this.estados = crearEstadosVacios();
 
-        this.veneno = 0;
-        this.venenoPermanente= false,
-        this.venenoTurnos = 0;
-
-        this.quemadura=0;
-        this.quemaduraPermanente= false,
-        this.quemaduraTurnos = 0;
-
-        this.paralisis=0;   
-        this.paralisisPermanente= false,
-        this.paralisisTurnos = 0;
-
-        this.congelacion=0;
-        this.congelacionPermanente= false,
-        this.congelacionTurnos = 0;
-
-        this.oscuridad=0;
-        this.oscuridadPermanente= false,
-        this.oscuridadTurnos = 0;
-
-        /* Acciones */
+        /* Acciones: true = disponible este turno */
         this.numeroAcciones = 3;
         this.izquierda = true; //Boolean
         this.derecha = true; //Boolean
         this.cabeza = true; //Boolean
         this.pies = true; //Boolean
+        this.reaccionGuardada = false; // se ha reservado una acción como reacción
+
+        /* Sigilo */
+        this.enSigilo = false;
+        this.valorSigilo = 0; // resultado de la tirada al entrar en sigilo
+
+        /* Inventario: [{ nombre, cantidad }] */
+        this.inventario = crearInventarioVacio();
 
         /* Array de modificaciones */
         this.modificadores;
@@ -84,28 +120,22 @@ export default class PJ {
         this.manoDerecha = new Equipamiento("", "", "");
         this.accesorios = [];
 
-        this.puntosArteMax = this.puntosArteMax;
-        this.puntosArte = this.puntosArte;
-        this.espaciosArte = this.espaciosArte;
-        this.aguante = this.fortaleza + (this.voluntad / 2);
-        this.vidaMax = this.aguante * ((this.nivel / 5) + 1);
-        this.vida = this.vidaMax;
-        this.defensa = (5);
-        this.dFisico = (this.combate + this.fortaleza) / 4;
-        this.dDistancia = (this.combate) / 4;
-        this.dMagico = (this.sacro + this.inteligencia) / 4;
-        this.iniciativa = (this.reflejos + this.inteligencia / 2);
-        this.vMovimiento = 3 + this.atletismo / 5;
+        this.espaciosArte = 0;
+        this.vMovimiento = 3;
 
         /* Bloques de texto */
-        this.notas = "vacio"; /* String, como todos  */
-        this.listadoArtes = "vacio";
-        this.listaDeAmigos = "vacio";
-        this.recetasProfesion = "vacio";
-        this.baul = "vacio";
+        this.notas = ""; /* String, como todos */
+        this.listadoArtes = "";
+        this.listaDeAmigos = "";
+        this.recetasProfesion = "";
+        this.baul = "";
 
         /* Modificadores */
-        this.modificadores = [new Modificador()];
+        this.modificadores = [new Modificador("nombre", "atletismo", 0, TURNOS_PERMANENTE)];
+
+        // Los derivados salen siempre de calcularCaracteristicas(); se empieza con la vida llena
+        this.calcularCaracteristicas();
+        this.vida = this.vidaMax;
     }
 
     /* Setters */
@@ -134,14 +164,20 @@ export default class PJ {
         }
 
         this.puntosArteMax = 3 + (this.nivel > 30 ? Math.floor((this.nivel - 16) / 15) : 0) + this.getModificador("arte");
-        this.espaciosArte = 4 + Math.floor(this.cultura / 10) + this.getModificador("espacios");
+        // Sin memoria de artes hasta el nivel 16
+        this.espaciosArte = (this.nivel >= 16 ? 4 + Math.floor(this.cultura / 10) : 0) + this.getModificador("espacios");
         this.aguante = this.fortaleza + (this.voluntad / 2) + this.getModificador("aguante");;
-        this.vidaMax = this.aguante * (Math.floor((this.nivel - 1) / 5) + 1) + this.getModificador("vidaMax");;
+        // La oscuridad resta PV máximos hasta un descanso largo
+        this.vidaMax = this.aguante * (Math.floor((this.nivel - 1) / 5) + 1) + this.getModificador("vidaMax")
+            - (Number(this.estados?.oscuridad?.valor) || 0);
         this.armadura = (Number(this.equipoArmadura?.armadura) || 0) + this.getModificador("armadura");
         this.defensa = (5 + this.reflejos) + this.getGenerico("atletismo") + this.getModificador("defensa") + this.getDefensaEscudos();
-        this.dFisico = (this.getGenerico("combate") + this.fortaleza) / 4 + this.getModificador("dFisico");
-        this.dDistancia = (this.getGenerico("combate")) / 4 + this.getModificador("dDistancia");;
-        this.dMagico = (this.getGenerico("sacro") + this.inteligencia) / 4 + this.getModificador("dMagico");;
+        // Los bonificadores de daño son los únicos valores que se redondean hacia abajo
+        // En sigilo, los ataques usan Sigilo en lugar de Combate (también para el bonificador)
+        const habilidadAtaque = this.getGenerico(this.getHabilidadAtaque());
+        this.dFisico = Math.floor((habilidadAtaque + this.fortaleza) / 4) + this.getModificador("dFisico");
+        this.dDistancia = Math.floor(habilidadAtaque / 4) + this.getModificador("dDistancia");
+        this.dMagico = Math.floor((this.getGenerico("sacro") + this.inteligencia) / 4) + this.getModificador("dMagico");
         this.iniciativa = (this.reflejos + this.inteligencia / 2) + this.getModificador("iniciativa");;
         this.vMovimiento = 3 + Math.floor(this.getGenerico("atletismo") / 5) + this.getModificador("vMovimiento");;
     }
@@ -158,9 +194,16 @@ export default class PJ {
         }, 0);
     }
 
+    /* Habilidad con la que se ataca: Sigilo si está en sigilo, Combate si no */
+    getHabilidadAtaque() {
+        return this.enSigilo ? "subterfugio" : "combate";
+    }
+
     getGenerico(atributo) {
         let penalizacion = (atributo === 'atletismo') ? (Number(this.equipoArmadura?.penalizacionAtletismo) || 0) : 0;
-        return parseInt(this[atributo]) + parseInt(this.getModificador(atributo)) - penalizacion;
+        const valor = parseInt(this[atributo]) + parseInt(this.getModificador(atributo)) - penalizacion;
+        // El Atletismo efectivo no baja de 0. Combate sí puede (la quemadura sobrante daña PV).
+        return atributo === 'atletismo' ? Math.max(0, valor) : valor;
     }
 
     getPuntosHabilidadTotales() {
@@ -255,7 +298,17 @@ export default class PJ {
             }, 0));
         });
 
+        acumulado += this.getModificadorEstados(atributo);
+
         return acumulado;
+    }
+
+    /* Lo que restan los estados a un atributo (una sola vez, no cada turno):
+       quemadura → Combate (si queda por debajo de 0, el sobrante daña PV al iniciar turno),
+       electrocutado → Atletismo, deslumbrado → Percepción. */
+    getModificadorEstados(atributo) {
+        const estadoQueResta = { combate: "quemadura", atletismo: "electrocutado", percepcion: "deslumbrado" }[atributo];
+        return estadoQueResta ? -(Number(this.estados?.[estadoQueResta]?.valor) || 0) : 0;
 
     }
 
@@ -269,101 +322,65 @@ export default class PJ {
     }
 
     cargarJSON(jsonObject) {
-        /* Valores principales */
-        this.nombre = jsonObject.nombre;
-        this.nivel = jsonObject.nivel;
-        this.experiencia = jsonObject.experiencia;
+        // Cualquier campo ausente (fichas antiguas) toma el valor por defecto de un PJ nuevo
+        const porDefecto = new PJ();
+        for (const campo of CAMPOS_SIMPLES) {
+            this[campo] = jsonObject[campo] ?? porDefecto[campo];
+            // Las fichas antiguas guardaban "vacio" en los bloques de texto sin rellenar
+            if (this[campo] === "vacio") this[campo] = "";
+        }
 
-        /* Atributos */
-        this.fortaleza = jsonObject.fortaleza;
-        this.reflejos = jsonObject.reflejos;
-        this.voluntad = jsonObject.voluntad;
-        this.inteligencia = jsonObject.inteligencia;
+        /* Estados */
+        this.estados = crearEstadosVacios();
+        for (const estado of ESTADOS_LISTA) {
+            const guardado = jsonObject.estados?.[estado];
+            if (!guardado) continue;
+            this.estados[estado] = {
+                valor: Number(guardado.valor) || 0,
+                turnos: Number(guardado.turnos) || 0
+            };
+        }
 
-        /* Habilidades */
-        this.atletismo = jsonObject.atletismo;
-        this.combate = jsonObject.combate;
-        this.percepcion = jsonObject.percepcion;
-        this.subterfugio = jsonObject.subterfugio;
-        this.comunicacion = jsonObject.comunicacion;
-        this.cultura = jsonObject.cultura;
-        this.profesion = jsonObject.profesion;
-        this.sacro = jsonObject.sacro;
-
-        /* Estadisticas */
-        this.puntosArte = jsonObject.puntosArte;
-        this.vida = jsonObject.vida;
-        this.aguante = jsonObject.aguante;
-        this.armadura = jsonObject.armadura;
-        this.defensa = jsonObject.defensa;
-        this.dFisico = jsonObject.dFisico;
-        this.dDistancia = jsonObject.dDistancia;
-        this.dMagico = jsonObject.dMagico;
-        this.iniciativa = jsonObject.iniciativa;
-        this.vMovimiento = jsonObject.vMovimiento;
-
-        /* Acciones */
-        this.izquierda = jsonObject.izquierda;
-        this.derecha = jsonObject.derecha;
-        this.cabeza = jsonObject.cabeza;
-        this.pies = jsonObject.pies;
+        /* Inventario: se conservan los huecos guardados aunque superen el tamaño base */
+        const inventarioGuardado = Array.isArray(jsonObject.inventario) ? jsonObject.inventario : [];
+        this.inventario = crearInventarioVacio(Math.max(TAMANO_INVENTARIO, inventarioGuardado.length));
+        inventarioGuardado.forEach((item, i) => {
+            this.inventario[i] = {
+                nombre: String(item?.nombre ?? ""),
+                cantidad: Number(item?.cantidad) || 0
+            };
+        });
 
         /* Equipo */
-        this.equipoArmadura = Object.assign(new Equipamiento(), jsonObject.equipoArmadura || {});
-        if (!Array.isArray(this.equipoArmadura.modificadores)) this.equipoArmadura.modificadores = [];
-        this.manoDerecha = Object.assign(new Equipamiento(), jsonObject.manoDerecha || {});
-        if (!Array.isArray(this.manoDerecha.modificadores)) this.manoDerecha.modificadores = [];
-        this.manoIzquierda = Object.assign(new Equipamiento(), jsonObject.manoIzquierda || {});
-        if (!Array.isArray(this.manoIzquierda.modificadores)) this.manoIzquierda.modificadores = [];
-        this.accesorios = Array.isArray(jsonObject.accesorios) ? jsonObject.accesorios : [];
+        this.equipoArmadura = cargarEquipamiento(jsonObject.equipoArmadura);
+        this.manoDerecha = cargarEquipamiento(jsonObject.manoDerecha);
+        this.manoIzquierda = cargarEquipamiento(jsonObject.manoIzquierda);
+        this.accesorios = Array.isArray(jsonObject.accesorios) ? jsonObject.accesorios.map(cargarEquipamiento) : [];
 
-        /* Modifciaciones */
-        this.modificadores = jsonObject.modificadores;
+        /* Modificadores */
+        this.modificadores = Array.isArray(jsonObject.modificadores) ? jsonObject.modificadores.map(cargarModificador) : [];
 
-        /* Bloques de texto */
-        this.notas = jsonObject.notas;
-        this.listadoArtes = jsonObject.listadoArtes;
-        this.listaDeAmigos = jsonObject.listaDeAmigos;
-        this.recetasProfesion = jsonObject.recetasProfesion;
-        this.baul = jsonObject.baul;
+        // Los valores derivados (vidaMax, defensa, aguante...) no se leen: se recalculan
         this.calcularCaracteristicas();
-        console.log("personaje", this)
     }
 
     toJSONString() {
         this.calcularCaracteristicas();
-        let arrayMod = [];
-        this.modificadores.forEach((mod) => {
-            arrayMod.push(new Modificador(mod.nombre, mod.modificado, mod.numero, mod.turnos))
-        })
-
+        const datos = {};
+        for (const campo of CAMPOS_SIMPLES) {
+            datos[campo] = this[campo];
+        }
 
         return JSON.stringify({
-            nombre: this.nombre,
-            nivel: this.nivel,
-            experiencia: this.experiencia,
+            ...datos,
 
-            fortaleza: this.fortaleza,
-            reflejos: this.reflejos,
-            voluntad: this.voluntad,
-            inteligencia: this.inteligencia,
-
-            atletismo: this.atletismo,
-            combate: this.combate,
-            percepcion: this.percepcion,
-            subterfugio: this.subterfugio,
-            comunicacion: this.comunicacion,
-            cultura: this.cultura,
-            profesion: this.profesion,
-            sacro: this.sacro,
-
+            /* Derivados: se guardan para poder leer el fichero, pero al cargar se recalculan */
+            experienciaMax: this.experienciaMax,
             puntosArteMax: this.puntosArteMax,
-            puntosArte: this.puntosArte,
             espaciosArte: this.espaciosArte,
             aguante: this.aguante,
             armadura: this.armadura,
             vidaMax: this.vidaMax,
-            vida: this.vida,
             defensa: this.defensa,
             dFisico: this.dFisico,
             dDistancia: this.dDistancia,
@@ -371,23 +388,14 @@ export default class PJ {
             iniciativa: this.iniciativa,
             vMovimiento: this.vMovimiento,
 
-            izquierda: this.izquierda,
-            derecha: this.derecha,
-            cabeza: this.cabeza,
-            pies: this.pies,
+            estados: this.estados,
+            inventario: this.inventario,
 
             /* Equipo */
             equipoArmadura: this.equipoArmadura,
             manoDerecha: this.manoDerecha,
             manoIzquierda: this.manoIzquierda,
             accesorios: this.accesorios,
-
-            /* Bloques de texto */
-            notas: this.notas,/* String, como todos  */
-            listadoArtes: this.listadoArtes,
-            listaDeAmigos: this.listaDeAmigos,
-            recetasProfesion: this.recetasProfesion,
-            baul: this.baul,
 
             modificadores: this.modificadores
         });
