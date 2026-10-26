@@ -5,6 +5,7 @@
 import PJ, { ESTADOS_LISTA } from "./PJ.js";
 import Equipamiento from "./equipamiento.js";
 import Modificador, { TURNOS_PERMANENTE } from "./modificador.js";
+import { cargarObjeto } from "./objetos.js";
 
 /* Ids de la interfaz que no coinciden con el nombre del campo en PJ */
 const ALIAS_INTERFAZ = { arte: "puntosArte" };
@@ -60,8 +61,6 @@ export function crearPersonajePrueba() {
     ESTADOS_LISTA.forEach((estado, i) => {
         pj.estados[estado] = { valor: i + 1, turnos: i % 2 ? TURNOS_PERMANENTE : i + 2 };
     });
-    pj.inventario = pj.inventario.map((_, i) => ({ nombre: `objeto ${i}`, cantidad: i + 1 }));
-
     const crearEquipo = (nombre, tipo) => {
         const equipo = new Equipamiento(nombre, `descripción ${nombre}`, tipo, 4, 1, 2);
         equipo.defensa = 3;
@@ -69,13 +68,37 @@ export function crearPersonajePrueba() {
         equipo.modificadores = [new Modificador(`mod ${nombre}`, "combate", 1, TURNOS_PERMANENTE)];
         return equipo;
     };
+
+    // Un objeto de cada tipo, con todo lo anidado (modificadores, estado, elemental, equipo)
+    const pocion = cargarObjeto({ tipo: "pocion", nombre: "poción", descripcion: "cura", cantidad: 2, pv: 4,
+        estado: { clave: "regeneracion", valor: 1, turnos: 3, quitar: false } });
+    const objetos = [
+        { tipo: "comida", nombre: "café", cantidad: 3, modificadores: [{ nombre: "café", modificado: "percepcion", numero: 2, turnos: TURNOS_PERMANENTE }] },
+        pocion,
+        { tipo: "pocion", nombre: "antídoto", cantidad: 1, pv: 0, estado: { clave: "veneno", valor: 0, turnos: TURNOS_PERMANENTE, quitar: true } },
+        { tipo: "equipo", nombre: "hacha", descripcion: "pesada", equipo: crearEquipo("hacha", "hacha") },
+        { tipo: "cristal", nombre: "cristal", descripcion: "teletransporte", cantidad: 1 },
+        { tipo: "material", nombre: "mineral", cantidad: 5 },
+        { tipo: "arrojadiza", nombre: "daga", cantidad: 4, danno: 2, estado: { clave: "veneno", valor: 2, turnos: TURNOS_PERMANENTE },
+            elemental: { tipo: "fuego", cantidad: 3 } }
+    ].map(cargarObjeto);
+    objetos.forEach((objeto, i) => { pj.inventario[i] = objeto; });
+    pj.baul = objetos.map(objeto => cargarObjeto({ ...objeto, cantidad: 7 }));
+
     pj.manoDerecha = crearEquipo("espada", "espada");
+    pj.manoDerecha.pocionAplicada = { ...pocion, cantidad: 1 };
     pj.manoIzquierda = crearEquipo("escudo", "escudo");
     pj.equipoArmadura = crearEquipo("cota", "ligera");
     pj.accesorios = [crearEquipo("anillo", "accesorio"), crearEquipo("collar", "accesorio")];
+    pj.estados.veneno.descansoCorto = true; // se quita con el descanso corto
+    const deComida = new Modificador("café", "percepcion", 2, TURNOS_PERMANENTE);
+    deComida.origen = "comida";
+    pj.comidaActiva = "café";
     pj.modificadores = [
         new Modificador("permanente", "percepcion", 2, TURNOS_PERMANENTE),
-        new Modificador("temporal", "cultura", -1, 3)
+        new Modificador("temporal", "cultura", -1, 3),
+        Object.assign(new Modificador("hasta descansar", "combate", 1, TURNOS_PERMANENTE), { descansoCorto: true }),
+        deComida
     ];
     pj.calcularCaracteristicas();
     return pj;
@@ -102,14 +125,25 @@ export function verificarInterfaz(personaje, documento = document) {
         }
     });
 
-    documento.querySelectorAll("#listaInventario .filaInventario").forEach((fila, i) => {
-        const item = personaje.inventario[i];
-        const nombre = fila.querySelector(".itemInv")?.value ?? "";
-        const cantidad = Number(fila.querySelector(".cantidadInv")?.value) || 0;
-        if (!item || item.nombre !== nombre || item.cantidad !== cantidad) {
-            errores.push(`inventario[${i}]: pantalla ${JSON.stringify({ nombre, cantidad })} ≠ modelo ${JSON.stringify(item)}`);
+    // Filas del inventario y del baúl: nombre y cantidad ("2/5" en el inventario, "×2" en el baúl)
+    const compararLista = (selector, lista, etiqueta) => {
+        const filas = documento.querySelectorAll(`${selector} .fila-objeto`);
+        if (filas.length !== lista.length) {
+            errores.push(`${etiqueta}: ${filas.length} filas en pantalla ≠ ${lista.length} en el modelo`);
         }
-    });
+        filas.forEach((fila, i) => {
+            const item = lista[i] ?? null;
+            const nombre = fila.querySelector(".objeto-nombre")?.textContent ?? null;
+            const cantidad = parseInt((fila.querySelector(".objeto-cantidad")?.textContent ?? "").replace("×", "")) || null;
+            const enPantalla = nombre === null ? null : { nombre, cantidad };
+            const enModelo = item && { nombre: item.nombre, cantidad: item.cantidad };
+            if (JSON.stringify(enPantalla) !== JSON.stringify(enModelo)) {
+                errores.push(`${etiqueta}[${i}]: pantalla ${JSON.stringify(enPantalla)} ≠ modelo ${JSON.stringify(enModelo)}`);
+            }
+        });
+    };
+    compararLista("#listaInventario", personaje.inventario, "inventario");
+    if (personaje.baul.length) compararLista("#listaBaul", personaje.baul, "baul");
 
     return errores;
 }

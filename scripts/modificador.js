@@ -33,3 +33,12 @@ export default class Modificador {
 
 
 }
+
+/* Reconstruye un modificador guardado. Conserva campos extra (p. ej. origen: "comida"). */
+export function cargarModificador(datos) {
+    const mod = Object.assign(new Modificador(), datos || {});
+    // Las fichas antiguas guardaban turnos = 0 en modificadores que en la práctica eran permanentes
+    const turnos = Number(mod.turnos);
+    mod.turnos = (!Number.isFinite(turnos) || turnos <= 0) ? TURNOS_PERMANENTE : turnos;
+    return mod;
+}

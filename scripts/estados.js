@@ -87,7 +87,7 @@ export function quitarEstado(pj, estado) {
 function sumarElemental(pj, estado, cantidad) {
     const actual = Number(pj.estados[estado]?.valor) || 0;
     pj.estados[estado] = actual + cantidad > 0
-        ? { valor: actual + cantidad, turnos: DURACION_ELEMENTAL }
+        ? { ...pj.estados[estado], valor: actual + cantidad, turnos: DURACION_ELEMENTAL }
         : { valor: 0, turnos: 0 };
     pj.calcularCaracteristicas();
     return actual + cantidad;
@@ -187,7 +187,7 @@ export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
         case "oscuridad": {
             const actual = Number(pj.estados.oscuridad?.valor) || 0;
             // No usa el contador de 3 turnos: dura hasta un descanso largo
-            pj.estados.oscuridad = { valor: actual + cantidad, turnos: TURNOS_PERMANENTE };
+            pj.estados.oscuridad = { ...pj.estados.oscuridad, valor: actual + cantidad, turnos: TURNOS_PERMANENTE };
             pj.calcularCaracteristicas();
             const antes = pj.vida;
             pj.vida = Math.min(pj.vida, pj.vidaMax);
@@ -199,7 +199,7 @@ export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
         case "hemorragia": {
             const actual = Number(pj.estados.hemorragia?.valor) || 0;
             const total = actual + cantidad;
-            pj.estados.hemorragia = { valor: total, turnos: TURNOS_PERMANENTE };
+            pj.estados.hemorragia = { ...pj.estados.hemorragia, valor: total, turnos: TURNOS_PERMANENTE };
             resumen.push(total > pj.aguante
                 ? `Hemorragia ${total} supera el Aguante (${pj.aguante}): −${total} PV cada turno`
                 : `Hemorragia ${total}: sin efecto hasta superar el Aguante (${pj.aguante})`);

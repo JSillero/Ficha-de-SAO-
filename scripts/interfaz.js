@@ -1,20 +1,31 @@
-import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ESCUDO } from "./equipamiento.js";
+import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ESCUDO, TIPOS_ARMADURA, TIPO_ACCESORIO } from "./equipamiento.js";
 import Modificador, { TURNOS_PERMANENTE } from "./modificador.js";
 import PJ from "./PJ.js";
 import { ejecutarTirada, combinarModos, esCritico } from "./dados.js";
-import { prepararAtaque, calcularDannoAtaque } from "./ataque.js";
+import { prepararAtaque, calcularDannoAtaque, prepararLanzamiento, calcularDannoLanzamiento, describirEfecto } from "./ataque.js";
 import {
-    puedeGastarVarias, gastarVarias, partesDeMano, estaIncapacitado,
+    TIPOS_OBJETO, MAX_PILA_INVENTARIO, ELEMENTOS_ARROJADIZA, cargarObjeto, anadirAInventario, anadirABaul,
+    transferirABaul, transferirAInventario, descartar, comer, beberPocion, aplicarPocionAArma, manosConArma,
+    usarCristal, lanzarArrojadiza, manoParaUsar, categoriaEquipo, manosParaEquipar, motivoNoEquipar, equipar,
+    motivoNoGuardar, guardarEquipado, ranuraTieneEquipo, descansoCorto, getCantidadAccesoriosPorArmadura, cabenEnInventario
+} from "./objetos.js";
+import {
+    puedeGastarVarias, gastarVarias, gastarTodas, partesDeMano, estaIncapacitado,
     iniciarTurno, gastarAccion, devolverAccion, puedeGastar, accionesRestantes,
     correr, puedeCorrer, puedeMoverse, velocidadMovimiento, velocidadCorrer,
     modoSigiloPorArmadura, puedeEntrarEnSigilo, entrarEnSigilo, salirDeSigilo
 } from "./turno.js";
 import { ESTADOS_INFO, TIPOS_DANNO, aplicarDanno, activarEstado, quitarEstado, estaActivo, estiloColor } from "./estados.js";
-import { iconoSao } from "./iconos.js";
+import { iconoSao, tieneIconoSao } from "./iconos.js";
 import { reproducir, iniciarBucle, pararBucle, precargarSonidos, estaSilenciado, setSilenciado } from "./sonidos.js";
 import { ejecutarDebug, crearPersonajePrueba, validarFicha } from "./debug.js";
 
 let personaje = new PJ(); //objeto que almaacena y define el comportamiento y limites de toda la informacion relevante
+
+/* Modo master (?master en la URL): las tarjetas de equipo se editan libremente, como antes.
+   Sin él, el equipo solo se cambia desde el inventario. */
+const MODO_MASTER = new URLSearchParams(window.location.search).has("master");
+document.body.classList.toggle("modo-master", MODO_MASTER);
 /* Informacion */
 let inputNombre = document.getElementById("nombre");
 let inputNivel = document.getElementById("nivel");
@@ -106,8 +117,8 @@ for (const element of inputs) {
     element.addEventListener('input', validarYActualizar);
 }
 
-/* Introduccion de datos en textareas y manejo general */
-let textareas = document.getElementsByTagName("textarea");
+/* Introduccion de datos en textareas y manejo general (solo los que son un campo de texto de PJ) */
+const textareas = Array.from(document.getElementsByTagName("textarea")).filter(t => typeof personaje[t.id] === "string");
 for (const textarea of textareas) {
     textarea.addEventListener('focusout', function (event) {
         personaje[textarea.id] = event.target.value
@@ -233,9 +244,17 @@ document.getElementById('btnAplicarExp').addEventListener('click', () => {
 
 /* Sonido (scripts/sonidos.js) ________________________________________________ */
 
-// Cualquier ventana de Bootstrap suena al abrirse y al cerrarse (sus eventos suben hasta document)
-document.addEventListener("show.bs.modal", () => reproducir("menuAbrir"));
-document.addEventListener("hide.bs.modal", () => reproducir("menuCerrar"));
+// Cualquier ventana de Bootstrap suena al abrirse y al cerrarse (sus eventos suben hasta document).
+// Al pasar de una ventana a otra (p. ej. inventario → crear objeto → inventario) no suenan:
+// quien hace el cambio marca la ventana con data-sin-sonido-abrir / data-sin-sonido-cerrar.
+document.addEventListener("show.bs.modal", (e) => {
+    if (e.target.dataset.sinSonidoAbrir) delete e.target.dataset.sinSonidoAbrir;
+    else reproducir("menuAbrir");
+});
+document.addEventListener("hide.bs.modal", (e) => {
+    if (e.target.dataset.sinSonidoCerrar) delete e.target.dataset.sinSonidoCerrar;
+    else reproducir("menuCerrar");
+});
 
 function inicializarSonido() {
     precargarSonidos();
@@ -266,42 +285,9 @@ function actualizarTodo() {
     actualizarModificadores();
     generarAccesorios();
     parseModificadoresEquipo();
-    actualizarInventario();
+    actualizarObjetos();
     actualizarAcciones();
     actualizarEstados();
-}
-
-/* Inventario ________________________________________________________________ */
-const listaInventario = document.getElementById("listaInventario");
-
-/* Un único listener para todas las filas: sigue funcionando aunque se regeneren */
-listaInventario.addEventListener("input", (e) => {
-    const fila = e.target.closest(".filaInventario");
-    if (!fila) return;
-    const item = personaje.inventario[Number(fila.dataset.index)];
-    if (!item) return;
-    if (e.target.classList.contains("itemInv")) item.nombre = e.target.value;
-    if (e.target.classList.contains("cantidadInv")) item.cantidad = Math.max(0, Number(e.target.value) || 0);
-});
-
-function actualizarInventario() {
-    // Las filas solo se regeneran si cambia el número de huecos (p. ej. al cargar una ficha)
-    if (listaInventario.children.length !== personaje.inventario.length) {
-        listaInventario.innerHTML = personaje.inventario.map((_, index) => `
-            <p class="filaInventario" data-index="${index}">
-                <input type="text" class="itemInv" placeholder="Objeto">
-                <input type="number" class="cantidadInv" min="0" placeholder="0">
-            </p>`).join("");
-    }
-
-    personaje.inventario.forEach((item, index) => {
-        const fila = listaInventario.children[index];
-        const inputNombre = fila.querySelector(".itemInv");
-        const inputCantidad = fila.querySelector(".cantidadInv");
-        // No se pisa el campo que el usuario está editando
-        if (document.activeElement !== inputNombre) inputNombre.value = item.nombre;
-        if (document.activeElement !== inputCantidad) inputCantidad.value = item.cantidad || "";
-    });
 }
 
 function actualizarInformacion() {
@@ -636,6 +622,13 @@ listadoModificadores.addEventListener("change", (e) => {
             ? TURNOS_PERMANENTE
             : Math.max(1, parseInt(fila.querySelector(".duracionMod").value) || 1);
     }
+    if (e.target.classList.contains("checkDescansoMod")) {
+        // Se quita al hacer un descanso corto (la comida siempre lo hace)
+        if (e.target.checked) mod.descansoCorto = true;
+        else delete mod.descansoCorto;
+        actualizarModificadores();
+        return;
+    }
     if (e.target.classList.contains("nombreMod")) return; // el nombre no cambia ningún cálculo
     personaje.calcularCaracteristicas();
     actualizarTodo();
@@ -663,6 +656,7 @@ function actualizarModificadores() {
                     <input type="number" class="cantidadMod" aria-label="Cantidad" title="Cantidad (negativa para restar)">
                     <label>Turnos <input type="number" min="1" class="duracionMod"></label>
                     <label><input type="checkbox" class="checkPermanenteMod"> Permanente</label>
+                    <label title="Se quita al hacer un descanso corto"><input type="checkbox" class="checkDescansoMod"> Descanso corto</label>
                 </div>
                 <span class="pista-mod"></span>
             </div>`).join("");
@@ -684,12 +678,19 @@ function actualizarModificadores() {
         if (document.activeElement !== inputTurnos) inputTurnos.value = permanente ? "" : mod.turnos;
         inputTurnos.disabled = permanente;
         fila.querySelector(".checkPermanenteMod").checked = permanente;
+        // La comida siempre termina con el descanso corto: casilla marcada y fija
+        const deComida = mod.origen === "comida";
+        const checkDescanso = fila.querySelector(".checkDescansoMod");
+        checkDescanso.checked = deComida || Boolean(mod.descansoCorto);
+        checkDescanso.disabled = deComida;
 
         fila.classList.toggle("mod-positivo", numero > 0);
         fila.classList.toggle("mod-negativo", numero < 0);
-        fila.querySelector(".pista-mod").textContent = permanente
+        const pista = [permanente
             ? "Permanente: dura hasta que lo edites o lo borres"
-            : `Quedan ${mod.turnos} turno${mod.turnos === 1 ? "" : "s"}`;
+            : `Quedan ${mod.turnos} turno${mod.turnos === 1 ? "" : "s"}`];
+        if (deComida || mod.descansoCorto) pista.push("se quita con el descanso corto");
+        fila.querySelector(".pista-mod").textContent = pista.join(" · ");
     });
 }
 
@@ -700,18 +701,6 @@ function getPropiedadEquipo(elemento) {
     if (elemento.classList.contains("manoDerecha")) return "manoDerecha";
     if (elemento.classList.contains("equipoArmadura")) return "equipoArmadura";
     return null;
-}
-
-function getCantidadAccesoriosPorArmadura(tipoArmadura) {
-    const tipo = (tipoArmadura || "").toLowerCase().trim();
-    switch (tipo) {
-        case "pesada": return 0;
-        case "media": return 1;
-        case "ligera": return 2;
-        case "ropa":
-        case "real": return 3;
-        default: return 0;
-    }
 }
 
 function equipamientoTieneContenido(propEquipo) {
@@ -811,6 +800,16 @@ function inicializarEquipamiento() {
     document.querySelectorAll(".equipamiento").forEach(elemento => {
         const propEquipo = getPropiedadEquipo(elemento);
         if (!propEquipo) return;
+
+        // Sin modo master el equipo no se edita aquí: se equipa y se guarda desde el inventario
+        if (!MODO_MASTER) {
+            elemento.querySelectorAll(".equipamiento-main-inputs input").forEach(input => { input.readOnly = true; });
+        }
+        const btnGuardar = elemento.querySelector(".btn-guardar-equipo");
+        if (btnGuardar) {
+            btnGuardar.innerHTML = iconoSao("inventario");
+            btnGuardar.addEventListener("click", () => guardarEnInventario(propEquipo));
+        }
 
         const select = elemento.querySelector(".tipoEquipo");
         const inputNombre = elemento.querySelector(".inputNombreEquipo");
@@ -1059,6 +1058,13 @@ function actualizarEquipamiento() {
             detalles.style.display = tieneTipo ? "flex" : "none";
         }
 
+        // Sin modo master: el tipo se ve como texto y la tarjeta vacía invita a equipar desde el inventario
+        const textoTipo = elemento.querySelector(".tipoEquipoTexto");
+        if (textoTipo) textoTipo.textContent = tieneTipo ? (select?.selectedOptions[0]?.textContent ?? item.tipo) : "";
+        const vacio = elemento.querySelector(".equipamiento-vacio");
+        if (vacio) vacio.style.display = (!tieneTipo && !MODO_MASTER) ? "" : "none";
+        actualizarBotonGuardar(elemento.querySelector(".btn-guardar-equipo"), propEquipo);
+
         if (inputNombre && document.activeElement !== inputNombre) {
             inputNombre.value = item.nombre || "";
         }
@@ -1071,16 +1077,26 @@ function actualizarEquipamiento() {
         if (inputArm && document.activeElement !== inputArm) {
             inputArm.value = item.armadura ?? 0;
         }
+        pintarDescripcionEquipo(elemento.querySelector(".equipamiento-descripcion"), item);
     });
+}
+
+/* Descripción del objeto equipado (la que se le puso al crearlo en el inventario) */
+function pintarDescripcionEquipo(parrafo, item) {
+    if (!parrafo) return;
+    const texto = item?.descripcion?.trim() ?? "";
+    parrafo.textContent = texto;
+    parrafo.style.display = texto ? "" : "none";
 }
 
 /* Botón Usar: atacar con el arma o activar el escudo ____________________________ */
 
 const ETIQUETAS_MANO = { manoIzquierda: "Mano izquierda", manoDerecha: "Mano derecha" };
 
-/* Gasta las acciones necesarias; si no quedan, pregunta si hacerlo igualmente (p. ej. una reacción) */
+/* Gasta las acciones necesarias ("todas" = el turno entero); si no se puede, pregunta si hacerlo
+   igualmente (p. ej. una reacción o una excepción del máster) */
 function gastarAccionesOConfirmar(partes, descripcion) {
-    if (gastarVarias(personaje, partes)) return true;
+    if (partes === "todas" ? gastarTodas(personaje) : gastarVarias(personaje, partes)) return true;
     const motivo = estaIncapacitado(personaje)
         ? "No puedes actuar (paralizado o dormido)."
         : "No te quedan acciones para hacerlo.";
@@ -1126,7 +1142,30 @@ function usarEquipo(propEquipo) {
         etiquetaTotal: "ATAQUE",
         calcularDanno: (resultado) => calcularDannoAtaque(personaje, item, esCritico(resultado))
     });
+    // La poción aplicada al arma se gasta en este ataque
+    item.pocionAplicada = null;
     actualizarTodo();
+}
+
+/* Botón Guardar de cada tarjeta: lleva lo equipado al inventario */
+function actualizarBotonGuardar(boton, ranura) {
+    if (!boton) return;
+    const tiene = ranuraTieneEquipo(personaje, ranura);
+    boton.style.display = tiene ? "" : "none";
+    if (!tiene) return;
+    const motivo = motivoNoGuardar(personaje, ranura);
+    const coste = ranura === "equipoArmadura" ? "gasta todas las acciones del turno"
+        : ranura.startsWith("accesorio-") ? "gasta la acción de una mano libre" : "gasta la acción de esa mano";
+    boton.title = motivo ? `No se puede guardar: ${motivo}` : `Guardar en el inventario (${coste})`;
+    boton.setAttribute("aria-label", boton.title);
+    boton.classList.toggle("sin-accion", Boolean(motivo));
+}
+
+function guardarEnInventario(ranura) {
+    reproducir("click");
+    const resultado = guardarEquipado(personaje, ranura, gastarAccionesOConfirmar);
+    actualizarTodo();
+    mostrarPopupInfo(resultado.ok ? "Guardado en el inventario" : "No se puede guardar", resultado.resumen.map(escaparHtml));
 }
 
 function actualizarBotonUsar(boton, propEquipo) {
@@ -1181,8 +1220,8 @@ function pintarModsEquipo(ul) {
     if (ul.children.length !== lista.length) {
         ul.innerHTML = lista.map((mod, index) => `
             <li class="mod-equipo" data-index="${index}">
-                <select class="listValores" aria-label="Atributo">${opcionesAtributo(mod.modificado)}</select>
-                <input type="number" class="cantidadMod" aria-label="Cantidad" title="Cantidad (negativa para restar)">
+                <select class="listValores" aria-label="Atributo" ${MODO_MASTER ? "" : "disabled"}>${opcionesAtributo(mod.modificado)}</select>
+                <input type="number" class="cantidadMod" aria-label="Cantidad" title="Cantidad (negativa para restar)" ${MODO_MASTER ? "" : "readonly"}>
                 <button type="button" class="quitar-mod" title="Eliminar modificador" aria-label="Eliminar modificador">×</button>
             </li>`).join("");
     }
@@ -1208,6 +1247,13 @@ function inicializarModsEquipo() {
     const contenedor = document.getElementById("divEquipamiento");
 
     contenedor.addEventListener("click", (e) => {
+        // Guardar un accesorio (las manos y la armadura tienen su propio listener)
+        const guardarAccesorio = e.target.closest(".btn-guardar-equipo[data-ranura]");
+        if (guardarAccesorio) {
+            guardarEnInventario(guardarAccesorio.dataset.ranura);
+            return;
+        }
+
         const botonAnadir = e.target.closest(".btn-anadir-mod-equipo");
         if (botonAnadir) {
             const ul = botonAnadir.closest(".equipamiento, .tarjeta-accesorio")?.querySelector(".mods-equipo[data-mods]");
@@ -1286,8 +1332,11 @@ function generarAccesorios() {
             <div class="tarjeta-accesorio" data-index="${i}">
                 <div class="accesorio-cabecera">
                     <span class="accesorio-icono">${iconoSao("accesorio")}</span>
-                    <input type="text" class="inputNombreAccesorio" placeholder="Accesorio ${i + 1}" aria-label="Nombre del accesorio ${i + 1}">
+                    <input type="text" class="inputNombreAccesorio" placeholder="${MODO_MASTER ? `Accesorio ${i + 1}` : "Vacío: equipa desde el inventario"}"
+                        aria-label="Nombre del accesorio ${i + 1}" ${MODO_MASTER ? "" : "readonly"}>
+                    <button type="button" class="btn-guardar-equipo" data-ranura="accesorio-${i}">${iconoSao("inventario")}</button>
                 </div>
+                <p class="equipamiento-descripcion"></p>
                 <div class="equipamiento-mods-header">
                     <span>Modificadores:</span>
                     <button type="button" class="btn-anadir-mod-equipo" title="Añadir modificador" aria-label="Añadir modificador">+</button>
@@ -1304,8 +1353,11 @@ function generarAccesorios() {
     }
 
     personaje.accesorios.forEach((accesorio, i) => {
-        const input = contenedor.querySelector(`.tarjeta-accesorio[data-index="${i}"] .inputNombreAccesorio`);
+        const tarjeta = contenedor.querySelector(`.tarjeta-accesorio[data-index="${i}"]`);
+        const input = tarjeta?.querySelector(".inputNombreAccesorio");
         if (input && document.activeElement !== input) input.value = accesorio.nombre || "";
+        pintarDescripcionEquipo(tarjeta?.querySelector(".equipamiento-descripcion"), accesorio);
+        actualizarBotonGuardar(tarjeta?.querySelector(".btn-guardar-equipo"), `accesorio-${i}`);
     });
 }
 
@@ -1425,6 +1477,7 @@ function mostrarPopupInfo(titulo, lineas) {
 
 function inicializarTurno() {
     document.getElementById("btnIniciarTurno").addEventListener("click", () => {
+        reproducir("click");
         const resumen = iniciarTurno(personaje);
         actualizarTodo();
         mostrarPopupInfo("Inicio de turno", resumen);
@@ -1561,6 +1614,11 @@ function inicializarEstados() {
                 ? TURNOS_PERMANENTE
                 : Math.max(1, parseInt(inputTurnos.value) || turnosPorDefecto);
         }
+        if (e.target.classList.contains("checkDescansoEstado")) {
+            // Se quita al hacer un descanso corto
+            if (e.target.checked) estado.descansoCorto = true;
+            else delete estado.descansoCorto;
+        }
 
         // Un valor de 0 equivale a quitar el estado
         if (estado.valor === 0) quitarEstado(personaje, clave);
@@ -1624,6 +1682,7 @@ function actualizarEstados() {
                 ${info.unidad ? `<label>${info.unidad} <input type="number" min="0" class="valorEstado"></label>` : ""}
                 <label>Turnos <input type="number" min="0" class="turnosEstado"></label>
                 <label><input type="checkbox" class="checkPermanenteEstado"> Permanente</label>
+                <label title="Se quita al hacer un descanso corto"><input type="checkbox" class="checkDescansoEstado"> Descanso corto</label>
                 <button type="button" class="quitar-estado" title="Quitar" aria-label="Quitar ${info.etiqueta}">×</button>
                 <span class="pista-estado"></span>
             </div>`;
@@ -1640,8 +1699,10 @@ function actualizarEstados() {
         if (document.activeElement !== inputTurnos) inputTurnos.value = permanente ? "" : estado.turnos;
         inputTurnos.disabled = permanente;
         fila.querySelector(".checkPermanenteEstado").checked = permanente;
+        fila.querySelector(".checkDescansoEstado").checked = Boolean(estado.descansoCorto);
         const pista = [pistaEstado(fila.dataset.estado)];
         if (estado.turnos === 0) pista.push("Último turno: termina al iniciar el siguiente");
+        if (estado.descansoCorto) pista.push("Se quita con el descanso corto");
         fila.querySelector(".pista-estado").textContent = pista.filter(Boolean).join(" · ");
     });
 }
@@ -1709,41 +1770,572 @@ function inicializarDanno() {
     });
 }
 
-/* Pestañas (inventario, baúl, amigos, artes) _______________________________ */
-const CLAVE_PESTANA = "fichaSAO.pestana";
+/* Inventario y baúl (reglas en objetos.js) __________________________________ */
+const listaInventarioEl = document.getElementById("listaInventario");
+const listaBaulEl = document.getElementById("listaBaul");
+/* Fila del inventario que está mostrando sus formas de usar (p. ej. qué mano), o null */
+let eleccionUso = null;
 
-function inicializarPestanas() {
-    const pestanas = Array.from(document.querySelectorAll(".pestanas .pestana"));
-    if (!pestanas.length) return;
+const ETIQUETAS_ATRIBUTO = Object.fromEntries(GRUPOS_ATRIBUTOS.flatMap(([, atributos]) => atributos));
+const ETIQUETAS_ARMADURA = { pesada: "Armadura pesada", media: "Armadura media", ligera: "Armadura ligera", ropa: "Ropa", real: "Armadura real" };
 
-    const activar = (pestana, enfocar = false) => {
-        pestanas.forEach(p => {
-            const activa = p === pestana;
-            p.classList.toggle("activa", activa);
-            p.setAttribute("aria-selected", String(activa));
-            p.tabIndex = activa ? 0 : -1;
-            document.getElementById(p.getAttribute("aria-controls")).hidden = !activa;
-        });
-        if (enfocar) pestana.focus();
-        // Recordar la pestaña es solo una comodidad: si el navegador no deja guardar, no pasa nada
-        try { localStorage.setItem(CLAVE_PESTANA, pestana.id); } catch { /* sin almacenamiento */ }
+function escaparHtml(texto) {
+    return String(texto ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+const conSigno = (numero) => `${numero > 0 ? "+" : ""}${numero}`;
+
+function textoModificadores(mods) {
+    return (mods || []).map(mod => `${conSigno(Number(mod.numero) || 0)} ${ETIQUETAS_ATRIBUTO[mod.modificado] ?? mod.modificado}`).join(", ");
+}
+
+function etiquetaTipoEquipo(tipo) {
+    return ARMAS[tipo]?.etiqueta ?? ETIQUETAS_ARMADURA[tipo] ?? (tipo === TIPO_ACCESORIO ? "Accesorio" : tipo || "Sin tipo");
+}
+
+function iconoObjeto(objeto) {
+    if (objeto.tipo !== "equipo") return TIPOS_OBJETO[objeto.tipo].icono;
+    const tipo = objeto.equipo?.tipo;
+    if (ARMAS[tipo]) return tieneIconoSao(tipo) ? tipo : "otros";
+    return tipo === TIPO_ACCESORIO ? "accesorio" : "armadura";
+}
+
+/* Resumen de lo que hace el objeto, bajo su nombre */
+function detalleObjeto(objeto) {
+    switch (objeto.tipo) {
+        case "comida": return textoModificadores(objeto.modificadores) || "Sin efecto";
+        case "pocion": return describirEfecto(objeto, false) || "Sin efecto";
+        case "arrojadiza": {
+            const efecto = describirEfecto(objeto, false);
+            return `Daño ${objeto.danno} + ${Math.max(0, personaje.dDistancia)} (distancia)` + (efecto ? ` · ${efecto}` : "");
+        }
+        case "equipo": {
+            const equipo = objeto.equipo;
+            const partes = [etiquetaTipoEquipo(equipo.tipo)];
+            if (ARMAS[equipo.tipo]?.escudo) partes.push(`defensa ${equipo.defensa || 0}`);
+            else if (ARMAS[equipo.tipo]) partes.push(`daño ${equipo.danno || 0}`, ARMAS[equipo.tipo].manos === 2 ? "dos manos" : "una mano");
+            if (TIPOS_ARMADURA.includes(equipo.tipo)) partes.push(`armadura ${equipo.armadura || 0}`, `−${equipo.penalizacionAtletismo || 0} Atletismo`);
+            const mods = textoModificadores(equipo.modificadores);
+            if (mods) partes.push(mods);
+            if (equipo.pocionAplicada) partes.push(`con ${equipo.pocionAplicada.nombre}`);
+            return partes.join(" · ");
+        }
+        case "cristal": return "Se usa con una mano libre";
+        default: return "Sin uso";
+    }
+}
+
+function nombreEnMano(mano) {
+    const arma = personaje[mano];
+    return arma.nombre?.trim() || ARMAS[arma.tipo]?.etiqueta || ETIQUETAS_MANO[mano];
+}
+
+/* Formas de usar un objeto del inventario: { accion, etiqueta, mano?, motivo? } (motivo = no se puede) */
+function opcionesUso(objeto) {
+    const sinManoLibre = manoParaUsar(personaje) ? null : "Necesitas una mano libre";
+    switch (objeto.tipo) {
+        case "comida":
+            return [{ accion: "comer", etiqueta: "Comer" + (personaje.comidaActiva ? ` (sustituye a ${personaje.comidaActiva})` : "") }];
+        case "pocion":
+            return [
+                { accion: "beber", etiqueta: "Beber (acción de cabeza)" },
+                ...manosConArma(personaje).map(mano => ({ accion: "aplicar", mano, etiqueta: `Aplicar a ${nombreEnMano(mano)}` }))
+            ];
+        case "cristal":
+            return [{ accion: "cristal", etiqueta: "Usar cristal (mano libre)", motivo: sinManoLibre }];
+        case "arrojadiza":
+            return [{ accion: "lanzar", etiqueta: "Lanzar (mano libre)", motivo: sinManoLibre }];
+        case "equipo": {
+            const motivo = motivoNoEquipar(personaje, objeto);
+            if (motivo || categoriaEquipo(objeto.equipo.tipo) !== "mano") {
+                const coste = categoriaEquipo(objeto.equipo.tipo) === "armadura" ? " (todas las acciones)" : " (mano libre)";
+                return [{ accion: "equipar", etiqueta: "Equipar" + coste, motivo }];
+            }
+            const manos = manosParaEquipar(personaje, objeto.equipo.tipo);
+            const dosManos = TIPOS_DOS_MANOS.includes(objeto.equipo.tipo);
+            return manos.map(mano => ({ accion: "equipar", mano, etiqueta: dosManos ? "Equipar a dos manos" : `Equipar en ${ETIQUETAS_MANO[mano].toLowerCase()}` }));
+        }
+        default:
+            return [];
+    }
+}
+
+function botonObjeto(accion, icono, titulo, deshabilitado = false) {
+    return `<button type="button" class="btn-objeto" data-accion="${accion}" title="${escaparHtml(titulo)}"
+        aria-label="${escaparHtml(titulo)}" ${deshabilitado ? "disabled" : ""}>${iconoSao(icono)}</button>`;
+}
+
+function filaObjeto(objeto, indice, enInventario) {
+    if (!objeto) return `<div class="fila-objeto vacia" data-index="${indice}"><span class="objeto-hueco">Hueco libre</span></div>`;
+
+    const tipoInfo = TIPOS_OBJETO[objeto.tipo];
+    const pila = objeto.tipo === "equipo" ? 1 : MAX_PILA_INVENTARIO;
+    const cantidad = enInventario ? `${objeto.cantidad}/${pila}` : `×${objeto.cantidad}`;
+    let botones;
+    let eleccion = "";
+
+    if (enInventario) {
+        const opciones = opcionesUso(objeto);
+        const disponibles = opciones.filter(opcion => !opcion.motivo);
+        const motivo = !opciones.length ? "Sin uso" : !disponibles.length ? opciones[0].motivo : "";
+        const tituloUsar = motivo || (disponibles.length === 1 ? disponibles[0].etiqueta : "Usar…");
+        botones = botonObjeto("editar", "editar", "Editar")
+            + botonObjeto("baul", "baul", "Transferir al baúl")
+            + botonObjeto("descartar", "descartar", "Descartar 1")
+            + botonObjeto("usar", "usar", tituloUsar, Boolean(motivo));
+        if (eleccionUso === indice && disponibles.length > 1) {
+            eleccion = `<div class="objeto-eleccion">
+                ${disponibles.map((opcion, k) => `<button type="button" class="btn-eleccion" data-accion="elegir" data-opcion="${k}">${escaparHtml(opcion.etiqueta)}</button>`).join("")}
+                <button type="button" class="btn-eleccion cancelar" data-accion="cancelar">Cancelar</button>
+            </div>`;
+        }
+    } else {
+        const cabe = cabenEnInventario(personaje, objeto) > 0;
+        botones = botonObjeto("editar", "editar", "Editar")
+            + botonObjeto("inventario", "inventario", cabe ? "Transferir al inventario" : "No queda espacio en el inventario", !cabe)
+            + botonObjeto("descartar", "descartar", "Descartar 1");
+    }
+
+    return `<div class="fila-objeto" data-index="${indice}">
+        <span class="objeto-icono" title="${tipoInfo.etiqueta}">${iconoSao(iconoObjeto(objeto))}</span>
+        <div class="objeto-info">
+            <div class="objeto-cabecera">
+                <span class="objeto-nombre">${escaparHtml(objeto.nombre)}</span>
+                <span class="objeto-cantidad">${cantidad}</span>
+            </div>
+            <div class="objeto-detalle">${tipoInfo.etiqueta} · ${escaparHtml(detalleObjeto(objeto))}</div>
+            ${objeto.descripcion ? `<div class="objeto-descripcion">${escaparHtml(objeto.descripcion)}</div>` : ""}
+        </div>
+        <div class="objeto-acciones">${botones}</div>
+        ${eleccion}
+    </div>`;
+}
+
+/* Las listas se regeneran solo si cambia su contenido (no tienen campos editables) */
+const htmlListas = new Map();
+function pintarLista(contenedor, html) {
+    if (htmlListas.get(contenedor) === html) return;
+    htmlListas.set(contenedor, html);
+
+    // Si el foco estaba en un botón de la lista, se devuelve al mismo botón (o a la ventana),
+    // para que el teclado y Escape sigan funcionando
+    const enfocado = contenedor.contains(document.activeElement) ? document.activeElement : null;
+    const fila = enfocado?.closest(".fila-objeto")?.dataset.index;
+    const accion = enfocado?.dataset.accion;
+    contenedor.innerHTML = html;
+    if (!enfocado) return;
+    const mismo = contenedor.querySelector(`.fila-objeto[data-index="${fila}"] button[data-accion="${accion}"]:not(:disabled)`);
+    (mismo ?? contenedor.closest(".modal"))?.focus();
+}
+
+function actualizarObjetos() {
+    if (eleccionUso !== null && !personaje.inventario[eleccionUso]) eleccionUso = null;
+    pintarLista(listaInventarioEl, personaje.inventario.map((objeto, i) => filaObjeto(objeto, i, true)).join(""));
+    pintarLista(listaBaulEl, personaje.baul.length
+        ? personaje.baul.map((objeto, i) => filaObjeto(objeto, i, false)).join("")
+        : `<p class="lista-vacia">El baúl está vacío.</p>`);
+
+    const ocupados = personaje.inventario.filter(Boolean).length;
+    document.getElementById("contadorInventario").textContent = `(${ocupados} / ${personaje.inventario.length})`;
+    document.getElementById("contadorBaul").textContent = `(${personaje.baul.length})`;
+}
+
+/* Pregunta antes de descartar la última unidad de un hueco */
+function confirmarDescarte(objeto) {
+    return objeto.cantidad > 1 || confirm(`¿Descartar ${objeto.nombre}? Es la última unidad.`);
+}
+
+function ejecutarUso(indice, opcion) {
+    const objeto = personaje.inventario[indice];
+    const gastar = gastarAccionesOConfirmar;
+    let resultado;
+    let titulo = objeto.nombre;
+
+    switch (opcion.accion) {
+        case "comer":
+            resultado = comer(personaje, indice);
+            if (resultado.ok && objeto.modificadores.length) resultado.resumen.splice(1, 0, textoModificadores(objeto.modificadores));
+            break;
+        case "beber": resultado = beberPocion(personaje, indice, gastar); break;
+        case "aplicar": resultado = aplicarPocionAArma(personaje, indice, opcion.mano, gastar); break;
+        case "equipar": resultado = equipar(personaje, indice, opcion.mano, gastar); break;
+        case "cristal":
+            resultado = usarCristal(personaje, indice, gastar);
+            if (resultado.ok) reproducir("cristal");
+            break;
+        case "lanzar":
+            resultado = lanzarArrojadiza(personaje, indice, gastar);
+            if (resultado.ok) lanzar(resultado.objeto, resultado.mano);
+            break;
+        default: return;
+    }
+
+    eleccionUso = null;
+    actualizarTodo();
+    if (!resultado.ok) titulo = `No se puede: ${objeto.nombre}`;
+    if (resultado.resumen.length) mostrarPopupInfo(titulo, resultado.resumen.map(escaparHtml));
+}
+
+/* Tirada de un arma arrojadiza: dado medio + Reflejos + Combate (o Sigilo) */
+function lanzar(objeto, mano) {
+    const { modos, criticoFacil } = obtenerConfiguracionTirada();
+    const tirada = prepararLanzamiento(personaje, objeto, modos);
+    ejecutarTirada({
+        nombreAccion: tirada.nombre,
+        subtitulo: `Lanzamiento · ${ETIQUETAS_MANO[mano]}`,
+        valorHabilidad: tirada.valorHabilidad,
+        etiquetaHabilidad: tirada.etiquetaHabilidad,
+        valorCaracteristica: tirada.valorCaracteristica,
+        etiquetaCaracteristica: tirada.etiquetaCaracteristica,
+        modoTirada: tirada.modo,
+        criticoFacil: criticoFacil,
+        bonificador: tirada.bonificador,
+        etiquetaBonificador: tirada.bonificador > 0 ? "Ventaja extra" : "Desventaja extra",
+        etiquetaTotal: "ATAQUE",
+        calcularDanno: (resultado) => calcularDannoLanzamiento(personaje, objeto, esCritico(resultado))
+    });
+}
+
+function inicializarObjetos() {
+    listaInventarioEl.addEventListener("click", (e) => {
+        const boton = e.target.closest("button[data-accion]");
+        const fila = boton?.closest(".fila-objeto");
+        if (!fila) return;
+        reproducir("click");
+        const indice = Number(fila.dataset.index);
+        const objeto = personaje.inventario[indice];
+        if (!objeto) return;
+
+        switch (boton.dataset.accion) {
+            case "editar": eleccionUso = null; return abrirEditorObjeto("inventario", indice);
+            case "baul": transferirABaul(personaje, indice); break;
+            case "descartar":
+                if (!confirmarDescarte(objeto)) return;
+                descartar(personaje.inventario, indice, true);
+                break;
+            case "usar": {
+                const disponibles = opcionesUso(objeto).filter(opcion => !opcion.motivo);
+                if (disponibles.length === 1) return ejecutarUso(indice, disponibles[0]);
+                eleccionUso = eleccionUso === indice ? null : indice;
+                break;
+            }
+            case "elegir": {
+                const opcion = opcionesUso(objeto).filter(o => !o.motivo)[Number(boton.dataset.opcion)];
+                if (opcion) return ejecutarUso(indice, opcion);
+                break;
+            }
+            case "cancelar": eleccionUso = null; break;
+        }
+        actualizarTodo();
+    });
+
+    listaBaulEl.addEventListener("click", (e) => {
+        const boton = e.target.closest("button[data-accion]");
+        const fila = boton?.closest(".fila-objeto");
+        if (!fila) return;
+        reproducir("click");
+        const indice = Number(fila.dataset.index);
+        const objeto = personaje.baul[indice];
+        if (!objeto) return;
+
+        if (boton.dataset.accion === "editar") return abrirEditorObjeto("baul", indice);
+        if (boton.dataset.accion === "inventario") {
+            const resultado = transferirAInventario(personaje, indice);
+            if (!resultado.ok) mostrarPopupInfo("Inventario lleno", resultado.resumen);
+        }
+        if (boton.dataset.accion === "descartar") {
+            if (!confirmarDescarte(objeto)) return;
+            descartar(personaje.baul, indice, false);
+        }
+        actualizarTodo();
+    });
+
+    // Al cerrar el inventario se olvida la elección de uso pendiente
+    document.getElementById("modalInventario").addEventListener("hidden.bs.modal", () => {
+        if (eleccionUso === null) return;
+        eleccionUso = null;
+        actualizarObjetos();
+    });
+
+    document.getElementById("btnDescanso").addEventListener("click", () => {
+        const resumen = descansoCorto(personaje);
+        actualizarTodo();
+        mostrarPopupInfo("Descanso corto", resumen.map(escaparHtml));
+    });
+
+    inicializarCrearObjeto();
+}
+
+/* Ventana de crear y editar objetos ________________________________________ */
+/* Abre la ventana con un objeto del inventario o del baúl; la define inicializarCrearObjeto */
+let abrirEditorObjeto = () => {};
+
+function inicializarCrearObjeto() {
+    const modalEl = document.getElementById("modalCrearObjeto");
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    const campo = (id) => document.getElementById(id);
+    const selectTipo = campo("objetoTipo");
+    const selectTipoEquipo = campo("objetoTipoEquipo");
+    const selectEstado = campo("objetoEstado");
+    const selectAccionEstado = campo("objetoEstadoAccion");
+    const checkPermanente = campo("objetoEstadoPermanente");
+    const listaMods = campo("listaModsObjeto");
+    const aviso = campo("avisoCrearObjeto");
+    let destino = "inventario";
+    let modalOrigen = null;
+    let mods = [];
+    /* Objeto que se está editando: { lista: "inventario" | "baul", indice }, o null al crear */
+    let edicion = null;
+
+    // Opciones de los desplegables
+    selectTipo.innerHTML = Object.entries(TIPOS_OBJETO).map(([clave, info]) => `<option value="${clave}">${info.etiqueta}</option>`).join("");
+    selectTipoEquipo.innerHTML =
+        `<optgroup label="Armas y escudos">${Object.entries(ARMAS).map(([clave, arma]) => `<option value="${clave}">${arma.etiqueta}</option>`).join("")}</optgroup>
+        <optgroup label="Armaduras">${TIPOS_ARMADURA.map(tipo => `<option value="${tipo}">${ETIQUETAS_ARMADURA[tipo]}</option>`).join("")}</optgroup>
+        <optgroup label="Otros"><option value="${TIPO_ACCESORIO}">Accesorio</option></optgroup>`;
+    selectEstado.innerHTML = `<option value="">Ninguno</option>` +
+        Object.entries(ESTADOS_INFO).map(([clave, info]) => `<option value="${clave}">${info.etiqueta}</option>`).join("");
+    campo("objetoElemental").innerHTML = `<option value="">Ninguno</option>` +
+        ELEMENTOS_ARROJADIZA.map(tipo => `<option value="${tipo}">${TIPOS_DANNO[tipo].etiqueta}</option>`).join("");
+
+    const pintarMods = () => {
+        listaMods.innerHTML = mods.map((mod, i) => `
+            <li class="mod-equipo" data-index="${i}">
+                <select class="listValores" aria-label="Atributo">${opcionesAtributo(mod.modificado)}</select>
+                <input type="number" class="cantidadMod" aria-label="Cantidad" value="${mod.numero}">
+                <button type="button" class="quitar-mod" title="Eliminar modificador" aria-label="Eliminar modificador">×</button>
+            </li>`).join("");
     };
 
-    pestanas.forEach((pestana, i) => {
-        pestana.addEventListener("click", () => activar(pestana));
-        // Flechas para moverse entre pestañas (patrón de accesibilidad de tabs)
-        pestana.addEventListener("keydown", (e) => {
-            const destino = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: pestanas.length - 1 }[e.key];
-            if (destino === undefined) return;
-            e.preventDefault();
-            activar(pestanas[(destino + pestanas.length) % pestanas.length], true);
+    // Muestra solo los campos del tipo elegido
+    const actualizarCampos = () => {
+        const tipo = selectTipo.value;
+        modalEl.querySelectorAll("[data-campos]").forEach(el => {
+            el.style.display = el.dataset.campos.split(" ").includes(tipo) ? "" : "none";
+        });
+        const tipoEquipo = selectTipoEquipo.value;
+        const grupoEquipo = ARMAS[tipoEquipo]?.escudo ? "escudo" : ARMAS[tipoEquipo] ? "arma"
+            : TIPOS_ARMADURA.includes(tipoEquipo) ? "armadura" : "";
+        modalEl.querySelectorAll("[data-equipo]").forEach(el => {
+            el.style.display = el.dataset.equipo === grupoEquipo ? "" : "none";
+        });
+        const quitar = tipo === "pocion" && selectAccionEstado.value === "quitar";
+        modalEl.querySelectorAll(".campo-estado-valor").forEach(el => {
+            el.style.display = selectEstado.value && !quitar ? "" : "none";
+        });
+        campo("objetoEstadoTurnos").disabled = checkPermanente.checked;
+        campo("labelObjetoDescripcion").textContent = tipo === "cristal" ? "Mensaje al usarlo" : "Descripción";
+    };
+
+    // Valores por defecto del estado elegido
+    selectEstado.addEventListener("change", () => {
+        const info = ESTADOS_INFO[selectEstado.value];
+        if (!info) return;
+        campo("objetoEstadoValor").value = info.valorPorDefecto ?? 1;
+        checkPermanente.checked = info.turnos === TURNOS_PERMANENTE;
+        campo("objetoEstadoTurnos").value = info.turnos === TURNOS_PERMANENTE ? 3 : info.turnos;
+    });
+
+    modalEl.addEventListener("change", actualizarCampos);
+    campo("btnAnadirModObjeto").addEventListener("click", () => {
+        mods.push({ modificado: "atletismo", numero: 1 });
+        pintarMods();
+    });
+    listaMods.addEventListener("change", (e) => {
+        const mod = mods[Number(e.target.closest(".mod-equipo")?.dataset.index)];
+        if (!mod) return;
+        if (e.target.classList.contains("listValores")) mod.modificado = e.target.value;
+        if (e.target.classList.contains("cantidadMod")) mod.numero = parseInt(e.target.value) || 0;
+    });
+    listaMods.addEventListener("click", (e) => {
+        if (!e.target.closest(".quitar-mod")) return;
+        mods.splice(Number(e.target.closest(".mod-equipo").dataset.index), 1);
+        pintarMods();
+    });
+
+    // La misma ventana sirve para crear y para editar: titulo y botón según el modo
+    const ponerModo = (editando) => {
+        campo("modalCrearObjetoLabel").textContent = editando ? "Editar objeto" : "Crear objeto";
+        campo("btnCrearObjeto").textContent = editando ? "Guardar" : "Crear";
+    };
+
+    const reiniciar = () => {
+        campo("formCrearObjeto").reset();
+        selectTipo.value = "material";
+        campo("objetoCantidad").value = 1;
+        mods = [];
+        pintarMods();
+        aviso.textContent = "";
+        edicion = null;
+        ponerModo(false);
+        actualizarCampos();
+    };
+
+    // Rellena el formulario con un objeto existente
+    const rellenar = (objeto) => {
+        selectTipo.value = objeto.tipo;
+        campo("objetoNombre").value = objeto.nombre;
+        campo("objetoCantidad").value = objeto.cantidad;
+        campo("objetoDescripcion").value = objeto.descripcion;
+        const modsObjeto = objeto.tipo === "equipo" ? objeto.equipo.modificadores : objeto.modificadores;
+        mods = (modsObjeto || []).map(mod => ({ modificado: mod.modificado, numero: Number(mod.numero) || 0 }));
+        pintarMods();
+
+        if (objeto.tipo === "pocion") campo("objetoPv").value = objeto.pv;
+        if (objeto.tipo === "arrojadiza") {
+            campo("objetoDanno").value = objeto.danno;
+            campo("objetoElemental").value = objeto.elemental?.tipo ?? "";
+            campo("objetoElementalCantidad").value = objeto.elemental?.cantidad ?? 0;
+        }
+        if (objeto.estado) {
+            selectEstado.value = objeto.estado.clave;
+            selectAccionEstado.value = objeto.estado.quitar ? "quitar" : "activar";
+            campo("objetoEstadoValor").value = objeto.estado.valor;
+            checkPermanente.checked = objeto.estado.turnos === TURNOS_PERMANENTE;
+            campo("objetoEstadoTurnos").value = objeto.estado.turnos === TURNOS_PERMANENTE ? 3 : objeto.estado.turnos;
+        }
+        if (objeto.tipo === "equipo") {
+            const equipo = objeto.equipo;
+            selectTipoEquipo.value = equipo.tipo;
+            campo("objetoEquipoDanno").value = equipo.danno || 0;
+            campo("objetoEquipoDefensa").value = equipo.defensa || 0;
+            campo("objetoEquipoArmadura").value = equipo.armadura || 0;
+            campo("objetoEquipoPenalizacion").value = equipo.penalizacionAtletismo || 0;
+        }
+        actualizarCampos();
+    };
+
+    const leerEstado = (puedeQuitar) => {
+        if (!selectEstado.value) return null;
+        return {
+            clave: selectEstado.value,
+            valor: Math.max(0, parseInt(campo("objetoEstadoValor").value) || 0),
+            turnos: checkPermanente.checked ? TURNOS_PERMANENTE : Math.max(0, parseInt(campo("objetoEstadoTurnos").value) || 0),
+            quitar: puedeQuitar && selectAccionEstado.value === "quitar"
+        };
+    };
+
+    const crear = () => {
+        const tipo = selectTipo.value;
+        const nombre = campo("objetoNombre").value.trim();
+        if (!nombre) {
+            aviso.textContent = "Ponle un nombre al objeto.";
+            campo("objetoNombre").focus();
+            return;
+        }
+        const numero = (id) => parseInt(campo(id).value) || 0;
+        const modificadores = mods.map(mod => new Modificador(nombre, mod.modificado, mod.numero, TURNOS_PERMANENTE));
+        const datos = {
+            tipo, nombre,
+            descripcion: campo("objetoDescripcion").value.trim(),
+            cantidad: Math.max(1, numero("objetoCantidad"))
+        };
+        if (tipo === "comida") datos.modificadores = modificadores;
+        if (tipo === "pocion") Object.assign(datos, { pv: numero("objetoPv"), estado: leerEstado(true) });
+        if (tipo === "arrojadiza") {
+            Object.assign(datos, {
+                danno: Math.max(0, numero("objetoDanno")),
+                estado: leerEstado(false),
+                elemental: campo("objetoElemental").value
+                    ? { tipo: campo("objetoElemental").value, cantidad: Math.max(0, numero("objetoElementalCantidad")) }
+                    : null
+            });
+        }
+        if (tipo === "equipo") {
+            // Al editar se conserva lo que el formulario no muestra (p. ej. una poción aplicada al arma)
+            const original = edicion ? personaje[edicion.lista][edicion.indice]?.equipo : null;
+            datos.equipo = {
+                ...(original ? JSON.parse(JSON.stringify(original)) : {}),
+                tipo: selectTipoEquipo.value, nombre, descripcion: datos.descripcion,
+                danno: Math.max(0, numero("objetoEquipoDanno")),
+                defensa: Math.max(0, numero("objetoEquipoDefensa")),
+                armadura: Math.max(0, numero("objetoEquipoArmadura")),
+                penalizacionAtletismo: Math.max(0, numero("objetoEquipoPenalizacion")),
+                modificadores
+            };
+        }
+
+        const objeto = cargarObjeto(datos);
+        const lineas = [];
+        if (edicion) {
+            // Editar: el objeto se queda en su hueco. En el inventario la pila no pasa de su máximo;
+            // lo que sobre va al baúl para no perderlo.
+            const pila = objeto.tipo === "equipo" ? 1 : MAX_PILA_INVENTARIO;
+            if (edicion.lista === "inventario" && objeto.cantidad > pila) {
+                const sobra = objeto.cantidad - pila;
+                objeto.cantidad = pila;
+                anadirABaul(personaje, { ...objeto, cantidad: sobra });
+                lineas.push(`Solo caben ${pila} por hueco: ${sobra} van al baúl.`);
+            }
+            personaje[edicion.lista][edicion.indice] = objeto;
+            personaje.calcularCaracteristicas();
+        } else if (destino === "baul") {
+            anadirABaul(personaje, objeto);
+        } else {
+            // Lo que no cabe en el inventario va al baúl, para no perderlo
+            const resto = anadirAInventario(personaje, objeto);
+            if (resto > 0) {
+                anadirABaul(personaje, { ...objeto, cantidad: resto });
+                lineas.push(`No caben ${resto} en el inventario: van al baúl.`);
+            }
+        }
+        const editado = Boolean(edicion);
+        edicion = null;
+        modal.hide();
+        actualizarTodo();
+        if (lineas.length) mostrarPopupInfo(`${editado ? "Editado" : "Creado"}: ${escaparHtml(nombre)}`, lineas);
+    };
+
+    campo("btnCrearObjeto").addEventListener("click", () => {
+        reproducir("click");
+        crear();
+    });
+    campo("objetoNombre").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); crear(); }
+    });
+
+    // Se abre desde el inventario o el baúl: se oculta esa ventana y se vuelve a ella al cerrar
+    const abrirDesde = (origen) => {
+        modalOrigen = origen;
+        modalOrigen.addEventListener("hidden.bs.modal", () => modal.show(), { once: true });
+        // Cambio de ventana, no volver a la pantalla principal: solo suena el click
+        modalOrigen.dataset.sinSonidoCerrar = "1";
+        modalEl.dataset.sinSonidoAbrir = "1";
+        bootstrap.Modal.getOrCreateInstance(modalOrigen).hide();
+    };
+
+    document.querySelectorAll(".btn-crear-objeto").forEach(boton => {
+        boton.addEventListener("click", () => {
+            reproducir("click");
+            destino = boton.dataset.destino;
+            reiniciar();
+            abrirDesde(boton.closest(".modal"));
         });
     });
 
-    try {
-        const guardada = document.getElementById(localStorage.getItem(CLAVE_PESTANA));
-        if (pestanas.includes(guardada)) activar(guardada);
-    } catch { /* sin almacenamiento: se queda en Inventario */ }
+    // Editar un objeto ya creado (botón de cada fila; el click ya suena en la lista)
+    abrirEditorObjeto = (lista, indice) => {
+        const objeto = personaje[lista][indice];
+        if (!objeto) return;
+        reiniciar();
+        edicion = { lista, indice };
+        ponerModo(true);
+        rellenar(objeto);
+        abrirDesde(document.getElementById(lista === "baul" ? "modalBaul" : "modalInventario"));
+    };
+    modalEl.addEventListener("shown.bs.modal", () => campo("objetoNombre").focus());
+    // Cerrar esta ventana devuelve al inventario o al baúl, no a la pantalla principal:
+    // ni sonido de cerrar ni de volver a abrir (al crear ya suena el click)
+    modalEl.addEventListener("hide.bs.modal", () => {
+        if (modalOrigen) modalEl.dataset.sinSonidoCerrar = "1";
+    });
+    modalEl.addEventListener("hidden.bs.modal", () => {
+        if (!modalOrigen) return;
+        const origen = modalOrigen;
+        modalOrigen = null;
+        origen.dataset.sinSonidoAbrir = "1";
+        bootstrap.Modal.getOrCreateInstance(origen).show();
+    });
 }
 
 /* Debug: abrir la página con ?debug para ver el botón ______________________ */
@@ -1805,7 +2397,7 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarTurno();
     inicializarEstados();
     inicializarDanno();
-    inicializarPestanas();
+    inicializarObjetos();
     inicializarSonido();
     inicializarDebug();
     actualizarTodo();

@@ -1,4 +1,4 @@
-import Modificador from "./modificador.js";
+import Modificador, { cargarModificador } from "./modificador.js";
 
 /**
  * Armas y escudos que se equipan en las manos (06-equipo-y-objetos.md §2).
@@ -43,6 +43,7 @@ export default class Equipamiento {
         this.armadura = Number(armadura) || 0;
         this.defensa = 0; // defensa que aporta un escudo mientras está en uso
         this.enUso = false; // true cuando el escudo se ha activado con el botón Usar
+        this.pocionAplicada = null; // poción untada en el arma: se aplica en el siguiente ataque
     }
 
     esEscudo() {
@@ -99,7 +100,22 @@ export default class Equipamiento {
             penalizacionAtletismo: this.penalizacionAtletismo,
             armadura: this.armadura,
             defensa: this.defensa,
-            enUso: this.enUso
+            enUso: this.enUso,
+            pocionAplicada: this.pocionAplicada
         });
     }
+}
+
+/* Tipos de armadura y de accesorio (el resto de tipos de equipo son los de ARMAS) */
+export const TIPOS_ARMADURA = ["pesada", "media", "ligera", "ropa", "real"];
+export const TIPO_ACCESORIO = "accesorio";
+
+/* Reconstruye un equipamiento guardado (modificadores incluidos) */
+export function cargarEquipamiento(datos) {
+    const equipo = Object.assign(new Equipamiento(), datos || {});
+    equipo.modificadores = Array.isArray(equipo.modificadores)
+        ? equipo.modificadores.map(cargarModificador)
+        : [];
+    if (!equipo.pocionAplicada || typeof equipo.pocionAplicada !== "object") equipo.pocionAplicada = null;
+    return equipo;
 }

@@ -214,6 +214,70 @@ const GLIFOS = {
         <circle class="p" cx="50" cy="50" r="7"/>
         <circle class="f" cx="54" cy="46" r="2.5"/>`,
 
+    /* Tipos de objeto (el equipamiento usa el icono de su arma, "armadura" o "accesorio") */
+    comida: `
+        <path class="p" d="M50 34C40 26 24 30 24 50C24 70 38 84 50 80C62 84 76 70 76 50C76 30 60 26 50 34Z"/>
+        <path class="s" d="M50 34C60 26 76 30 76 50C76 70 62 84 50 80Z"/>
+        <path class="t" d="M50 34C50 26 53 20 58 16"/>
+        <path class="p" d="M53 26C57 17 66 14 73 16C71 24 63 28 53 26Z"/>`,
+    pocion: `
+        <rect class="p" x="41" y="12" width="18" height="8" rx="2"/>
+        <path class="p" d="M44 20H56V38L74 70C78 78 72 86 64 86H36C28 86 22 78 26 70L44 38Z"/>
+        <path class="f" d="M33 62H67L71 71C73 76 70 80 65 80H35C30 80 27 76 29 71Z"/>
+        <circle class="s" cx="45" cy="70" r="3"/>
+        <circle class="s" cx="56" cy="74" r="2.5"/>`,
+    cristal: `
+        <polygon class="p" points="50,12 72,34 50,88 28,34"/>
+        <polygon class="s" points="50,12 72,34 50,88"/>
+        <path class="tf" style="stroke-width:4" d="M28 34H72"/>`,
+    material: `
+        <polygon class="p" points="50,16 80,32 80,68 50,84 20,68 20,32"/>
+        <polygon class="s" points="50,50 80,32 80,68 50,84"/>
+        <path class="tf" style="stroke-width:4;stroke-linejoin:round" d="M20 32L50 50L80 32M50 50V84"/>`,
+    arrojadiza: `
+        ${enDiagonal(`<polygon class="p" points="50,10 58,28 56,56 44,56 42,28"/>
+        <polygon class="s" points="50,10 58,28 56,56 50,56"/>
+        <rect class="p" x="38" y="56" width="24" height="6" rx="2"/>
+        <rect class="p" x="46" y="62" width="8" height="18" rx="3"/>`)}
+        <path class="t o" d="M14 66L28 52M22 80L34 68M34 88L42 80"/>`,
+
+    /* Acciones de los objetos y menús */
+    inventario: `
+        <path class="p" d="M30 38H70L78 80C79 84 76 86 72 86H28C24 86 21 84 22 80Z"/>
+        <path class="t" d="M40 38V30C40 20 60 20 60 30V38"/>
+        <rect class="s" x="26" y="34" width="48" height="9" rx="3"/>`,
+    baul: `
+        <rect class="p" x="16" y="42" width="68" height="38" rx="4"/>
+        <path class="s" d="M16 42V36C16 26 24 20 34 20H66C76 20 84 26 84 36V42Z"/>
+        <rect class="f" x="16" y="42" width="68" height="4"/>
+        <rect class="f" x="43" y="44" width="14" height="16" rx="2"/>`,
+    descartar: `
+        <rect class="p" x="22" y="22" width="56" height="8" rx="2"/>
+        <rect class="s" x="41" y="14" width="18" height="8" rx="2"/>
+        <path class="p" d="M28 34H72L67 84H33Z"/>
+        <path class="tf" style="stroke-width:4" d="M42 42V76M58 42V76"/>`,
+    editar: enDiagonal(`
+        <rect class="s" x="41" y="10" width="18" height="10" rx="3"/>
+        <rect class="p" x="41" y="22" width="18" height="46"/>
+        <polygon class="p" points="41,70 59,70 50,88"/>
+        <polygon class="f" points="47,80 53,80 50,86"/>`),
+    usar: `
+        <circle class="t o" cx="50" cy="50" r="27"/>
+        <circle class="p" cx="50" cy="50" r="15"/>`,
+    amigos: `
+        <circle class="s" cx="64" cy="34" r="11"/>
+        <path class="s" d="M50 76C50 60 56 52 64 52C74 52 82 60 82 76Z"/>
+        <circle class="p" cx="40" cy="40" r="13"/>
+        <path class="p" d="M16 82C16 64 27 56 40 56C53 56 64 64 64 82Z"/>`,
+    artes: `
+        ${estrella(48, 54, 30)}
+        ${estrella(78, 22, 9, "s")}
+        ${estrella(20, 22, 6, "s")}`,
+    descanso: `
+        <path class="s" d="M50 14C57 26 68 33 66 48C65 59 58 64 50 64C42 64 35 59 34 50C33 40 40 35 42 26C45 32 47 36 48 40C50 31 52 24 50 14Z"/>
+        <path class="p" d="M50 38C55 45 58 49 58 54C57 60 54 63 50 63C46 63 43 60 43 54C43 49 47 45 50 38Z"/>
+        <path class="t" style="stroke-width:9" d="M24 84L76 68M24 68L76 84"/>`,
+
     otros: enDiagonal(`
         <rect class="p" x="46.5" y="24" width="7" height="64" rx="3"/>
         <path class="p" d="M18 34C34 14 66 14 82 34L78 38C62 26 38 26 22 38Z"/>
@@ -224,6 +288,10 @@ const GLIFOS = {
  * Devuelve el SVG de un icono SAO.
  * @param {string} clave nombre del glifo en GLIFOS
  */
+export function tieneIconoSao(clave) {
+    return Boolean(GLIFOS[clave]);
+}
+
 export function iconoSao(clave) {
     const glifo = GLIFOS[clave] ?? GLIFOS.elemental;
     return `<svg class="icono-sao" viewBox="0 0 100 100" aria-hidden="true" focusable="false">

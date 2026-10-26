@@ -153,7 +153,33 @@
                             <img class="icono-off" src="./imgs/danno.svg" alt="">
                             <img class="icono-on" src="./imgs/danno_on.svg" alt="">
                         </button>
-                        <svg version="1.0" width="300pt" height="300pt" viewBox="0 0 1024.000000 1024.000000"
+                        <!-- Menús: abren su ventana (el sonido de menú sale solo al abrir un modal) -->
+                        <button type="button" id="btnInventario" class="btn-icono-sao btn-menu-inventario" title="Inventario" aria-label="Inventario"
+                            data-bs-toggle="modal" data-bs-target="#modalInventario">
+                            <img class="icono-off" src="./imgs/inventario.svg" alt="">
+                            <img class="icono-on" src="./imgs/inventario_on.svg" alt="">
+                        </button>
+                        <button type="button" id="btnBaul" class="btn-icono-sao btn-menu-baul" title="Baúl" aria-label="Baúl"
+                            data-bs-toggle="modal" data-bs-target="#modalBaul">
+                            <img class="icono-off" src="./imgs/baul.svg" alt="">
+                            <img class="icono-on" src="./imgs/baul_on.svg" alt="">
+                        </button>
+                        <button type="button" id="btnAmigos" class="btn-icono-sao btn-menu-amigos" title="Amigos" aria-label="Amigos"
+                            data-bs-toggle="modal" data-bs-target="#modalAmigos">
+                            <img class="icono-off" src="./imgs/amigos.svg" alt="">
+                            <img class="icono-on" src="./imgs/amigos_on.svg" alt="">
+                        </button>
+                        <button type="button" id="btnArtes" class="btn-icono-sao btn-menu-artes" title="Artes" aria-label="Artes"
+                            data-bs-toggle="modal" data-bs-target="#modalArtes">
+                            <img class="icono-off" src="./imgs/artes.svg" alt="">
+                            <img class="icono-on" src="./imgs/artes_on.svg" alt="">
+                        </button>
+                        <button type="button" id="btnDescanso" class="btn-icono-sao btn-menu-descanso" title="Descanso corto: termina el efecto de la comida y recarga los PA" aria-label="Descanso corto">
+                            <img class="icono-off" src="./imgs/descanso.svg" alt="">
+                            <img class="icono-on" src="./imgs/descanso_on.svg" alt="">
+                        </button>
+                        <!-- viewBox desplazado (-22, 17) para centrar la figura dentro del círculo de botones -->
+                        <svg version="1.0" width="300pt" height="300pt" viewBox="-22 17 1024 1024"
                             preserveAspectRatio="xMidYMid meet" id="svg1" xmlns="http://www.w3.org/2000/svg"
                             xmlns:svg="http://www.w3.org/2000/svg">
                             <defs id="defs1" />
@@ -253,7 +279,10 @@
                                         <option value="gran_escudo">Gran escudo</option>
                                         <option value="otros">Otros</option>
                                     </select>
+                                    <span class="tipoEquipoTexto"></span>
+                                    <button type="button" class="btn-guardar-equipo" title="Guardar en el inventario" aria-label="Guardar en el inventario"></button>
                                 </div>
+                                <p class="equipamiento-vacio">Vacío: equipa desde el inventario</p>
                                 <div class="equipamiento-detalles" style="display: none;">
                                     <div class="equipamiento-main-inputs">
                                         <input type="text" class="inputNombreEquipo" placeholder="Nombre">
@@ -267,6 +296,7 @@
                                         </div>
                                         <button type="button" class="btn-usar-equipo" title="Usar">Usar</button>
                                     </div>
+                                    <p class="equipamiento-descripcion"></p>
                                     <div class="equipamiento-mods-header">
                                         <span>Modificadores:</span>
                                         <button type="button" class="btn-anadir-mod-equipo">+</button>
@@ -288,7 +318,10 @@
                                     <option value="ropa">Ropa</option>
                                     <option value="real">Real</option>
                                 </select>
+                                <span class="tipoEquipoTexto"></span>
+                                <button type="button" class="btn-guardar-equipo" title="Guardar en el inventario" aria-label="Guardar en el inventario"></button>
                             </div>
+                            <p class="equipamiento-vacio">Vacío: equipa desde el inventario</p>
                             <div class="equipamiento-detalles" style="display: none;">
                                 <div class="equipamiento-main-inputs">
                                     <input type="text" class="inputNombreEquipo" placeholder="Nombre">
@@ -301,6 +334,7 @@
                                         <input type="number" class="inputValorArmadura" min="0" value="0">
                                     </div>
                                 </div>
+                                <p class="equipamiento-descripcion"></p>
                                 <div class="equipamiento-mods-header">
                                     <span>Modificadores:</span>
                                     <button type="button" class="btn-anadir-mod-equipo">+</button>
@@ -414,26 +448,6 @@
                 <h2 class="h2-con-boton">Modificadores <button type="button" id="anadirMod" class="btn-h2" title="Añadir modificador" aria-label="Añadir modificador">+</button></h2>
                 <div id="listadoModificadores" class="lista-modificadores"></div>
 
-                <!-- Pestañas: inventario, baúl, amigos y artes -->
-                <div class="pestanas" role="tablist" aria-label="Inventario y listas">
-                    <button type="button" class="pestana activa" role="tab" id="tab-inventario" aria-controls="panel-inventario" aria-selected="true">Inventario</button>
-                    <button type="button" class="pestana" role="tab" id="tab-baul" aria-controls="panel-baul" aria-selected="false" tabindex="-1">Baúl</button>
-                    <button type="button" class="pestana" role="tab" id="tab-amigos" aria-controls="panel-amigos" aria-selected="false" tabindex="-1">Amigos</button>
-                    <button type="button" class="pestana" role="tab" id="tab-artes" aria-controls="panel-artes" aria-selected="false" tabindex="-1">Artes</button>
-                </div>
-                <div class="panel-pestana" role="tabpanel" id="panel-inventario" aria-labelledby="tab-inventario">
-                    <!-- Generado desde personaje.inventario (interfaz.js) -->
-                    <div id="listaInventario"></div>
-                </div>
-                <div class="panel-pestana" role="tabpanel" id="panel-baul" aria-labelledby="tab-baul" hidden>
-                    <textarea id="baul" placeholder="Objetos guardados en el baúl"></textarea>
-                </div>
-                <div class="panel-pestana" role="tabpanel" id="panel-amigos" aria-labelledby="tab-amigos" hidden>
-                    <textarea id="listaDeAmigos" placeholder="Lista de amigos"></textarea>
-                </div>
-                <div class="panel-pestana" role="tabpanel" id="panel-artes" aria-labelledby="tab-artes" hidden>
-                    <textarea id="listadoArtes" placeholder="Artes equipadas"></textarea>
-                </div>
                 <h2>Valores de combate </h2>
                 <!-- Generado desde VALORES_COMBATE (interfaz.js) -->
                 <div id="valoresCombateDiv" class="valores-combate"></div>
@@ -542,6 +556,151 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                     <button type="button" class="btn" id="btnAplicarDanno"
                         style="background-color: #d1ab52; color: white; font-weight: bold;">Aplicar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inventario: 10 huecos, generado desde personaje.inventario (pintarListaObjetos en interfaz.js) -->
+    <div class="modal fade modal-sao" id="modalInventario" tabindex="-1" aria-labelledby="modalInventarioLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalInventarioLabel">Inventario <span id="contadorInventario" class="contador-objetos"></span></h5>
+                    <button type="button" class="btn-crear-objeto" data-destino="inventario">+ Crear objeto</button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="listaInventario" class="lista-objetos"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Baúl: sin límite de objetos ni de pila -->
+    <div class="modal fade modal-sao" id="modalBaul" tabindex="-1" aria-labelledby="modalBaulLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalBaulLabel">Baúl <span id="contadorBaul" class="contador-objetos"></span></h5>
+                    <button type="button" class="btn-crear-objeto" data-destino="baul">+ Crear objeto</button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="listaBaul" class="lista-objetos"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Crear objeto (se abre desde el inventario o el baúl y vuelve a él al cerrarse) -->
+    <div class="modal fade modal-sao" id="modalCrearObjeto" tabindex="-1" aria-labelledby="modalCrearObjetoLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalCrearObjetoLabel">Crear objeto</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="formCrearObjeto" class="form-objeto" novalidate>
+                        <div class="campo-objeto">
+                            <label for="objetoTipo">Tipo</label>
+                            <select id="objetoTipo"></select>
+                        </div>
+                        <div class="campo-objeto">
+                            <label for="objetoNombre">Nombre</label>
+                            <input type="text" id="objetoNombre" required>
+                        </div>
+                        <div class="campo-objeto" data-campos="comida pocion cristal material arrojadiza">
+                            <label for="objetoCantidad">Cantidad</label>
+                            <input type="number" id="objetoCantidad" min="1" value="1">
+                        </div>
+                        <div class="campo-objeto">
+                            <label for="objetoDescripcion" id="labelObjetoDescripcion">Descripción</label>
+                            <textarea id="objetoDescripcion" rows="2"></textarea>
+                        </div>
+
+                        <!-- Equipamiento -->
+                        <div class="campo-objeto" data-campos="equipo">
+                            <label for="objetoTipoEquipo">Tipo de equipo</label>
+                            <select id="objetoTipoEquipo"></select>
+                        </div>
+                        <div class="fila-campos" data-campos="equipo">
+                            <label data-equipo="arma">Daño <input type="number" id="objetoEquipoDanno" min="0" value="0"></label>
+                            <label data-equipo="escudo">Defensa <input type="number" id="objetoEquipoDefensa" min="0" value="0"></label>
+                            <label data-equipo="armadura">Armadura <input type="number" id="objetoEquipoArmadura" min="0" value="0"></label>
+                            <label data-equipo="armadura">Pen. Atletismo <input type="number" id="objetoEquipoPenalizacion" min="0" value="0"></label>
+                        </div>
+
+                        <!-- Poción -->
+                        <div class="fila-campos" data-campos="pocion">
+                            <label title="Positivo cura, negativo quita PV">PV <input type="number" id="objetoPv" value="0"></label>
+                        </div>
+
+                        <!-- Arrojadiza -->
+                        <div class="fila-campos" data-campos="arrojadiza">
+                            <label title="Se le suma el bonificador de daño a distancia">Daño fijo <input type="number" id="objetoDanno" min="0" value="0"></label>
+                            <label>Daño elemental <select id="objetoElemental"></select></label>
+                            <label>Cantidad <input type="number" id="objetoElementalCantidad" min="0" value="0"></label>
+                        </div>
+
+                        <!-- Estado (poción y arrojadiza) -->
+                        <div class="fila-campos" data-campos="pocion arrojadiza">
+                            <label>Estado <select id="objetoEstado"></select></label>
+                            <label data-campos="pocion">Efecto
+                                <select id="objetoEstadoAccion">
+                                    <option value="activar">Provoca</option>
+                                    <option value="quitar">Cura</option>
+                                </select>
+                            </label>
+                            <label class="campo-estado-valor">Valor <input type="number" id="objetoEstadoValor" min="0" value="1"></label>
+                            <label class="campo-estado-valor">Turnos <input type="number" id="objetoEstadoTurnos" min="0" value="3"></label>
+                            <label class="campo-estado-valor"><input type="checkbox" id="objetoEstadoPermanente"> Permanente</label>
+                        </div>
+
+                        <!-- Modificadores (comida y equipamiento) -->
+                        <div class="campo-objeto" data-campos="comida equipo">
+                            <div class="equipamiento-mods-header">
+                                <span>Modificadores:</span>
+                                <button type="button" id="btnAnadirModObjeto" class="btn-anadir-mod-objeto" title="Añadir modificador" aria-label="Añadir modificador">+</button>
+                            </div>
+                            <ul id="listaModsObjeto" class="mods-equipo"></ul>
+                        </div>
+                        <p id="avisoCrearObjeto" class="aviso-objeto" role="alert"></p>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-sao" id="btnCrearObjeto">Crear</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Amigos y Artes: de momento, texto libre -->
+    <div class="modal fade modal-sao" id="modalAmigos" tabindex="-1" aria-labelledby="modalAmigosLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalAmigosLabel">Amigos</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <textarea id="listaDeAmigos" class="texto-modal" placeholder="Lista de amigos"></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade modal-sao" id="modalArtes" tabindex="-1" aria-labelledby="modalArtesLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalArtesLabel">Artes</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <textarea id="listadoArtes" class="texto-modal" placeholder="Artes equipadas"></textarea>
                 </div>
             </div>
         </div>

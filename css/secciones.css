@@ -104,8 +104,11 @@
     margin-left: 10px;
 }
 
+/* Tan ancho como la silueta (300pt = 400px) para que los botones formen un círculo y no una elipse estirada */
 .silueta-wrapper {
     position: relative;
+    width: min(100%, 400px);
+    margin: 0 auto;
 }
 
 /* Botones con icono SAO sobre la silueta: imagen normal y versión _on al pasar el ratón */
@@ -149,14 +152,23 @@
     display: block;
 }
 
-/* Play arriba a la izquierda, daño arriba a la derecha */
-.btn-turno {
-    left: 0;
+/* Botones en círculo alrededor de la silueta: cada uno tiene su ángulo (0° arriba, sentido horario).
+   La elipse es algo más alta que ancha porque la silueta es alargada. */
+.silueta-wrapper .btn-icono-sao {
+    --radio-x: 41%;
+    --radio-y: 44%;
+    left: calc(50% + var(--radio-x) * sin(var(--angulo)));
+    top: calc(50% - var(--radio-y) * cos(var(--angulo)));
+    translate: -50% -50%;
 }
 
-.btn-danno-icono {
-    right: 0;
-}
+.btn-turno { --angulo: -25deg; }
+.btn-danno-icono { --angulo: 25deg; }
+.btn-menu-baul { --angulo: 75deg; }
+.btn-menu-artes { --angulo: 125deg; }
+.btn-menu-descanso { --angulo: 180deg; }
+.btn-menu-amigos { --angulo: 235deg; }
+.btn-menu-inventario { --angulo: 285deg; }
 
 /* Acción disponible pero sin acciones restantes este turno */
 .parte.bloqueada {
@@ -458,23 +470,6 @@
 
 .equipamiento .modificador .duracionMod {
     width: 25px;
-    text-align: center;
-}
-
-/* Inventario */
-#listaInventario p {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    margin-bottom: 6px;
-}
-
-#listaInventario .itemInv {
-    flex: 1;
-}
-
-#listaInventario input[type='number'] {
-    width: 60px;
     text-align: center;
 }
 
@@ -844,47 +839,52 @@
     cursor: pointer;
 }
 
-/* Pestañas de la columna derecha */
-.pestanas {
-    display: flex;
-    gap: 4px;
-    margin-top: 15px;
-    border-bottom: 3px solid #d1ab52;
+/* Ventanas SAO (inventario, baúl, crear objeto, amigos, artes) */
+.modal-sao .modal-content {
+    border: 3px solid #d1ab52;
+    border-radius: 10px;
+    background: #fbfbfb;
 }
 
-.pestana {
-    flex: 1;
-    padding: 6px 4px;
-    background: #f3e7c6;
+.modal-sao .modal-header {
+    gap: 10px;
+    border-bottom: 2px solid #d1ab52;
+}
+
+.modal-sao .modal-title {
+    color: #d1ab52;
+    font-weight: bold;
+    margin-right: auto;
+}
+
+.modal-sao .modal-footer {
+    border-top: none;
+}
+
+.contador-objetos {
+    font-size: 14px;
+    font-weight: normal;
     color: #8a6d2a;
+}
+
+.btn-crear-objeto,
+.btn-sao {
+    padding: 4px 12px;
+    background: #d1ab52;
+    color: #fbfbfb;
     border: none;
-    border-radius: 6px 6px 0 0;
-    font-family: inherit;
-    font-size: 16px;
+    border-radius: 6px;
     font-weight: bold;
     cursor: pointer;
-    transition: background 0.2s;
 }
 
-.pestana:hover:not(.activa) {
-    background: #ead7a4;
-}
-
-.pestana.activa {
-    background: #d1ab52;
+.btn-crear-objeto:hover,
+.btn-sao:hover {
+    background: #b8933f;
     color: #fbfbfb;
 }
 
-.pestana:focus-visible {
-    outline: 2px solid #8a6d2a;
-    outline-offset: -2px;
-}
-
-.panel-pestana {
-    padding-top: 10px;
-}
-
-.panel-pestana textarea {
+.texto-modal {
     width: 100%;
     min-height: 320px;
     background: #dce8f9;
@@ -895,6 +895,246 @@
     font-family: inherit;
     box-sizing: border-box;
     resize: vertical;
+}
+
+/* Filas de objetos del inventario y del baúl */
+.lista-objetos {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.lista-vacia {
+    margin: 0;
+    color: #888;
+    text-align: center;
+}
+
+.fila-objeto {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border: 1px solid #e3d3a6;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.fila-objeto.vacia {
+    justify-content: center;
+    min-height: 40px;
+    border-style: dashed;
+    background: none;
+}
+
+.objeto-hueco {
+    color: #aaa;
+    font-size: 13px;
+}
+
+.objeto-icono {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+}
+
+.objeto-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.objeto-cabecera {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.objeto-nombre {
+    font-weight: bold;
+    overflow-wrap: anywhere;
+}
+
+.objeto-cantidad {
+    font-size: 13px;
+    color: #8a6d2a;
+    white-space: nowrap;
+}
+
+.objeto-detalle {
+    font-size: 12px;
+    color: #666;
+}
+
+.objeto-descripcion {
+    font-size: 12px;
+    font-style: italic;
+    color: #555;
+    white-space: pre-wrap;
+}
+
+.objeto-acciones {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+/* Botones de icono de cada objeto y "Guardar en el inventario" de las tarjetas de equipo */
+.btn-objeto,
+.btn-guardar-equipo {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.2s;
+}
+
+.btn-objeto:hover:not(:disabled),
+.btn-guardar-equipo:hover {
+    transform: scale(1.08);
+}
+
+.btn-objeto:hover:not(:disabled) .icono-sao,
+.btn-objeto:focus-visible .icono-sao,
+.btn-guardar-equipo:hover .icono-sao,
+.btn-guardar-equipo:focus-visible .icono-sao {
+    --fondo: #FBFBFB;
+    --glifo: #EBA601;
+}
+
+.btn-objeto[data-accion="descartar"]:hover:not(:disabled) .icono-sao {
+    --glifo: #c0392b;
+}
+
+.btn-objeto:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.btn-guardar-equipo {
+    width: 28px;
+    height: 28px;
+    margin-left: auto;
+}
+
+.btn-guardar-equipo.sin-accion {
+    opacity: 0.45;
+}
+
+/* Formas de usar un objeto (qué mano, beber o aplicar al arma...) */
+.objeto-eleccion {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+    padding-left: 46px;
+}
+
+.btn-eleccion {
+    padding: 3px 10px;
+    background: #f3e7c6;
+    color: #8a6d2a;
+    border: 1px solid #d1ab52;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.btn-eleccion:hover {
+    background: #d1ab52;
+    color: #fbfbfb;
+}
+
+.btn-eleccion.cancelar {
+    background: none;
+    border-color: #bbb;
+    color: #777;
+}
+
+/* Formulario de crear objeto */
+.form-objeto {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.campo-objeto {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.campo-objeto > label,
+.fila-campos label {
+    font-size: 13px;
+    font-weight: bold;
+    color: #666;
+}
+
+.form-objeto input[type="text"],
+.form-objeto input[type="number"],
+.form-objeto select,
+.form-objeto textarea {
+    padding: 4px 6px;
+    border: 1px solid #bbb;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 14px;
+}
+
+.fila-campos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+}
+
+.fila-campos label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.fila-campos input[type="number"] {
+    width: 70px;
+}
+
+.aviso-objeto {
+    margin: 0;
+    min-height: 1.2em;
+    color: #c0392b;
+    font-size: 13px;
+}
+
+/* Modo normal (sin ?master): el equipo se cambia desde el inventario */
+.tipoEquipoTexto {
+    font-weight: bold;
+    color: #8a6d2a;
+}
+
+body.modo-master .tipoEquipoTexto,
+body:not(.modo-master) .equipamiento .tipoEquipo,
+body:not(.modo-master) .btn-anadir-mod-equipo,
+body:not(.modo-master) .mods-equipo .quitar-mod {
+    display: none;
+}
+
+.equipamiento-descripcion {
+    margin: 0;
+    font-size: 12px;
+    font-style: italic;
+    color: #555;
+    white-space: pre-wrap;
+}
+
+.equipamiento-vacio {
+    margin: 4px 0 0;
+    font-size: 13px;
+    color: #999;
 }
 
 /* Modificadores de equipo (manos, armadura y accesorios) */

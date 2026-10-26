@@ -1,5 +1,8 @@
 import Equipamiento from "./equipamiento.js";
-import Modificador, { TURNOS_PERMANENTE } from "./modificador.js";
+import Modificador, { TURNOS_PERMANENTE, cargarModificador } from "./modificador.js";
+import { TAMANO_INVENTARIO, crearInventarioVacio, cargarObjeto, cargarBaul, cargarEquipo } from "./objetos.js";
+
+export { TAMANO_INVENTARIO };
 
 const HABILIDADES_LISTA = [
     'atletismo', 'combate', 'percepcion', 'subterfugio',
@@ -18,9 +21,6 @@ export const ESTADOS_LISTA = [
     'deslumbrado'    // Percepción restada por luz con los PV al máximo
 ];
 
-/* Huecos base del inventario: 10 objetos distintos apilables */
-export const TAMANO_INVENTARIO = 10;
-
 /* Campos que se guardan y se cargan tal cual (sin conversión) */
 const CAMPOS_SIMPLES = [
     'nombre', 'nivel', 'experiencia',
@@ -29,31 +29,12 @@ const CAMPOS_SIMPLES = [
     'puntosArte', 'vida',
     'numeroAcciones', 'izquierda', 'derecha', 'cabeza', 'pies', 'reaccionGuardada',
     'enSigilo', 'valorSigilo',
-    'notas', 'listadoArtes', 'listaDeAmigos', 'recetasProfesion', 'baul'
+    'comidaActiva',
+    'notas', 'listadoArtes', 'listaDeAmigos', 'recetasProfesion'
 ];
 
 function crearEstadosVacios() {
     return Object.fromEntries(ESTADOS_LISTA.map(estado => [estado, { valor: 0, turnos: 0 }]));
-}
-
-function crearInventarioVacio(tamano = TAMANO_INVENTARIO) {
-    return Array.from({ length: tamano }, () => ({ nombre: "", cantidad: 0 }));
-}
-
-function cargarEquipamiento(datos) {
-    const equipo = Object.assign(new Equipamiento(), datos || {});
-    equipo.modificadores = Array.isArray(equipo.modificadores)
-        ? equipo.modificadores.map(cargarModificador)
-        : [];
-    return equipo;
-}
-
-function cargarModificador(datos) {
-    const mod = Object.assign(new Modificador(), datos || {});
-    // Las fichas antiguas guardaban turnos = 0 en modificadores que en la práctica eran permanentes
-    const turnos = Number(mod.turnos);
-    mod.turnos = (!Number.isFinite(turnos) || turnos <= 0) ? TURNOS_PERMANENTE : turnos;
-    return mod;
 }
 
 export default class PJ {
@@ -108,8 +89,10 @@ export default class PJ {
         this.enSigilo = false;
         this.valorSigilo = 0; // resultado de la tirada al entrar en sigilo
 
-        /* Inventario: [{ nombre, cantidad }] */
+        /* Inventario: huecos fijos con un objeto (ver objetos.js) o null. Baúl: lista sin límite. */
         this.inventario = crearInventarioVacio();
+        this.baul = [];
+        this.comidaActiva = ""; // nombre de la comida cuyo efecto está activo (sus modificadores llevan origen "comida")
 
         /* Array de modificaciones */
         this.modificadores;
@@ -128,7 +111,6 @@ export default class PJ {
         this.listadoArtes = "";
         this.listaDeAmigos = "";
         this.recetasProfesion = "";
-        this.baul = "";
 
         /* Modificadores */
         this.modificadores = [new Modificador("nombre", "atletismo", 0, TURNOS_PERMANENTE)];
@@ -343,23 +325,26 @@ export default class PJ {
                 valor: Number(guardado.valor) || 0,
                 turnos: Number(guardado.turnos) || 0
             };
+            // Marcado para quitarse con el descanso corto (solo se guarda si es true)
+            if (guardado.descansoCorto) this.estados[estado].descansoCorto = true;
         }
 
-        /* Inventario: se conservan los huecos guardados aunque superen el tamaño base */
+        /* Inventario: se conservan los huecos guardados aunque superen el tamaño base.
+           cargarObjeto acepta el formato antiguo { nombre, cantidad } (pasa a material; sin nombre, hueco vacío). */
         const inventarioGuardado = Array.isArray(jsonObject.inventario) ? jsonObject.inventario : [];
         this.inventario = crearInventarioVacio(Math.max(TAMANO_INVENTARIO, inventarioGuardado.length));
         inventarioGuardado.forEach((item, i) => {
-            this.inventario[i] = {
-                nombre: String(item?.nombre ?? ""),
-                cantidad: Number(item?.cantidad) || 0
-            };
+            this.inventario[i] = cargarObjeto(item);
         });
 
-        /* Equipo */
-        this.equipoArmadura = cargarEquipamiento(jsonObject.equipoArmadura);
-        this.manoDerecha = cargarEquipamiento(jsonObject.manoDerecha);
-        this.manoIzquierda = cargarEquipamiento(jsonObject.manoIzquierda);
-        this.accesorios = Array.isArray(jsonObject.accesorios) ? jsonObject.accesorios.map(cargarEquipamiento) : [];
+        /* Baúl: lista de objetos (o texto de las fichas antiguas: cada línea es un material) */
+        this.baul = cargarBaul(jsonObject.baul);
+
+        /* Equipo (con la poción aplicada, si la hay) */
+        this.equipoArmadura = cargarEquipo(jsonObject.equipoArmadura);
+        this.manoDerecha = cargarEquipo(jsonObject.manoDerecha);
+        this.manoIzquierda = cargarEquipo(jsonObject.manoIzquierda);
+        this.accesorios = Array.isArray(jsonObject.accesorios) ? jsonObject.accesorios.map(cargarEquipo) : [];
 
         /* Modificadores */
         this.modificadores = Array.isArray(jsonObject.modificadores) ? jsonObject.modificadores.map(cargarModificador) : [];
@@ -395,7 +380,8 @@ export default class PJ {
             percepcionPasiva: this.percepcionPasiva,
 
             estados: this.estados,
-            inventario: this.inventario,
+            inventario: this.inventario, // null en los huecos vacíos
+            baul: this.baul,
 
             /* Equipo */
             equipoArmadura: this.equipoArmadura,

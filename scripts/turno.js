@@ -3,6 +3,7 @@
 // No toca el DOM: recibe el personaje, lo modifica y devuelve lo que ha pasado.
 
 import { TURNOS_PERMANENTE } from "./modificador.js";
+import { TIPOS_DOS_MANOS } from "./equipamiento.js";
 
 /* Máximo de acciones por turno: se pueden usar 3 de los 4 tipos */
 export const ACCIONES_MAX = 3;
@@ -58,6 +59,37 @@ export function gastarVarias(pj, partes) {
 export function partesDeMano(propMano, aDosManos) {
     if (aDosManos) return ["izquierda", "derecha"];
     return [propMano === "manoIzquierda" ? "izquierda" : "derecha"];
+}
+
+/** Gasta todas las acciones del turno (p. ej. cambiar de armadura). Solo si aún no se ha gastado ninguna. */
+export function puedeGastarTodas(pj) {
+    return !estaIncapacitado(pj) && accionesUsadas(pj) === 0 && pj.numeroAcciones > 0;
+}
+
+export function gastarTodas(pj) {
+    if (!puedeGastarTodas(pj)) return false;
+    PARTES_ACCION.forEach(parte => { pj[parte] = false; });
+    return true;
+}
+
+/* Manos ________________________________________________________________________ */
+
+export const MANOS = ["manoIzquierda", "manoDerecha"];
+
+/** Acción (parte del cuerpo) de cada mano */
+export function parteDeMano(propMano) {
+    return propMano === "manoIzquierda" ? "izquierda" : "derecha";
+}
+
+/** Una mano está vacía si no tiene nada y la otra no lleva algo a dos manos. */
+export function manoVacia(pj, propMano) {
+    const otra = propMano === "manoIzquierda" ? "manoDerecha" : "manoIzquierda";
+    return !pj[propMano]?.tipo && !TIPOS_DOS_MANOS.includes(pj[otra]?.tipo);
+}
+
+/** Mano libre: vacía y con su acción disponible. Devuelve la primera (o null). */
+export function manoLibre(pj) {
+    return MANOS.find(mano => manoVacia(pj, mano) && puedeGastar(pj, parteDeMano(mano))) ?? null;
 }
 
 /** Devuelve una acción gastada (para corregir un clic por error). */
@@ -166,6 +198,7 @@ export function iniciarTurno(pj) {
     for (const [nombre, estado] of Object.entries(estados)) {
         if (estado.turnos === 0 && estado.valor > 0) {
             estado.valor = 0;
+            delete estado.descansoCorto;
             resumen.push(`Termina: ${nombre}`);
         }
     }
