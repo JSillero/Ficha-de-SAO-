@@ -19,9 +19,10 @@ export function caracteristicaArma(pj, tipo) {
  * dado (según el arma, combinado con el modo elegido) + característica del arma + Combate
  * (o Sigilo si está en sigilo). Devuelve null si en esa mano no hay un arma.
  * @param {"manoIzquierda"|"manoDerecha"} propMano
- * @param {number} modoPanel modo elegido en el panel de tiradas (0, 1, 2)
+ * @param {number|number[]} modosExtra modo del panel de tiradas y demás fuentes de ventaja/desventaja
+ *   (p. ej. aturdido): cada una es 0 desventaja, 1 normal o 2 ventaja
  */
-export function prepararAtaque(pj, propMano, modoPanel = 1) {
+export function prepararAtaque(pj, propMano, modosExtra = [1]) {
     const item = pj[propMano];
     const arma = ARMAS[item?.tipo];
     if (!arma || arma.escudo) return null;
@@ -29,7 +30,7 @@ export function prepararAtaque(pj, propMano, modoPanel = 1) {
     const caracteristica = caracteristicaArma(pj, item.tipo);
     const habilidad = pj.getHabilidadAtaque();
     // El dado del arma es una fuente de ventaja/desventaja más (estoque + ventaja = ventaja +2)
-    const { modo, bonificador } = combinarModos(arma.dado, modoPanel);
+    const { modo, bonificador } = combinarModos(arma.dado, ...[].concat(modosExtra));
 
     return {
         nombre: item.nombre?.trim() || arma.etiqueta,

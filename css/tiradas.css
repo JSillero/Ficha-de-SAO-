@@ -470,3 +470,16 @@
     margin-top: 4px;
     font-family: 'SAOUI', sans-serif !important;
 }
+
+/* Aviso de estados que cambian el modo de todas las tiradas (p. ej. aturdido) */
+.tirada-aviso {
+    margin-bottom: 8px;
+    padding: 3px 6px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: bold;
+    color: #ffffff;
+    background: #c0392b;
+    border-radius: 4px;
+    font-family: 'SAOUI', sans-serif !important;
+}

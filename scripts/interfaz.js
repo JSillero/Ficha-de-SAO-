@@ -1107,8 +1107,8 @@ function usarEquipo(propEquipo) {
         return;
     }
 
-    const { modoTirada, criticoFacil } = obtenerConfiguracionTirada();
-    const ataque = prepararAtaque(personaje, propEquipo, modoTirada);
+    const { modos, criticoFacil } = obtenerConfiguracionTirada();
+    const ataque = prepararAtaque(personaje, propEquipo, modos);
     if (!ataque) return;
     if (!gastarAccionesOConfirmar(partes, `Atacar con ${nombre}`)) return;
 
@@ -1321,12 +1321,30 @@ const MAPEO_HABILIDADES_CARACTERISTICAS = {
     sacro: 'voluntad'
 };
 
+/**
+ * Configuración común de las tiradas.
+ * - modoTirada: lo elegido en el panel (0 desventaja, 1 normal, 2 ventaja).
+ * - modos: todas las fuentes de ventaja/desventaja que afectan al personaje (el panel y, si está
+ *   aturdido, una desventaja). Cada tirada las pasa a combinarModos junto con las suyas (armadura, arma...).
+ */
 function obtenerConfiguracionTirada() {
     const radioSeleccionado = document.querySelector('input[name="modoTiradaRadio"]:checked');
     const modoTirada = radioSeleccionado ? Number(radioSeleccionado.value) : 1;
     const checkCritico = document.getElementById('checkCriticoFacil');
     const criticoFacil = checkCritico ? checkCritico.checked : false;
-    return { modoTirada, criticoFacil };
+    const modos = [modoTirada];
+    if (estaActivo(personaje, "aturdido")) modos.push(0); // Aturdido: tira con desventaja
+    return { modoTirada, modos, criticoFacil };
+}
+
+/** Modo y bonificador finales de una tirada ordinaria (habilidad o característica). */
+function resolverModoTirada(modos) {
+    const { modo, bonificador } = combinarModos(...modos);
+    return {
+        modoTirada: modo,
+        bonificador,
+        etiquetaBonificador: bonificador > 0 ? "Ventaja extra" : "Desventaja extra"
+    };
 }
 
 function inicializarTiradasHabilidades() {
@@ -1343,7 +1361,7 @@ function inicializarTiradasHabilidades() {
         const nombreAccion = titulo ? titulo.innerText.trim() : habilidadId;
 
         const dispararTirada = () => {
-            const { modoTirada, criticoFacil } = obtenerConfiguracionTirada();
+            const { modos, criticoFacil } = obtenerConfiguracionTirada();
             // Valor efectivo: incluye modificadores y penalización de armadura (sin bajar de 0)
             const valorHab = Math.max(0, Number(personaje.getGenerico(habilidadId)) || 0);
             const valorCaract = caractClave ? (Number(personaje[caractClave]) || 0) : 0;
@@ -1352,8 +1370,8 @@ function inicializarTiradasHabilidades() {
                 nombreAccion: nombreAccion,
                 valorHabilidad: valorHab,
                 valorCaracteristica: valorCaract,
-                modoTirada: modoTirada,
-                criticoFacil: criticoFacil
+                criticoFacil: criticoFacil,
+                ...resolverModoTirada(modos)
             });
         };
 
@@ -1367,15 +1385,15 @@ function inicializarTiradasHabilidades() {
         const nombre = icono.alt || atributo;
         icono.title = `Tirada de ${nombre}`;
         icono.addEventListener('click', () => {
-            const { modoTirada, criticoFacil } = obtenerConfiguracionTirada();
+            const { modos, criticoFacil } = obtenerConfiguracionTirada();
             ejecutarTirada({
                 nombreAccion: nombre,
                 valorHabilidad: 0,
                 etiquetaHabilidad: null,
                 valorCaracteristica: Number(personaje[atributo]) || 0,
                 etiquetaCaracteristica: nombre,
-                modoTirada: modoTirada,
-                criticoFacil: criticoFacil
+                criticoFacil: criticoFacil,
+                ...resolverModoTirada(modos)
             });
         });
     });
@@ -1445,8 +1463,8 @@ function inicializarTurno() {
         if (!puedeEntrarEnSigilo(personaje)) return;
 
         // El dado depende de la armadura; el modo elegido en el panel cuenta como otra fuente
-        const { modoTirada, criticoFacil } = obtenerConfiguracionTirada();
-        const { modo, bonificador } = combinarModos(modoArmadura, modoTirada);
+        const { modos, criticoFacil } = obtenerConfiguracionTirada();
+        const { modo, bonificador } = combinarModos(modoArmadura, ...modos);
         const resultado = ejecutarTirada({
             nombreAccion: "Entrar en sigilo",
             valorHabilidad: Math.max(0, Number(personaje.getGenerico("subterfugio")) || 0),
@@ -1579,6 +1597,13 @@ function pistaEstado(clave) {
 }
 
 function actualizarEstados() {
+    // Aviso en el panel de tiradas: los estados que cambian el modo de todas las tiradas
+    const aviso = document.getElementById("avisoModoTirada");
+    if (aviso) {
+        aviso.textContent = estaActivo(personaje, "aturdido") ? "Aturdido: tiras con desventaja" : "";
+        aviso.style.display = aviso.textContent ? "" : "none";
+    }
+
     chipsEstados.querySelectorAll(".chip-estado").forEach(chip => {
         const activo = estaActivo(personaje, chip.dataset.estado);
         chip.classList.toggle("activo", activo);

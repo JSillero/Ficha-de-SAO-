@@ -34,7 +34,7 @@ export const ESTADOS_INFO = {
     regeneracion: { etiqueta: "Regeneración", icono: "regeneracion", color: "#E05583", unidad: "PV/turno", turnos: TURNOS_PERMANENTE,
         descripcion: "Recupera PV cada turno (comida, artes, cristales)." },
     aturdido: { etiqueta: "Aturdido", icono: "aturdido", color: "#16A085", unidad: null, turnos: TURNOS_PERMANENTE,
-        descripcion: "Tira con desventaja." },
+        descripcion: "Tira con desventaja en todas las tiradas (se combina con el panel y el arma)." },
     cegado: { etiqueta: "Cegado", icono: "cegado", color: "#34495E", unidad: null, turnos: TURNOS_PERMANENTE,
         descripcion: "No puede mirar el mapa; el máster le mueve." },
     dormido: { etiqueta: "Dormido", icono: "dormido", color: "#6D8299", unidad: null, turnos: TURNOS_PERMANENTE,
