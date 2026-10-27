@@ -273,24 +273,6 @@ document.addEventListener("hide.bs.modal", (e) => {
     else reproducir("menuCerrar");
 });
 
-function inicializarSonido() {
-    precargarSonidos();
-    const boton = document.getElementById("btnSonido");
-    if (!boton) return;
-    const pintar = () => {
-        const silencio = estaSilenciado();
-        boton.innerHTML = iconoSao(silencio ? "silencio" : "sonido");
-        boton.title = silencio ? "Activar sonidos" : "Silenciar sonidos";
-        boton.setAttribute("aria-label", boton.title);
-        boton.setAttribute("aria-pressed", String(silencio));
-        boton.classList.toggle("silenciado", silencio);
-    };
-    boton.addEventListener("click", () => {
-        setSilenciado(!estaSilenciado());
-        pintar();
-    });
-    pintar();
-}
 
 function actualizarTodo() {
     actualizarInformacion();
@@ -607,10 +589,6 @@ document.getElementById('fileInput').addEventListener('change', function (event)
     }
 });
 
-/* Boton de guardado */
-document.getElementById('botonGuardar').addEventListener('click', function (event) {
-    personaje.guardarJSON();
-});
 
 
 
@@ -2074,78 +2052,112 @@ function inicializarDanno() {
     });
 }
 
-/* Zona (reglas en zonas.js) _________________________________________________ */
-const btnZona = document.getElementById("btnZona");
-const menuZona = document.getElementById("menuZona");
+/* Menús desplegables SAO ____________________________________________________ */
+// Filas con icono y texto que salen junto a un botón de la silueta, con la flecha apuntándole.
+// Los usan la zona, el inventario y las opciones. Estilos: .menu-sao en secciones.css.
 
-function inicializarZona() {
-    menuZona.innerHTML = Object.entries(ZONAS).map(([clave, zona]) => `
-        <button type="button" class="opcion-zona" role="menuitemradio" data-zona="${clave}" aria-checked="false">
-            <span class="opcion-zona-icono">${iconoSao(zona.icono)}</span>
-            <span class="opcion-zona-nombre">${zona.etiqueta}</span>
-        </button>`).join("");
-    const opciones = () => [...menuZona.querySelectorAll(".opcion-zona")];
+/* Duración de la animación de cierre: filas (0,1 s escalonadas + 0,14 s) y después la flecha */
+const DURACION_CIERRE_MENU = 270;
+const sinAnimacion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-    // El menú sale a la derecha del botón, con la flecha apuntándole; si no cabe, a la izquierda
-    const colocar = () => {
-        const wrapper = btnZona.parentElement.getBoundingClientRect();
-        const boton = btnZona.getBoundingClientRect();
-        const separacion = 20; // deja sitio a la flecha
-        menuZona.classList.remove("a-la-izquierda");
-        menuZona.style.top = `${boton.top + boton.height / 2 - wrapper.top}px`;
-        menuZona.style.left = `${boton.right + separacion - wrapper.left}px`;
-        if (menuZona.getBoundingClientRect().right > document.documentElement.clientWidth - 8) {
-            menuZona.classList.add("a-la-izquierda");
-            menuZona.style.left = `${boton.left - separacion - wrapper.left - menuZona.offsetWidth}px`;
-        }
-    };
-
-    // Al cerrar, las filas desaparecen una a una (animación .cerrando en secciones.css)
-    // y el menú se oculta al terminar
-    const DURACION_CIERRE = 270; // ms: filas (0,1 s escalonadas + 0,14 s) y después la flecha
-    const sinAnimacion = window.matchMedia("(prefers-reduced-motion: reduce)");
+/**
+ * Convierte un contenedor vacío en un menú desplegable del botón.
+ * @param {object} config
+ * @param {HTMLElement} config.boton  botón que lo abre y lo cierra
+ * @param {HTMLElement} config.menu   contenedor (.menu-sao, hidden)
+ * @param {() => Array<{clave, etiqueta, icono, activa?}>} config.opciones  filas (se vuelven a leer al abrir y en actualizar)
+ * @param {(clave: string, menu) => void} config.alElegir  qué hacer al elegir una fila (el menú no se cierra solo)
+ * @param {"menuitem"|"menuitemradio"} [config.rol]  menuitemradio si una fila es la activa (p. ej. la zona)
+ * @returns {{ abrir, cerrar, actualizar }}
+ */
+function crearMenuSao({ boton, menu, opciones, alElegir, rol = "menuitem" }) {
     let temporizadorCierre = null;
     const cerrando = () => temporizadorCierre !== null;
+    const filas = () => [...menu.querySelectorAll(".opcion-menu-sao")];
+
+    // Las filas solo se regeneran si cambia cuántas hay; si no, se actualizan en su sitio
+    // (así una actualización a mitad de la animación no la reinicia)
+    const actualizar = () => {
+        const lista = opciones();
+        if (filas().length !== lista.length) {
+            menu.innerHTML = lista.map(() => `
+                <button type="button" class="opcion-menu-sao" role="${rol}">
+                    <span class="opcion-menu-sao-icono"></span>
+                    <span class="opcion-menu-sao-nombre"></span>
+                </button>`).join("");
+        }
+        lista.forEach((opcion, i) => {
+            const fila = filas()[i];
+            fila.dataset.clave = opcion.clave;
+            const icono = fila.querySelector(".opcion-menu-sao-icono");
+            if (icono.dataset.icono !== opcion.icono) {
+                icono.dataset.icono = opcion.icono;
+                icono.innerHTML = iconoSao(opcion.icono);
+            }
+            fila.querySelector(".opcion-menu-sao-nombre").textContent = opcion.etiqueta;
+            fila.classList.toggle("activa", Boolean(opcion.activa));
+            if (rol === "menuitemradio") fila.setAttribute("aria-checked", String(Boolean(opcion.activa)));
+        });
+    };
+
+    // Sale a la derecha del botón; si no cabe, a la izquierda
+    const colocar = () => {
+        const wrapper = boton.parentElement.getBoundingClientRect();
+        const rect = boton.getBoundingClientRect();
+        const separacion = 20; // deja sitio a la flecha
+        menu.classList.remove("a-la-izquierda");
+        menu.style.top = `${rect.top + rect.height / 2 - wrapper.top}px`;
+        menu.style.left = `${rect.right + separacion - wrapper.left}px`;
+        if (menu.getBoundingClientRect().right > document.documentElement.clientWidth - 8) {
+            menu.classList.add("a-la-izquierda");
+            menu.style.left = `${rect.left - separacion - wrapper.left - menu.offsetWidth}px`;
+        }
+    };
 
     const abrir = () => {
         // Si se estaba cerrando, se interrumpe y vuelve a entrar
         clearTimeout(temporizadorCierre);
         temporizadorCierre = null;
-        menuZona.classList.remove("cerrando");
-        menuZona.hidden = false;
-        btnZona.setAttribute("aria-expanded", "true");
+        menu.classList.remove("cerrando");
+        actualizar();
+        menu.hidden = false;
+        boton.setAttribute("aria-expanded", "true");
         colocar();
-        (opciones().find(o => o.dataset.zona === personaje.zona) ?? opciones()[0]).focus();
+        (filas().find(fila => fila.classList.contains("activa")) ?? filas()[0])?.focus();
         reproducir("menuAbrir");
     };
-    const cerrar = (devolverFoco = false) => {
-        if (menuZona.hidden || cerrando()) return;
-        btnZona.setAttribute("aria-expanded", "false");
-        if (devolverFoco) btnZona.focus();
-        reproducir("menuCerrar");
+
+    /* Las filas desaparecen una a una (.cerrando) y el menú se oculta al terminar.
+       sonido: false cuando lo que se elige ya suena (p. ej. abre una ventana). */
+    const cerrar = ({ devolverFoco = false, sonido = true } = {}) => {
+        if (menu.hidden || cerrando()) return;
+        boton.setAttribute("aria-expanded", "false");
+        if (devolverFoco) boton.focus();
+        if (sonido) reproducir("menuCerrar");
         const ocultar = () => {
             temporizadorCierre = null;
-            menuZona.classList.remove("cerrando");
-            menuZona.hidden = true;
+            menu.classList.remove("cerrando");
+            menu.hidden = true;
         };
         if (sinAnimacion.matches) return ocultar();
-        menuZona.classList.add("cerrando");
-        temporizadorCierre = setTimeout(ocultar, DURACION_CIERRE);
+        menu.classList.add("cerrando");
+        temporizadorCierre = setTimeout(ocultar, DURACION_CIERRE_MENU);
     };
 
-    btnZona.addEventListener("click", () => (menuZona.hidden || cerrando() ? abrir() : cerrar()));
+    const control = { abrir, cerrar, actualizar };
 
-    menuZona.addEventListener("click", (e) => {
-        const opcion = e.target.closest(".opcion-zona");
-        if (!opcion) return;
-        if (cambiarZona(personaje, opcion.dataset.zona)) reproducir("click");
-        cerrar(true);
-        actualizarTodo();
+    boton.setAttribute("aria-haspopup", "menu");
+    boton.setAttribute("aria-expanded", "false");
+    boton.addEventListener("click", () => (menu.hidden || cerrando() ? abrir() : cerrar()));
+
+    menu.addEventListener("click", (e) => {
+        const fila = e.target.closest(".opcion-menu-sao");
+        if (fila) alElegir(fila.dataset.clave, control);
     });
 
-    // Teclado: flechas para moverse por las zonas, Escape o Tab para cerrar
-    menuZona.addEventListener("keydown", (e) => {
-        const lista = opciones();
+    // Teclado: flechas para moverse, Escape o Tab para cerrar
+    menu.addEventListener("keydown", (e) => {
+        const lista = filas();
         const actual = lista.indexOf(document.activeElement);
         if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
@@ -2153,7 +2165,7 @@ function inicializarZona() {
             lista[(actual + paso + lista.length) % lista.length].focus();
         } else if (e.key === "Escape") {
             e.preventDefault();
-            cerrar(true);
+            cerrar({ devolverFoco: true });
         } else if (e.key === "Tab") {
             cerrar();
         }
@@ -2161,17 +2173,41 @@ function inicializarZona() {
 
     // Clic fuera del menú lo cierra
     document.addEventListener("click", (e) => {
-        if (!menuZona.hidden && !menuZona.contains(e.target) && !btnZona.contains(e.target)) cerrar();
+        if (!menu.hidden && !menu.contains(e.target) && !boton.contains(e.target)) cerrar();
     });
-    window.addEventListener("resize", () => { if (!menuZona.hidden) colocar(); });
+    window.addEventListener("resize", () => { if (!menu.hidden) colocar(); });
 
+    actualizar();
+    return control;
+}
+
+/* Zona (reglas en zonas.js) _________________________________________________ */
+const btnZona = document.getElementById("btnZona");
+let menuZona = null;
+
+function inicializarZona() {
+    menuZona = crearMenuSao({
+        boton: btnZona,
+        menu: document.getElementById("menuZona"),
+        rol: "menuitemradio",
+        opciones: () => Object.entries(ZONAS).map(([clave, zona]) => ({
+            clave, etiqueta: zona.etiqueta, icono: zona.icono, activa: clave === personaje.zona
+        })),
+        alElegir: (clave, menu) => {
+            if (cambiarZona(personaje, clave)) reproducir("click");
+            menu.cerrar({ devolverFoco: true });
+            actualizarTodo();
+        }
+    });
     actualizarZona();
 }
 
-/* Icono del botón y zona marcada en el menú */
+/* Icono del botón, zona marcada en el menú y botones que dependen de la zona */
 function actualizarZona() {
     const zona = ZONAS[personaje.zona] ?? ZONAS.noSegura;
     ponerIconoBoton(btnZona, zona.icono);
+    btnZona.title = `${zona.etiqueta} (cambiar de zona)`;
+    menuZona?.actualizar();
 
     const btnTurno = document.getElementById("btnIniciarTurno");
     const turno = BOTON_TURNO_POR_ZONA[personaje.zona] ?? BOTON_TURNO_POR_ZONA.noSegura;
@@ -2182,12 +2218,62 @@ function actualizarZona() {
     const btnDanno = document.getElementById("btnRecibirDanno");
     btnDanno.disabled = !puedeRecibirDanno(personaje);
     btnDanno.title = btnDanno.disabled ? MOTIVOS_ZONA.danno : "Recibir daño";
+}
 
-    btnZona.title = `${zona.etiqueta} (cambiar de zona)`;
-    menuZona.querySelectorAll(".opcion-zona").forEach(opcion => {
-        const activa = opcion.dataset.zona === personaje.zona;
-        opcion.classList.toggle("activa", activa);
-        opcion.setAttribute("aria-checked", String(activa));
+/* Menú del inventario: inventario o baúl de la base ________________________ */
+function inicializarMenuInventario() {
+    const ventanas = { inventario: "modalInventario", baul: "modalBaul" };
+    crearMenuSao({
+        boton: document.getElementById("btnInventario"),
+        menu: document.getElementById("menuInventario"),
+        opciones: () => [
+            { clave: "inventario", etiqueta: "Inventario", icono: "inventario" },
+            { clave: "baul", etiqueta: "Baúl de la base", icono: "baul" }
+        ],
+        alElegir: (clave, menu) => {
+            // Al elegir solo suena el click: ni el cierre del menú ni la apertura de la ventana
+            reproducir("click");
+            menu.cerrar({ sonido: false });
+            const ventana = document.getElementById(ventanas[clave]);
+            ventana.dataset.sinSonidoAbrir = "1";
+            bootstrap.Modal.getOrCreateInstance(ventana).show();
+        }
+    });
+}
+
+/* Menú de opciones: cargar y guardar personaje, silencio ___________________ */
+function inicializarOpciones() {
+    crearMenuSao({
+        boton: document.getElementById("btnOpciones"),
+        menu: document.getElementById("menuOpciones"),
+        opciones: () => [
+            { clave: "cargar", etiqueta: "Cargar personaje", icono: "cargar" },
+            { clave: "guardar", etiqueta: "Guardar personaje", icono: "guardar" },
+            estaSilenciado()
+                ? { clave: "sonido", etiqueta: "Activar audio", icono: "silencio" }
+                : { clave: "sonido", etiqueta: "Silenciar audio", icono: "sonido" }
+        ],
+        alElegir: (clave, menu) => {
+            switch (clave) {
+                case "cargar":
+                    // El selector de fichero tiene que abrirse dentro del clic; al cargar suena "linkStart"
+                    reproducir("click");
+                    menu.cerrar({ sonido: false });
+                    document.getElementById("fileInput").click();
+                    break;
+                case "guardar":
+                    reproducir("click");
+                    menu.cerrar({ sonido: false });
+                    personaje.guardarJSON();
+                    break;
+                case "sonido":
+                    // El menú sigue abierto para ver el cambio; al activar suena el click
+                    setSilenciado(!estaSilenciado());
+                    reproducir("click");
+                    menu.actualizar();
+                    break;
+            }
+        }
     });
 }
 
@@ -2889,8 +2975,10 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarEstados();
     inicializarDanno();
     inicializarZona();
+    inicializarMenuInventario();
     inicializarObjetos();
-    inicializarSonido();
+    precargarSonidos();
+    inicializarOpciones();
     inicializarDebug();
     actualizarTodo();
 });

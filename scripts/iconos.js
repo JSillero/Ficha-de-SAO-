@@ -285,6 +285,18 @@ const GLIFOS = {
         <path class="tf" style="stroke-width:3" d="M38 41L50 82L62 41"/>
         <path class="t o" style="stroke-width:3" d="M50 8V14M30 12L34 17M70 12L66 17"/>`,
 
+    /* Menú de opciones: engranaje, cargar y guardar personaje */
+    ajustes: `
+        ${[0, 45, 90, 135].map(angulo => `<rect class="p" x="43" y="15" width="14" height="70" rx="3" transform="rotate(${angulo} 50 50)"/>`).join("")}
+        <circle class="p" cx="50" cy="50" r="25"/>
+        <circle class="f" cx="50" cy="50" r="10"/>`,
+    cargar: `
+        <path class="p" d="M32 23H55V36H68V77H32Z"/>
+        <path class="s" d="M58 23L68 33H58Z"/>
+        <path class="f" d="M50 40L62 52H54V69H46V52H38Z"/>`,
+    guardar: `
+        <path class="p" d="M69 67.77v7.23h-7.23l7.23-7.23zm0-42.77v35.699l-14.302 14.301h-23.698v-50h38zm-19 25.25h-14v1.5h14v-1.5zm14-5.5h-28v1.5h28v-1.5zm0-5.5h-28v1.5h28v-1.5zm0-5.5h-28v1.5h28v-1.5zm-10.376 47.451l-2.917 1.326 1.326-2.917 1.591 1.591zm25.014-24.483l-2.121-2.121-24.042 24.041 2.121 2.121 24.042-24.041z"/>`,
+
     /* Zonas y descansos */
     mapa: `
         <polygon class="p" points="16,28 37,20 37,74 16,82"/>

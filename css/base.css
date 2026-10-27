@@ -85,13 +85,6 @@ header {
     min-width: 0;
 }
 
-.header-right {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    flex-wrap: wrap;
-}
-
 .header h1 {
     color: #d1ab52;
     font-size: 28px;
@@ -143,17 +136,6 @@ h2 {
 
     .header {
         gap: 8px;
-    }
-
-    /* Los botones van a la derecha de la EXP, sin fila propia */
-    .header {
-        position: relative;
-    }
-
-    .header-right {
-        position: absolute;
-        right: 0;
-        bottom: 10px;
     }
 }
 

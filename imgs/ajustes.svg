@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generado con los glifos de scripts/iconos.js -->
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><style>.ic-fondo{fill:#4D4D4D}.p{fill:#FBFBFB}.s{fill:#FBFBFB;opacity:.71}.f{fill:#4D4D4D}.o{opacity:.71}.t{fill:none;stroke:#FBFBFB;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}.tf{fill:none;stroke:#4D4D4D;stroke-width:14;stroke-linecap:round}</style>
+        <circle class="ic-fondo" cx="50" cy="50" r="50"/>
+        <rect class="p" x="43" y="15" width="14" height="70" rx="3" transform="rotate(0 50 50)"/><rect class="p" x="43" y="15" width="14" height="70" rx="3" transform="rotate(45 50 50)"/><rect class="p" x="43" y="15" width="14" height="70" rx="3" transform="rotate(90 50 50)"/><rect class="p" x="43" y="15" width="14" height="70" rx="3" transform="rotate(135 50 50)"/>
+        <circle class="p" cx="50" cy="50" r="25"/>
+        <circle class="f" cx="50" cy="50" r="10"/></svg>

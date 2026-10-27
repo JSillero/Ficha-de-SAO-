@@ -180,13 +180,13 @@
 
 .btn-turno { --angulo: -25deg; }
 .btn-danno-icono { --angulo: 25deg; }
-.btn-menu-baul { --angulo: 75deg; }
-.btn-menu-artes { --angulo: 125deg; }
-.btn-menu-zona { --angulo: 180deg; }
+.btn-menu-artes { --angulo: 75deg; }
+.btn-menu-zona { --angulo: 125deg; }
+.btn-menu-opciones { --angulo: 180deg; }
 
-/* Menú de zonas (estilo menú SAO): filas blancas, la zona actual en dorado, fondo transparente
+/* Menús desplegables SAO (zona, inventario...; crearMenuSao en interfaz.js): filas blancas, la activa en dorado, fondo transparente
    y flecha blanca con punto negro unida a una línea vertical. Lo coloca inicializarZona (interfaz.js). */
-.menu-zona {
+.menu-sao {
     --menu-dorado: #EBA601;
     /* Línea vertical (se desvanece en los extremos) junto a la flecha */
     --menu-linea: linear-gradient(to bottom, transparent, #6b6b6b 15%, #6b6b6b 85%, transparent) 1;
@@ -200,23 +200,23 @@
     border-left: 2px solid;
     border-image: var(--menu-linea);
     transform: translateY(-50%);
-    animation: menu-zona-entrar 0.1s ease-out;
+    animation: menu-sao-entrar 0.1s ease-out;
 }
 
-.menu-zona[hidden] {
+.menu-sao[hidden] {
     display: none;
 }
 
 /* Flecha: triángulo blanco (con bordes, para que tenga sombra) y punto negro, apuntando al botón */
-.menu-zona::before,
-.menu-zona::after {
+.menu-sao::before,
+.menu-sao::after {
     content: "";
     position: absolute;
     top: 50%;
     translate: 0 -50%;
 }
 
-.menu-zona::before {
+.menu-sao::before {
     right: calc(100% - 1px);
     width: 0;
     height: 0;
@@ -226,7 +226,7 @@
     filter: drop-shadow(-1px 0 1px rgba(0, 0, 0, 0.55)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
 }
 
-.menu-zona::after {
+.menu-sao::after {
     right: calc(100% + 3px);
     width: 8px;
     height: 8px;
@@ -234,7 +234,7 @@
     background: #111;
 }
 
-.menu-zona.a-la-izquierda {
+.menu-sao.a-la-izquierda {
     padding-left: 0;
     padding-right: 10px;
     border-left: 0;
@@ -242,7 +242,7 @@
     border-image: var(--menu-linea);
 }
 
-.menu-zona.a-la-izquierda::before {
+.menu-sao.a-la-izquierda::before {
     right: auto;
     left: calc(100% - 1px);
     border-right: 0;
@@ -250,12 +250,12 @@
     filter: drop-shadow(1px 0 1px rgba(0, 0, 0, 0.55)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
 }
 
-.menu-zona.a-la-izquierda::after {
+.menu-sao.a-la-izquierda::after {
     right: auto;
     left: calc(100% + 3px);
 }
 
-.opcion-zona {
+.opcion-menu-sao {
     display: flex;
     align-items: center;
     gap: 14px;
@@ -273,58 +273,58 @@
     transition: background 0.15s, color 0.15s;
 }
 
-.opcion-zona-icono {
+.opcion-menu-sao-icono {
     flex: none;
     width: 36px;
     height: 36px;
 }
 
-.opcion-zona .icono-sao {
+.opcion-menu-sao .icono-sao {
     --fondo: #4D4D4D;
     --glifo: #FBFBFB;
     filter: none;
 }
 
-.opcion-zona:hover,
-.opcion-zona:focus-visible {
+.opcion-menu-sao:hover,
+.opcion-menu-sao:focus-visible {
     background: #ececec;
     outline: none;
 }
 
-.opcion-zona.activa {
+.opcion-menu-sao.activa {
     background: var(--menu-dorado);
     color: #FBFBFB;
 }
 
-.opcion-zona.activa .icono-sao {
+.opcion-menu-sao.activa .icono-sao {
     --fondo: #FBFBFB;
     --glifo: var(--menu-dorado);
 }
 
-.opcion-zona.activa:focus-visible {
+.opcion-menu-sao.activa:focus-visible {
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3), inset 0 0 0 2px #FBFBFB;
 }
 
-@keyframes menu-zona-entrar {
+@keyframes menu-sao-entrar {
     from { opacity: 0; }
     to { opacity: 1; }
 }
 
 /* Las filas aparecen una tras otra deslizándose desde la flecha */
-.menu-zona .opcion-zona {
+.menu-sao .opcion-menu-sao {
     --desde: -14px;
-    animation: opcion-zona-entrar 0.16s ease-out both;
+    animation: opcion-menu-sao-entrar 0.16s ease-out both;
 }
 
-.menu-zona.a-la-izquierda .opcion-zona {
+.menu-sao.a-la-izquierda .opcion-menu-sao {
     --desde: 14px;
 }
 
-.menu-zona .opcion-zona:nth-child(2) { animation-delay: 0.05s; }
-.menu-zona .opcion-zona:nth-child(3) { animation-delay: 0.1s; }
-.menu-zona .opcion-zona:nth-child(4) { animation-delay: 0.15s; }
+.menu-sao .opcion-menu-sao:nth-child(2) { animation-delay: 0.05s; }
+.menu-sao .opcion-menu-sao:nth-child(3) { animation-delay: 0.1s; }
+.menu-sao .opcion-menu-sao:nth-child(4) { animation-delay: 0.15s; }
 
-@keyframes opcion-zona-entrar {
+@keyframes opcion-menu-sao-entrar {
     from {
         opacity: 0;
         transform: translateX(var(--desde)) scaleY(0.6);
@@ -336,21 +336,21 @@
 }
 
 /* Al cerrar: las filas se van una a una, de la última a la primera, y después la flecha y la línea */
-.menu-zona.cerrando {
+.menu-sao.cerrando {
     pointer-events: none;
-    animation: menu-zona-salir 0.1s ease-in 0.16s both;
+    animation: menu-sao-salir 0.1s ease-in 0.16s both;
 }
 
-.menu-zona.cerrando .opcion-zona {
-    animation: opcion-zona-salir 0.14s ease-in both;
+.menu-sao.cerrando .opcion-menu-sao {
+    animation: opcion-menu-sao-salir 0.14s ease-in both;
     animation-delay: 0s;
 }
 
-.menu-zona.cerrando .opcion-zona:nth-last-child(2) { animation-delay: 0.05s; }
-.menu-zona.cerrando .opcion-zona:nth-last-child(3) { animation-delay: 0.1s; }
-.menu-zona.cerrando .opcion-zona:nth-last-child(4) { animation-delay: 0.15s; }
+.menu-sao.cerrando .opcion-menu-sao:nth-last-child(2) { animation-delay: 0.05s; }
+.menu-sao.cerrando .opcion-menu-sao:nth-last-child(3) { animation-delay: 0.1s; }
+.menu-sao.cerrando .opcion-menu-sao:nth-last-child(4) { animation-delay: 0.15s; }
 
-@keyframes opcion-zona-salir {
+@keyframes opcion-menu-sao-salir {
     from {
         opacity: 1;
         transform: none;
@@ -361,20 +361,20 @@
     }
 }
 
-@keyframes menu-zona-salir {
+@keyframes menu-sao-salir {
     from { opacity: 1; }
     to { opacity: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .menu-zona,
-    .menu-zona .opcion-zona {
+    .menu-sao,
+    .menu-sao .opcion-menu-sao {
         animation: none;
     }
 }
 
 @media (max-width: 400px) {
-    .opcion-zona {
+    .opcion-menu-sao {
         min-width: 160px;
         font-size: 15px;
         padding-right: 14px;

@@ -66,24 +66,8 @@
                 </div>
             </div>
 
-            <div class="header-right">
-                <div id="guardadoDiv">
-                    <!-- Botón Silenciar (icono generado en interfaz.js) -->
-                    <button type="button" id="btnSonido" class="btn-sonido btn-cabecera" title="Silenciar sonidos" aria-label="Silenciar sonidos" aria-pressed="false"></button>
-                    <!-- Botón Cargar -->
-                    <label class="btn-cabecera-label" title="Cargar personaje">
-                        <img src="./imgs/cargar_json.svg" class="btn-cabecera" alt="Cargar personaje"
-                            onmouseover="this.src='./imgs/cargar_json_on.svg'"
-                            onmouseout="this.src='./imgs/cargar_json.svg'">
-                        <input type="file" id="fileInput" accept=".json" style="display: none;" />
-                    </label>
-                    <!-- Botón Guardar -->
-                    <img src="./imgs/guardar.svg" id="botonGuardar" class="btn-cabecera" alt="Guardar personaje"
-                        onmouseover="this.src='./imgs/guardar_on.svg'"
-                        onmouseout="this.src='./imgs/guardar.svg'"
-                        title="Guardar personaje">
-                </div>
-            </div>
+            <!-- Cargar, guardar y silencio están en el menú de opciones (engranaje de la silueta) -->
+            <input type="file" id="fileInput" accept=".json" hidden>
         </div>
 
 
@@ -146,17 +130,14 @@
                             <img class="icono-off" src="./imgs/danno.svg" alt="">
                             <img class="icono-on" src="./imgs/danno_on.svg" alt="">
                         </button>
-                        <!-- Menús: abren su ventana (el sonido de menú sale solo al abrir un modal) -->
-                        <button type="button" id="btnInventario" class="btn-icono-sao btn-menu-inventario" title="Inventario" aria-label="Inventario"
-                            data-bs-toggle="modal" data-bs-target="#modalInventario">
+                        <!-- Inventario: abre un menú (inventario o baúl de la base; inicializarMenuInventario en interfaz.js) -->
+                        <button type="button" id="btnInventario" class="btn-icono-sao btn-menu-inventario" title="Inventario y baúl" aria-label="Inventario y baúl"
+                            aria-controls="menuInventario">
                             <img class="icono-off" src="./imgs/inventario.svg" alt="">
                             <img class="icono-on" src="./imgs/inventario_on.svg" alt="">
                         </button>
-                        <button type="button" id="btnBaul" class="btn-icono-sao btn-menu-baul" title="Baúl" aria-label="Baúl"
-                            data-bs-toggle="modal" data-bs-target="#modalBaul">
-                            <img class="icono-off" src="./imgs/baul.svg" alt="">
-                            <img class="icono-on" src="./imgs/baul_on.svg" alt="">
-                        </button>
+                        <div id="menuInventario" class="menu-sao" role="menu" aria-label="Inventario y baúl" hidden></div>
+                        <!-- Amigos y Artes abren su ventana (el sonido de menú sale solo al abrir un modal) -->
                         <button type="button" id="btnAmigos" class="btn-icono-sao btn-menu-amigos" title="Amigos" aria-label="Amigos"
                             data-bs-toggle="modal" data-bs-target="#modalAmigos">
                             <img class="icono-off" src="./imgs/amigos.svg" alt="">
@@ -169,11 +150,18 @@
                         </button>
                         <!-- Zona actual: abre el menú de zonas (inicializarZona en interfaz.js cambia el icono) -->
                         <button type="button" id="btnZona" class="btn-icono-sao btn-menu-zona" title="Zona no segura" aria-label="Cambiar de zona"
-                            aria-haspopup="menu" aria-expanded="false" aria-controls="menuZona">
+                            aria-controls="menuZona">
                             <img class="icono-off" src="./imgs/mapa.svg" alt="">
                             <img class="icono-on" src="./imgs/mapa_on.svg" alt="">
                         </button>
-                        <div id="menuZona" class="menu-zona" role="menu" aria-label="Zona" hidden></div>
+                        <div id="menuZona" class="menu-sao" role="menu" aria-label="Zona" hidden></div>
+                        <!-- Opciones: cargar y guardar personaje, silencio (inicializarOpciones en interfaz.js) -->
+                        <button type="button" id="btnOpciones" class="btn-icono-sao btn-menu-opciones" title="Opciones" aria-label="Opciones"
+                            aria-controls="menuOpciones">
+                            <img class="icono-off" src="./imgs/ajustes.svg" alt="">
+                            <img class="icono-on" src="./imgs/ajustes_on.svg" alt="">
+                        </button>
+                        <div id="menuOpciones" class="menu-sao" role="menu" aria-label="Opciones" hidden></div>
                         <!-- viewBox desplazado (-22, 17) para centrar la figura dentro del círculo de botones -->
                         <svg version="1.0" width="300pt" height="300pt" viewBox="-22 17 1024 1024"
                             preserveAspectRatio="xMidYMid meet" id="svg1" xmlns="http://www.w3.org/2000/svg"
