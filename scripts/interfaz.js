@@ -274,6 +274,13 @@ document.addEventListener("hide.bs.modal", (e) => {
 });
 
 
+/* Botones redondos del pie de las ventanas: aceptar (azul) y cancelar (rosa) */
+function inicializarBotonesModales() {
+    document.querySelectorAll(".btn-modal-sao").forEach(boton => {
+        boton.innerHTML = iconoSao(boton.classList.contains("aceptar") ? "aceptar" : "cancelar");
+    });
+}
+
 function actualizarTodo() {
     actualizarInformacion();
     actualizarAtributos();
@@ -805,11 +812,9 @@ function inicializarEquipamiento() {
     };
 
     const btnCancelar = document.getElementById("btnCancelarCambioEquipo");
-    const btnCancelarX = document.getElementById("btnCancelarCambioEquipoX");
     const btnConfirmar = document.getElementById("btnConfirmarCambioEquipo");
 
     if (btnCancelar) btnCancelar.addEventListener("click", cancelarCambio);
-    if (btnCancelarX) btnCancelarX.addEventListener("click", cancelarCambio);
     if (modalEl) {
         modalEl.addEventListener("hidden.bs.modal", () => {
             if (cambioEquipoPendiente) {
@@ -2114,16 +2119,24 @@ function crearMenuSao({ boton, menu, opciones, alElegir, rol = "menuitem" }) {
         }
     };
 
-    const abrir = () => {
+    /* Fila señalada con el teclado (dorada): la marca .teclado solo la pone el teclado,
+       así el foco que se da al abrir con el ratón no la pinta */
+    const senalar = (fila, conTeclado) => {
+        filas().forEach(otra => otra.classList.toggle("teclado", conTeclado && otra === fila));
+        fila?.focus();
+    };
+
+    const abrir = (conTeclado = false) => {
         // Si se estaba cerrando, se interrumpe y vuelve a entrar
         clearTimeout(temporizadorCierre);
         temporizadorCierre = null;
         menu.classList.remove("cerrando");
+        filas().forEach(fila => fila.classList.remove("elegida"));
         actualizar();
         menu.hidden = false;
         boton.setAttribute("aria-expanded", "true");
         colocar();
-        (filas().find(fila => fila.classList.contains("activa")) ?? filas()[0])?.focus();
+        senalar(filas().find(fila => fila.classList.contains("activa")) ?? filas()[0], conTeclado);
         reproducir("menuAbrir");
     };
 
@@ -2148,11 +2161,17 @@ function crearMenuSao({ boton, menu, opciones, alElegir, rol = "menuitem" }) {
 
     boton.setAttribute("aria-haspopup", "menu");
     boton.setAttribute("aria-expanded", "false");
-    boton.addEventListener("click", () => (menu.hidden || cerrando() ? abrir() : cerrar()));
+    boton.addEventListener("click", (e) => (menu.hidden || cerrando() ? abrir(e.detail === 0) : cerrar()));
 
+    // La fila elegida se queda dorada mientras el menú se cierra; si el menú sigue abierto
+    // (p. ej. silenciar), solo destella un momento
     menu.addEventListener("click", (e) => {
         const fila = e.target.closest(".opcion-menu-sao");
-        if (fila) alElegir(fila.dataset.clave, control);
+        if (!fila) return;
+        filas().forEach(otra => otra.classList.remove("elegida"));
+        fila.classList.add("elegida");
+        alElegir(fila.dataset.clave, control);
+        if (!menu.hidden && !cerrando()) setTimeout(() => fila.classList.remove("elegida"), 180);
     });
 
     // Teclado: flechas para moverse, Escape o Tab para cerrar
@@ -2162,7 +2181,7 @@ function crearMenuSao({ boton, menu, opciones, alElegir, rol = "menuitem" }) {
         if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
             const paso = e.key === "ArrowDown" ? 1 : -1;
-            lista[(actual + paso + lista.length) % lista.length].focus();
+            senalar(lista[(actual + paso + lista.length) % lista.length], true);
         } else if (e.key === "Escape") {
             e.preventDefault();
             cerrar({ devolverFoco: true });
@@ -2707,7 +2726,10 @@ function inicializarCrearObjeto() {
     // La misma ventana sirve para crear y para editar: titulo y botón según el modo
     const ponerModo = (editando) => {
         campo("modalCrearObjetoLabel").textContent = editando ? "Editar objeto" : "Crear objeto";
-        campo("btnCrearObjeto").textContent = editando ? "Guardar" : "Crear";
+        // Botón redondo: el texto va en el título
+        const textoBoton = editando ? "Guardar" : "Crear";
+        campo("btnCrearObjeto").title = textoBoton;
+        campo("btnCrearObjeto").setAttribute("aria-label", textoBoton);
     };
 
     const reiniciar = () => {
@@ -2979,6 +3001,7 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarObjetos();
     precargarSonidos();
     inicializarOpciones();
+    inicializarBotonesModales();
     inicializarDebug();
     actualizarTodo();
 });

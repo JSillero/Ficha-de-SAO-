@@ -473,66 +473,53 @@
     </main>
 
     <!-- Modal de Experiencia -->
-    <div class="modal fade" id="modalExperiencia" tabindex="-1" aria-labelledby="modalExperienciaLabel"
+    <div class="modal fade modal-sao" id="modalExperiencia" tabindex="-1" aria-labelledby="modalExperienciaLabel"
         aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content" style="border: 3px solid #d1ab52; border-radius: 10px;">
-                <div class="modal-header" style="border-bottom: 2px solid #d1ab52; background: #fbfbfb;">
-                    <h5 class="modal-title" id="modalExperienciaLabel"
-                        style="color: #d1ab52; font-weight: bold; font-family: 'SAOUI', sans-serif;">Modificar
-                        Experiencia</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalExperienciaLabel">Modificar experiencia</h5>
                 </div>
-                <div class="modal-body" style="background: #fbfbfb;">
-                    <label for="inputModExp" class="form-label" style="font-weight: bold;">Introduce la cantidad a sumar
-                        (usa negativos para restar):</label>
+                <div class="modal-body">
+                    <label for="inputModExp" class="form-label">Introduce la cantidad a sumar (usa negativos para restar):</label>
                     <input type="number" class="form-control" id="inputModExp" value="0">
                 </div>
-                <div class="modal-footer" style="border-top: none; background: #fbfbfb;">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn" id="btnAplicarExp"
-                        style="background: #d1ab52; color: white; font-weight: bold;">Aplicar</button>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao aceptar" id="btnAplicarExp" title="Aplicar" aria-label="Aplicar"></button>
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cancelar" aria-label="Cancelar"></button>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Modal Confirmar Cambio de Equipamiento -->
-    <div class="modal fade" id="modalConfirmarCambioEquipo" tabindex="-1" aria-labelledby="modalConfirmarCambioEquipoLabel"
+    <div class="modal fade modal-sao" id="modalConfirmarCambioEquipo" tabindex="-1" aria-labelledby="modalConfirmarCambioEquipoLabel"
         aria-hidden="true" data-bs-backdrop="static">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content" style="border: 3px solid #d1ab52; border-radius: 10px;">
-                <div class="modal-header" style="border-bottom: 2px solid #d1ab52; background: #fbfbfb;">
-                    <h5 class="modal-title" id="modalConfirmarCambioEquipoLabel"
-                        style="color: #d1ab52; font-weight: bold; font-family: 'SAOUI', sans-serif;">Cambiar Tipo de Equipamiento</h5>
-                    <button type="button" class="btn-close" id="btnCancelarCambioEquipoX" aria-label="Close"></button>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalConfirmarCambioEquipoLabel">Cambiar tipo de equipamiento</h5>
                 </div>
-                <div class="modal-body" style="background: #fbfbfb;">
-                    <p style="font-weight: bold; color: #333; margin-bottom: 8px;">
-                        ¿Deseas cambiar el tipo de equipamiento?
-                    </p>
-                    <p style="color: #666; font-size: 14px; margin-bottom: 0;">
-                        Se borrará todo el contenido actual asignado a este espacio (nombre, valores numéricos y modificadores).
-                    </p>
+                <div class="modal-body">
+                    <p class="modal-pregunta">¿Deseas cambiar el tipo de equipamiento?</p>
+                    <p class="modal-nota">Se borrará todo el contenido actual asignado a este espacio (nombre, valores numéricos y modificadores).</p>
                 </div>
-                <div class="modal-footer" style="border-top: none; background: #fbfbfb;">
-                    <button type="button" class="btn btn-secondary" id="btnCancelarCambioEquipo">Cancelar</button>
-                    <button type="button" class="btn" id="btnConfirmarCambioEquipo"
-                        style="background: #d1ab52; color: white; font-weight: bold;">Borrar y Cambiar</button>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao aceptar" id="btnConfirmarCambioEquipo" title="Borrar y cambiar" aria-label="Borrar y cambiar"></button>
+                    <button type="button" class="btn-modal-sao cancelar" id="btnCancelarCambioEquipo" title="Cancelar" aria-label="Cancelar"></button>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Modal de daño recibido -->
-    <div class="modal fade" id="modalDanno" tabindex="-1" aria-labelledby="modalDannoLabel" aria-hidden="true">
+    <div class="modal fade modal-sao" id="modalDanno" tabindex="-1" aria-labelledby="modalDannoLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content" style="border: 3px solid #d1ab52; border-radius: 10px;">
-                <div class="modal-header" style="border-bottom: 2px solid #d1ab52; background: #fbfbfb;">
-                    <h5 class="modal-title" id="modalDannoLabel" style="color: #d1ab52; font-weight: bold;">Recibir daño</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalDannoLabel">Recibir daño</h5>
                 </div>
-                <div class="modal-body" style="background: #fbfbfb;">
+                <div class="modal-body">
                     <!-- Se pueden marcar varios tipos a la vez; cada uno tiene su cantidad -->
                     <div class="danno-opciones" role="group" aria-label="Tipos de daño">
                         <label class="opcion-danno"><input type="checkbox" name="tipoDanno" value="fisico" checked> Físico</label>
@@ -550,10 +537,9 @@
                     <div id="dannoCantidades" class="danno-cantidades"></div>
                     <ul id="previewDanno" class="danno-preview"></ul>
                 </div>
-                <div class="modal-footer" style="border-top: none; background: #fbfbfb;">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn" id="btnAplicarDanno"
-                        style="background-color: #d1ab52; color: white; font-weight: bold;">Aplicar</button>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao aceptar" id="btnAplicarDanno" title="Aplicar" aria-label="Aplicar"></button>
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cancelar" aria-label="Cancelar"></button>
                 </div>
             </div>
         </div>
@@ -566,10 +552,12 @@
                 <div class="modal-header">
                     <h5 class="modal-title" id="modalInventarioLabel">Inventario <span id="contadorInventario" class="contador-objetos"></span></h5>
                     <button type="button" class="btn-crear-objeto" data-destino="inventario">+ Crear objeto</button>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body">
                     <div id="listaInventario" class="lista-objetos"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
                 </div>
             </div>
         </div>
@@ -582,11 +570,13 @@
                 <div class="modal-header">
                     <h5 class="modal-title" id="modalBaulLabel">Baúl <span id="contadorBaul" class="contador-objetos"></span></h5>
                     <button type="button" class="btn-crear-objeto" data-destino="baul">+ Crear objeto</button>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body">
                     <p id="avisoZonaBaul" class="aviso-zona" hidden>Solo en la base se pueden mover objetos entre el baúl y el inventario o crear objetos en el baúl.</p>
                     <div id="listaBaul" class="lista-objetos"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
                 </div>
             </div>
         </div>
@@ -598,7 +588,6 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="modalCrearObjetoLabel">Crear objeto</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body">
                     <form id="formCrearObjeto" class="form-objeto" novalidate>
@@ -679,8 +668,8 @@
                     </form>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-sao" id="btnCrearObjeto">Crear</button>
+                    <button type="button" class="btn-modal-sao aceptar" id="btnCrearObjeto" title="Crear" aria-label="Crear"></button>
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cancelar" aria-label="Cancelar"></button>
                 </div>
             </div>
         </div>
@@ -692,10 +681,12 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="modalAmigosLabel">Amigos</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body">
                     <textarea id="listaDeAmigos" class="texto-modal" placeholder="Lista de amigos"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
                 </div>
             </div>
         </div>
@@ -706,10 +697,12 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="modalArtesLabel">Artes</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body">
                     <textarea id="listadoArtes" class="texto-modal" placeholder="Artes equipadas"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
                 </div>
             </div>
         </div>

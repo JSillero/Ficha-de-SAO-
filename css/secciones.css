@@ -135,6 +135,21 @@
     transform: scale(0.96);
 }
 
+/* Botón con su menú abierto (zona, inventario, opciones): icono blanco y dorado con anillo dorado,
+   como la fila elegida de los menús SAO. aria-expanded lo pone crearMenuSao (interfaz.js). */
+.btn-icono-sao[aria-expanded="true"] {
+    box-shadow: 0 0 0 4px #EBA601, 0 0 14px rgba(235, 166, 1, 0.65);
+    transition: transform 0.1s, box-shadow 0.15s ease;
+}
+
+.btn-icono-sao[aria-expanded="true"] .icono-off {
+    display: none;
+}
+
+.btn-icono-sao[aria-expanded="true"] .icono-on {
+    display: block;
+}
+
 /* Botón deshabilitado (p. ej. Daño en zona segura): gris y sin efecto al pasar el ratón */
 .btn-icono-sao:disabled {
     cursor: not-allowed;
@@ -285,23 +300,33 @@
     filter: none;
 }
 
-.opcion-menu-sao:hover,
-.opcion-menu-sao:focus-visible {
+.opcion-menu-sao:hover {
     background: #ececec;
+}
+
+.opcion-menu-sao:focus-visible {
     outline: none;
 }
 
-.opcion-menu-sao.activa {
+/* Dorada: la activa (p. ej. la zona actual), la que se está pulsando, la elegida mientras el menú
+   se cierra (.elegida) y la señalada con el teclado (.teclado); las clases las pone crearMenuSao */
+.opcion-menu-sao.activa,
+.opcion-menu-sao:active,
+.opcion-menu-sao.elegida,
+.opcion-menu-sao.teclado {
     background: var(--menu-dorado);
     color: #FBFBFB;
 }
 
-.opcion-menu-sao.activa .icono-sao {
+.opcion-menu-sao.activa .icono-sao,
+.opcion-menu-sao:active .icono-sao,
+.opcion-menu-sao.elegida .icono-sao,
+.opcion-menu-sao.teclado .icono-sao {
     --fondo: #FBFBFB;
     --glifo: var(--menu-dorado);
 }
 
-.opcion-menu-sao.activa:focus-visible {
+.opcion-menu-sao.activa.teclado {
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3), inset 0 0 0 2px #FBFBFB;
 }
 
@@ -1097,26 +1122,204 @@
     cursor: pointer;
 }
 
-/* Ventanas SAO (inventario, baúl, crear objeto, amigos, artes) */
+/* Ventanas SAO (todas las ventanas): cabecera clara con el título centrado, cuerpo gris con sombra
+   arriba y abajo, y pie blanco con botones redondos (azul aceptar, rosa cancelar) */
 .modal-sao .modal-content {
-    border: 3px solid #d1ab52;
-    border-radius: 10px;
-    background: #fbfbfb;
+    border: none;
+    border-radius: 0;
+    overflow: hidden;
+    background: #fff;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
 }
 
 .modal-sao .modal-header {
-    gap: 10px;
-    border-bottom: 2px solid #d1ab52;
+    position: relative;
+    justify-content: center;
+    min-height: 74px;
+    padding: 14px 20px;
+    border-bottom: none;
+    background: linear-gradient(to bottom, #e4e4e4, #f7f7f7);
 }
 
 .modal-sao .modal-title {
-    color: #d1ab52;
-    font-weight: bold;
-    margin-right: auto;
+    margin: 0;
+    color: #4d4d4d;
+    font-family: 'SAOUI', sans-serif;
+    font-size: 30px;
+    font-weight: normal;
+    line-height: 1.1;
+    text-align: center;
+}
+
+/* "+ Crear objeto" a la derecha de la cabecera, sin descentrar el título */
+.modal-sao .modal-header .btn-crear-objeto {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    translate: 0 -50%;
+}
+
+.modal-sao .modal-body {
+    background: linear-gradient(to bottom,
+        #b3b3b3 0, #d9d9d9 22px, #d9d9d9 calc(100% - 22px), #b3b3b3 100%);
+    padding: 22px 20px;
 }
 
 .modal-sao .modal-footer {
+    justify-content: space-evenly;
+    gap: 20px;
+    padding: 16px 20px;
     border-top: none;
+    background: #fff;
+}
+
+/* El pie no es un flex de Bootstrap con márgenes: los botones redondos llevan su separación */
+.modal-sao .modal-footer > * {
+    margin: 0;
+}
+
+.modal-pregunta {
+    margin-bottom: 8px;
+    font-weight: bold;
+    color: #333;
+}
+
+.modal-nota {
+    margin-bottom: 0;
+    color: #555;
+    font-size: 14px;
+}
+
+/* Dentro de las ventanas no hay bordes dorados: las tarjetas se separan del gris con una sombra suave.
+   Se mantienen los bordes con significado (verde/rojo de los modificadores, color de cada tipo de daño). */
+.modal-sao .fila-objeto,
+.modal-sao .opcion-danno,
+.modal-sao .btn-eleccion,
+.modal-sao .mod-equipo,
+.modal-sao .habilidad-reliquia {
+    border-color: transparent;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.modal-sao .opcion-danno:not(:has(input:checked)) {
+    background: #f7f7f7;
+}
+
+.modal-sao .mod-equipo.mod-positivo {
+    border-left-color: #27ae60;
+}
+
+.modal-sao .mod-equipo.mod-negativo {
+    border-left-color: #c0392b;
+}
+
+.modal-sao .habilidad-reliquia.en-enfriamiento {
+    border-left-color: #9aa3a4;
+}
+
+/* Textos en gris en lugar de dorado (y fondos neutros en lugar de crema) */
+.modal-sao .opcion-danno:not(:has(input:checked)),
+.modal-sao .danno-preview .preview-tipo,
+.modal-sao .contador-objetos,
+.modal-sao .objeto-cantidad,
+.modal-sao .btn-eleccion,
+.modal-sao .aviso-zona {
+    color: #5a5a5a;
+}
+
+.modal-sao .danno-preview,
+.modal-sao .fila-cantidad-danno,
+.modal-sao .aviso-zona {
+    background: #f4f4f4;
+}
+
+.modal-sao .btn-eleccion {
+    background: #fff;
+}
+
+.modal-sao .btn-eleccion:hover {
+    background: #ececec;
+}
+
+.modal-sao .mod-equipo,
+.modal-sao .habilidad-reliquia {
+    background: #fff;
+}
+
+/* "+ Crear objeto": el azul de aceptar */
+.modal-sao .btn-crear-objeto {
+    background: #3478bf;
+}
+
+.modal-sao .btn-crear-objeto:hover:not(:disabled) {
+    background: #2a62a0;
+}
+
+/* Hueco libre del inventario: discontinuo en gris, sin tarjeta */
+.modal-sao .fila-objeto.vacia {
+    border-color: rgba(0, 0, 0, 0.2);
+    box-shadow: none;
+}
+
+.modal-sao .aviso-zona {
+    border-left: none;
+}
+
+/* Botones redondos: anillo de color, hueco blanco y círculo con el glifo */
+.btn-modal-sao {
+    --color: #3478bf;
+    width: 58px;
+    height: 58px;
+    padding: 3px;
+    border: 3px solid var(--color);
+    border-radius: 50%;
+    background: #fff;
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.btn-modal-sao.cancelar {
+    --color: #c8285f;
+}
+
+.btn-modal-sao .icono-sao {
+    --fondo: var(--color);
+    --glifo: #FBFBFB;
+    filter: none;
+}
+
+.btn-modal-sao:hover {
+    transform: scale(1.07);
+}
+
+.btn-modal-sao:active {
+    transform: scale(0.95);
+}
+
+.btn-modal-sao:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 4px rgba(52, 120, 191, 0.35);
+}
+
+.btn-modal-sao.cancelar:focus-visible {
+    box-shadow: 0 0 0 4px rgba(200, 40, 95, 0.35);
+}
+
+@media (max-width: 600px) {
+    .modal-sao .modal-title {
+        font-size: 24px;
+    }
+
+    /* En móvil el botón de crear baja bajo el título para no taparlo */
+    .modal-sao .modal-header {
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .modal-sao .modal-header .btn-crear-objeto {
+        position: static;
+        translate: none;
+    }
 }
 
 .contador-objetos {
@@ -1284,6 +1487,17 @@
 
 .btn-objeto[data-accion="descartar"]:hover:not(:disabled) .icono-sao {
     --glifo: #c0392b;
+}
+
+/* Usar, cuando se puede: el mismo azul que el botón de aceptar de las ventanas */
+.btn-objeto[data-accion="usar"]:not(:disabled) .icono-sao {
+    --fondo: #3478bf;
+}
+
+.btn-objeto[data-accion="usar"]:hover:not(:disabled) .icono-sao,
+.btn-objeto[data-accion="usar"]:focus-visible .icono-sao {
+    --fondo: #FBFBFB;
+    --glifo: #3478bf;
 }
 
 .btn-objeto:disabled {

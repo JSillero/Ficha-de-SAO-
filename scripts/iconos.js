@@ -285,6 +285,14 @@ const GLIFOS = {
         <path class="tf" style="stroke-width:3" d="M38 41L50 82L62 41"/>
         <path class="t o" style="stroke-width:3" d="M50 8V14M30 12L34 17M70 12L66 17"/>`,
 
+    /* Botones de las ventanas: aceptar (anillo) y cancelar (aspa), con su sombra */
+    aceptar: `
+        <circle cx="51" cy="54" r="17" style="fill:none;stroke:rgba(0,0,0,.35);stroke-width:12"/>
+        <circle class="t" cx="50" cy="50" r="17" style="stroke-width:12"/>`,
+    cancelar: `
+        <path d="M35 38L66 69M66 38L35 69" style="fill:none;stroke:rgba(0,0,0,.35);stroke-width:12"/>
+        <path class="t" d="M34 34L66 66M66 34L34 66" style="stroke-width:12;stroke-linecap:butt"/>`,
+
     /* Menú de opciones: engranaje, cargar y guardar personaje */
     ajustes: `
         ${[0, 45, 90, 135].map(angulo => `<rect class="p" x="43" y="15" width="14" height="70" rx="3" transform="rotate(${angulo} 50 50)"/>`).join("")}
