@@ -28,6 +28,7 @@ const MODO_MASTER = new URLSearchParams(window.location.search).has("master");
 document.body.classList.toggle("modo-master", MODO_MASTER);
 /* Informacion */
 let inputNombre = document.getElementById("nombre");
+const selectProfesion = document.getElementById("tipoProfesion");
 let inputNivel = document.getElementById("nivel");
 let inputExperiencia = document.getElementById("experiencia");
 let inputVida = document.getElementById("vida");
@@ -130,6 +131,11 @@ for (const textarea of textareas) {
 /* Eventos para la barra de vida SAO y datos principales */
 inputNombre.addEventListener('change', (e) => {
     personaje.nombre = e.target.value;
+    actualizarTodo();
+});
+
+selectProfesion.addEventListener('change', (e) => {
+    personaje.tipoProfesion = e.target.value;
     actualizarTodo();
 });
 
@@ -292,6 +298,7 @@ function actualizarTodo() {
 
 function actualizarInformacion() {
     inputNombre.value = personaje.nombre;
+    selectProfesion.value = personaje.tipoProfesion;
     inputNivel.value = personaje.nivel;
     inputExperiencia.value = personaje.experiencia;
     inputVida.value = personaje.vida;

@@ -29,7 +29,7 @@ const CAMPOS_SIMPLES = [
     'puntosArte', 'vida',
     'numeroAcciones', 'izquierda', 'derecha', 'cabeza', 'pies', 'reaccionGuardada',
     'enSigilo', 'valorSigilo',
-    'comidaActiva',
+    'comidaActiva', 'tipoProfesion',
     'notas', 'listadoArtes', 'listaDeAmigos', 'recetasProfesion'
 ];
 
@@ -59,6 +59,7 @@ export default class PJ {
         this.comunicacion = 0;
         this.cultura = 0;
         this.profesion = 0;
+        this.tipoProfesion = "herrero"; // oficio: herrero, armero, cocinero o alquimista
         this.sacro = 0;
 
         /*Atributos  */

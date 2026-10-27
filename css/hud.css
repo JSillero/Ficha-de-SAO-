@@ -3,9 +3,10 @@
    ========================================================================== */
 
 .sao-bar-wrapper {
-    width: 550px;
+    width: 100%;
     max-width: 550px;
-    flex-shrink: 0;
+    flex-shrink: 1;
+    min-width: 0;
     filter: drop-shadow(0px 4px 4px rgba(0, 0, 0, 0.3));
     margin-bottom: 10px;
 }
@@ -125,9 +126,10 @@
 /* Sección inferior del HUD (Vida, Nivel y Puntos de Arte) */
 .sao-bar-bottom {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
     align-items: flex-start;
     margin-top: -8px;
+    padding-left: 15px;
     padding-right: 25px;
     gap: 15px;
 }
@@ -141,9 +143,40 @@
     border-radius: 6px 0 6px 6px;
     display: flex;
     align-items: center;
-    gap: 5px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 2px;
+    min-width: 0;
     border: 2px solid #ddd;
     border-top: none;
+}
+
+/* Grupos de la caja: PA, vida y nivel, separados por una raya */
+.sao-sub-grupo {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    padding: 0 10px;
+}
+
+.sao-sub-grupo:first-child {
+    padding-left: 0;
+}
+
+.sao-sub-grupo:last-child {
+    padding-right: 0;
+}
+
+.sao-sub-grupo + .sao-sub-grupo {
+    border-left: 2px solid #ddd;
+}
+
+/* Número actual pegado a su máximo: "0 / 3", "18 / 18" */
+.sao-valor {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
 }
 
 .sao-input-vida,
@@ -159,8 +192,14 @@
     text-align: right;
 }
 
+/* Con espacio: anchos fijos de siempre. Los PA se ajustan siempre a sus cifras
+   para no dejar hueco junto al botón -. */
 .sao-input-vida {
     width: 60px;
+}
+
+.sao-input-arte {
+    width: 2ch;
 }
 
 .sao-input-nivel {
@@ -168,39 +207,65 @@
     text-align: left;
 }
 
+@supports (field-sizing: content) {
+    .sao-input-arte {
+        field-sizing: content;
+        width: auto;
+        min-width: 1ch;
+    }
+}
+
+/* En móvil la vida y el nivel también se ajustan a sus cifras */
+@media (max-width: 600px) {
+    .sao-input-vida {
+        width: 5ch;
+    }
+
+    .sao-input-nivel {
+        width: 3ch;
+    }
+
+    @supports (field-sizing: content) {
+        .sao-input-vida,
+        .sao-input-nivel {
+            field-sizing: content;
+            width: auto;
+            min-width: 1ch;
+        }
+    }
+}
+
 .sao-input-exp {
     background: transparent !important;
     border: none !important;
-    color: white !important;
+    color: #4a4a4a !important;
     font-family: 'SAOUI', sans-serif !important;
     font-size: 13px !important;
     outline: none;
     width: 50px;
-    text-shadow: 1px 1px 2px black;
     box-shadow: none !important;
     padding: 0 !important;
     text-align: right;
 
 }
 
-.sao-lvl-label {
-    margin-left: 10px;
-    padding-left: 10px;
-    border-left: 2px solid white;
-}
+
 
 /* Barra de Experiencia (EXP) */
+/* Debajo del nombre, a la izquierda de la caja de vida y nivel */
 .sao-exp-container {
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
+    align-items: flex-start;
     gap: 2px;
-    margin-top: 48px;
-    flex-shrink: 0;
+    padding-top: 12px;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .sao-exp-track {
-    width: 140px;
+    width: 100%;
+    max-width: 180px;
     height: 12px;
     background: #222;
     border: 2px solid #ddd;
@@ -218,10 +283,9 @@
 }
 
 .sao-exp-text {
-    color: white;
+    color: #4a4a4a;
     font-family: 'SAOUI', sans-serif;
     font-size: 13px;
-    text-shadow: 1px 1px 2px black;
     display: flex;
     align-items: center;
     gap: 3px;
@@ -250,4 +314,102 @@
 .btn-sonido:focus-visible .icono-sao {
     --fondo: #FBFBFB;
     --glifo: #EBA601;
+}
+
+/* Botones de la cabecera: silencio, cargar y guardar */
+#guardadoDiv {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+
+.btn-cabecera {
+    width: 44px;
+    height: 44px;
+    cursor: pointer;
+    filter: drop-shadow(0px 2px 3px rgba(0, 0, 0, 0.3));
+}
+
+.btn-cabecera-label {
+    cursor: pointer;
+    margin: 0;
+    display: flex;
+}
+
+/* Cabecera en móvil */
+@media (max-width: 600px) {
+    .sao-input-nombre {
+        font-size: 20px !important;
+        width: 90px;
+    }
+
+    .sao-tracks-col {
+        margin-right: 25px;
+    }
+
+    .sao-bar-bottom {
+        flex-wrap: wrap;
+        padding-right: 15px;
+        gap: 4px;
+    }
+
+    /* La caja de vida arriba a la derecha y la EXP en su propia fila */
+    .sao-sub-content {
+        margin-left: auto;
+        font-size: 15px;
+        padding: 3px 8px;
+    }
+
+    .sao-exp-container {
+        order: 2;
+        flex-basis: 100%;
+        padding-top: 0;
+    }
+
+    .sao-input-vida,
+    .sao-input-nivel {
+        font-size: 15px !important;
+    }
+
+    .sao-sub-grupo {
+        padding: 0 6px;
+        gap: 4px;
+    }
+
+    #guardadoDiv {
+        gap: 10px;
+    }
+
+    .btn-cabecera {
+        width: 36px;
+        height: 36px;
+    }
+}
+
+/* Móviles muy estrechos: la caja de PA / vida / LV más compacta para que quepa en una línea */
+@media (max-width: 400px) {
+    .sao-bar-bottom {
+        padding-left: 8px;
+        padding-right: 10px;
+    }
+
+    .sao-sub-content {
+        font-size: 13px;
+        padding: 3px 6px;
+    }
+
+    .sao-input-vida,
+    .sao-input-nivel {
+        font-size: 13px !important;
+    }
+
+    .sao-sub-grupo {
+        padding: 0 4px;
+        gap: 3px;
+    }
+
+    .btn-arte {
+        font-size: 13px;
+        padding: 0 4px;
+    }
 }

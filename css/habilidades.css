@@ -46,6 +46,18 @@
     margin: 0 auto;
 }
 
+/* Oficio, debajo de los puntos de Profesión */
+.select-profesion {
+    margin-top: 4px;
+    max-width: 100px;
+    font-size: 12px;
+    padding: 1px 4px;
+    background: #dce8f9;
+    border: 1px solid #777;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
 /* Contenedor del control de habilidad */
 .hab-control {
     display: inline-flex;

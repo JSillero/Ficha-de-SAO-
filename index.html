@@ -37,57 +37,50 @@
                         </div>
                     </div>
                     <div class="sao-bar-bottom">
+                        <div class="sao-exp-container">
+                            <div class="sao-exp-track" id="sao-exp-track">
+                                <div class="sao-exp-fill" id="exp-bar-fill"></div>
+                                <div class="sao-track-glass"></div>
+                            </div>
+                            <div class="sao-exp-text">
+                                EXP <input type="number" id="experiencia" class="sao-input-exp" value="0"> / <span
+                                    id="experienciaMax"></span>
+                            </div>
+                        </div>
                         <div class="sao-sub-content">
-                            <div class="sao-arte-controls" style="display: flex; align-items: center; gap: 5px; padding-right: 10px; margin-right: 10px; border-right: 2px solid #ddd;">
+                            <div class="sao-sub-grupo sao-arte-controls">
                                 PA
                                 <button type="button" class="btn-arte" id="btn-arte-menos">-</button>
-                                <input type="number" id="arte" class="sao-input-vida" style="width: 30px;" value="0"> / <span id="arteMax">3</span>
+                                <span class="sao-valor"><input type="number" id="arte" class="sao-input-vida sao-input-arte" value="0"> / <span id="arteMax">3</span></span>
                                 <button type="button" class="btn-arte" id="btn-arte-mas">+</button>
                             </div>
-                            <input type="number" id="vida" class="sao-input-vida" value="18000"> / <span
-                                id="vidaMax">18000</span>                            <span class="sao-lvl-label">LV.</span> <input type="number" id="nivel" class="sao-input-nivel"
-                                value="96">
+                            <div class="sao-sub-grupo">
+                                <span class="sao-valor"><input type="number" id="vida" class="sao-input-vida" value="18000"> / <span
+                                    id="vidaMax">18000</span></span>
+                            </div>
+                            <div class="sao-sub-grupo">
+                                <span class="sao-lvl-label">LV.</span> <input type="number" id="nivel" class="sao-input-nivel" value="96">
+                            </div>
                         </div>
-                    </div>
-                </div>
-
-                <div class="sao-exp-container">
-                    <div class="sao-exp-track" id="sao-exp-track">
-                        <div class="sao-exp-fill" id="exp-bar-fill"></div>
-                        <div class="sao-track-glass"></div>
-                    </div>
-                    <div class="sao-exp-text">
-                        EXP <input type="number" id="experiencia" class="sao-input-exp" value="0"> / <span
-                            id="experienciaMax"></span>
                     </div>
                 </div>
             </div>
 
             <div class="header-right">
-                <label>
-                    Profesion:
-                    <select name="" id="">
-                        <option value="">Armero</option>
-                        <option value="">Herrero</option>
-                        <option value="">Cocinero</option>
-                        <option value="">Alquimista</option>
-                    </select>
-                </label>
-
-                <div id="guardadoDiv" style="display: flex; gap: 15px; align-items: center;">
+                <div id="guardadoDiv">
                     <!-- Botón Silenciar (icono generado en interfaz.js) -->
-                    <button type="button" id="btnSonido" class="btn-sonido" title="Silenciar sonidos" aria-label="Silenciar sonidos" aria-pressed="false"></button>
+                    <button type="button" id="btnSonido" class="btn-sonido btn-cabecera" title="Silenciar sonidos" aria-label="Silenciar sonidos" aria-pressed="false"></button>
                     <!-- Botón Cargar -->
-                    <label style="cursor: pointer; margin: 0;" title="Cargar personaje">
-                        <img src="./imgs/cargar.svg" onmouseover="this.src='./imgs/cargar_on.svg'"
-                            onmouseout="this.src='./imgs/cargar.svg'"
-                            style="width: 44px; height: 44px; filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.3));">
+                    <label class="btn-cabecera-label" title="Cargar personaje">
+                        <img src="./imgs/cargar_json.svg" class="btn-cabecera" alt="Cargar personaje"
+                            onmouseover="this.src='./imgs/cargar_json_on.svg'"
+                            onmouseout="this.src='./imgs/cargar_json.svg'">
                         <input type="file" id="fileInput" accept=".json" style="display: none;" />
                     </label>
                     <!-- Botón Guardar -->
-                    <img src="./imgs/guardar.svg" id="botonGuardar" onmouseover="this.src='./imgs/guardar_on.svg'"
+                    <img src="./imgs/guardar.svg" id="botonGuardar" class="btn-cabecera" alt="Guardar personaje"
+                        onmouseover="this.src='./imgs/guardar_on.svg'"
                         onmouseout="this.src='./imgs/guardar.svg'"
-                        style="cursor: pointer; width: 44px; height: 44px; filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.3));"
                         title="Guardar personaje">
                 </div>
             </div>
@@ -392,6 +385,13 @@
                                 <input type="number" id="profesion" min="0">
                                 <button type="button" class="btn-hab btn-hab-mas" data-hab="profesion" title="Añadir punto">+</button>
                             </div>
+                            <!-- Oculto por ahora: el oficio se sigue guardando en el JSON -->
+                            <select id="tipoProfesion" class="select-profesion" aria-label="Oficio" hidden>
+                                <option value="herrero">Herrero</option>
+                                <option value="armero">Armero</option>
+                                <option value="cocinero">Cocinero</option>
+                                <option value="alquimista">Alquimista</option>
+                            </select>
                         </div>
                         <div>
                             <img src="./imgs/combate.svg" onmouseover="this.src='./imgs/combate_on.svg'"

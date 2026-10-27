@@ -111,7 +111,7 @@ export function crearPersonajePrueba() {
 export function verificarInterfaz(personaje, documento = document) {
     const errores = [];
 
-    documento.querySelectorAll("input[id], textarea[id]").forEach(el => {
+    documento.querySelectorAll("input[id], textarea[id], select[id]").forEach(el => {
         const campo = ALIAS_INTERFAZ[el.id] ?? el.id;
         if (!(campo in personaje)) return;
         const valorModelo = personaje[campo];

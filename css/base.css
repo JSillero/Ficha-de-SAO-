@@ -81,8 +81,8 @@ header {
 .header-left {
     display: flex;
     align-items: flex-start;
-    flex-wrap: nowrap;
-    gap: 40px;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .header-right {
@@ -125,6 +125,36 @@ h2 {
 .columnaIzquierda {
     max-width: 310px;
     width: 100%;
+}
+
+@media (max-width: 600px) {
+    .ficha {
+        padding: 10px 12px;
+    }
+
+    header {
+        margin-top: -10px;
+        margin-left: -12px;
+        margin-right: -12px;
+        padding-top: 10px;
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    .header {
+        gap: 8px;
+    }
+
+    /* Los botones van a la derecha de la EXP, sin fila propia */
+    .header {
+        position: relative;
+    }
+
+    .header-right {
+        position: absolute;
+        right: 0;
+        bottom: 10px;
+    }
 }
 
 @media (max-width: 1024px) {
