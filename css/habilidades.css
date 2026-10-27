@@ -99,6 +99,56 @@
     pointer-events: none;
 }
 
+/* Valor efectivo bajo el input (con modificadores, estados y armadura).
+   Siempre ocupa su altura para que las tarjetas no salten al aparecer. */
+.hab-efectivo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 40px;
+    height: 18px;
+    margin-top: 3px;
+    padding: 0 6px;
+    font-family: 'SAOUI', sans-serif;
+    font-size: 12px;
+    font-weight: bold;
+    line-height: 1;
+    border-radius: 9px;
+    border: 1px solid transparent;
+    visibility: hidden;
+    cursor: help;
+    font-variant-numeric: tabular-nums;
+}
+
+.hab-efectivo.sube,
+.hab-efectivo.baja {
+    visibility: visible;
+}
+
+.hab-efectivo.sube {
+    color: #1e7a3c;
+    background: rgba(46, 160, 87, 0.12);
+    border-color: rgba(46, 160, 87, 0.55);
+}
+
+.hab-efectivo.baja {
+    color: #c62828;
+    background: rgba(229, 57, 53, 0.1);
+    border-color: rgba(229, 57, 53, 0.55);
+}
+
+/* Fuera de zona segura no se reparten puntos: los campos quedan de solo lectura */
+#habilidadesDiv.sin-reparto input[readonly] {
+    cursor: not-allowed;
+}
+
+.aviso-zona-hab {
+    margin-left: 8px;
+    font-size: 12px;
+    font-weight: normal;
+    color: #ffe680;
+}
+
 /* Contador en la cabecera */
 .contador-puntos-hab {
     font-size: 14px;

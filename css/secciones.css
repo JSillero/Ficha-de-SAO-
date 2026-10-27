@@ -90,7 +90,7 @@
 }
 
 /* Control de Turno */
-#controlTurno svg {
+#controlTurno #svg1 {
     max-width: 100%;
     height: auto;
     display: block;
@@ -135,6 +135,22 @@
     transform: scale(0.96);
 }
 
+/* Botón deshabilitado (p. ej. Daño en zona segura): gris y sin efecto al pasar el ratón */
+.btn-icono-sao:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+    filter: grayscale(1);
+    transform: none;
+}
+
+.btn-icono-sao:disabled .icono-on {
+    display: none;
+}
+
+.btn-icono-sao:disabled .icono-off {
+    display: block;
+}
+
 .btn-icono-sao img {
     width: 100%;
     height: 100%;
@@ -166,7 +182,205 @@
 .btn-danno-icono { --angulo: 25deg; }
 .btn-menu-baul { --angulo: 75deg; }
 .btn-menu-artes { --angulo: 125deg; }
-.btn-menu-descanso { --angulo: 180deg; }
+.btn-menu-zona { --angulo: 180deg; }
+
+/* Menú de zonas (estilo menú SAO): filas blancas, la zona actual en dorado, fondo transparente
+   y flecha blanca con punto negro unida a una línea vertical. Lo coloca inicializarZona (interfaz.js). */
+.menu-zona {
+    --menu-dorado: #EBA601;
+    /* Línea vertical (se desvanece en los extremos) junto a la flecha */
+    --menu-linea: linear-gradient(to bottom, transparent, #6b6b6b 15%, #6b6b6b 85%, transparent) 1;
+    position: absolute;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    width: max-content;
+    padding-left: 10px;
+    border-left: 2px solid;
+    border-image: var(--menu-linea);
+    transform: translateY(-50%);
+    animation: menu-zona-entrar 0.1s ease-out;
+}
+
+.menu-zona[hidden] {
+    display: none;
+}
+
+/* Flecha: triángulo blanco (con bordes, para que tenga sombra) y punto negro, apuntando al botón */
+.menu-zona::before,
+.menu-zona::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    translate: 0 -50%;
+}
+
+.menu-zona::before {
+    right: calc(100% - 1px);
+    width: 0;
+    height: 0;
+    border-top: 15px solid transparent;
+    border-bottom: 15px solid transparent;
+    border-right: 20px solid #FBFBFB;
+    filter: drop-shadow(-1px 0 1px rgba(0, 0, 0, 0.55)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+.menu-zona::after {
+    right: calc(100% + 3px);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #111;
+}
+
+.menu-zona.a-la-izquierda {
+    padding-left: 0;
+    padding-right: 10px;
+    border-left: 0;
+    border-right: 2px solid;
+    border-image: var(--menu-linea);
+}
+
+.menu-zona.a-la-izquierda::before {
+    right: auto;
+    left: calc(100% - 1px);
+    border-right: 0;
+    border-left: 20px solid #FBFBFB;
+    filter: drop-shadow(1px 0 1px rgba(0, 0, 0, 0.55)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+.menu-zona.a-la-izquierda::after {
+    right: auto;
+    left: calc(100% + 3px);
+}
+
+.opcion-zona {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 200px;
+    padding: 8px 22px 8px 12px;
+    border: 0;
+    border-radius: 2px;
+    background: #FBFBFB;
+    color: #4D4D4D;
+    font-family: 'SAOUI', sans-serif;
+    font-size: 17px;
+    text-align: left;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    transition: background 0.15s, color 0.15s;
+}
+
+.opcion-zona-icono {
+    flex: none;
+    width: 36px;
+    height: 36px;
+}
+
+.opcion-zona .icono-sao {
+    --fondo: #4D4D4D;
+    --glifo: #FBFBFB;
+    filter: none;
+}
+
+.opcion-zona:hover,
+.opcion-zona:focus-visible {
+    background: #ececec;
+    outline: none;
+}
+
+.opcion-zona.activa {
+    background: var(--menu-dorado);
+    color: #FBFBFB;
+}
+
+.opcion-zona.activa .icono-sao {
+    --fondo: #FBFBFB;
+    --glifo: var(--menu-dorado);
+}
+
+.opcion-zona.activa:focus-visible {
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3), inset 0 0 0 2px #FBFBFB;
+}
+
+@keyframes menu-zona-entrar {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Las filas aparecen una tras otra deslizándose desde la flecha */
+.menu-zona .opcion-zona {
+    --desde: -14px;
+    animation: opcion-zona-entrar 0.16s ease-out both;
+}
+
+.menu-zona.a-la-izquierda .opcion-zona {
+    --desde: 14px;
+}
+
+.menu-zona .opcion-zona:nth-child(2) { animation-delay: 0.05s; }
+.menu-zona .opcion-zona:nth-child(3) { animation-delay: 0.1s; }
+.menu-zona .opcion-zona:nth-child(4) { animation-delay: 0.15s; }
+
+@keyframes opcion-zona-entrar {
+    from {
+        opacity: 0;
+        transform: translateX(var(--desde)) scaleY(0.6);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+/* Al cerrar: las filas se van una a una, de la última a la primera, y después la flecha y la línea */
+.menu-zona.cerrando {
+    pointer-events: none;
+    animation: menu-zona-salir 0.1s ease-in 0.16s both;
+}
+
+.menu-zona.cerrando .opcion-zona {
+    animation: opcion-zona-salir 0.14s ease-in both;
+    animation-delay: 0s;
+}
+
+.menu-zona.cerrando .opcion-zona:nth-last-child(2) { animation-delay: 0.05s; }
+.menu-zona.cerrando .opcion-zona:nth-last-child(3) { animation-delay: 0.1s; }
+.menu-zona.cerrando .opcion-zona:nth-last-child(4) { animation-delay: 0.15s; }
+
+@keyframes opcion-zona-salir {
+    from {
+        opacity: 1;
+        transform: none;
+    }
+    to {
+        opacity: 0;
+        transform: translateX(var(--desde)) scaleY(0.6);
+    }
+}
+
+@keyframes menu-zona-salir {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .menu-zona,
+    .menu-zona .opcion-zona {
+        animation: none;
+    }
+}
+
+@media (max-width: 400px) {
+    .opcion-zona {
+        min-width: 160px;
+        font-size: 15px;
+        padding-right: 14px;
+    }
+}
+
 .btn-menu-amigos { --angulo: 235deg; }
 .btn-menu-inventario { --angulo: 285deg; }
 
@@ -713,19 +927,63 @@
     height: 28px;
 }
 
-.danno-cantidad {
+/* Una fila por tipo marcado: icono, nombre, cantidad (y en físico, ignorar armadura) */
+.danno-cantidades {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.fila-cantidad-danno {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 8px;
+    padding: 4px 8px 4px 4px;
+    border-left: 4px solid var(--color);
+    border-radius: 6px;
+    background: #f3efe3;
 }
 
-.danno-cantidad .form-control {
+.fila-cantidad-danno[hidden] {
+    display: none;
+}
+
+.fila-cantidad-danno .opcion-icono {
+    width: 28px;
+    height: 28px;
+}
+
+.fila-cantidad-danno .icono-sao {
+    --fondo: var(--color);
+    --glifo: var(--color-glifo, #FBFBFB);
+}
+
+.fila-cantidad-danno .nombre-danno {
+    min-width: 90px;
+    font-weight: bold;
+    font-size: 13px;
+    color: #4a4a4a;
+}
+
+.fila-cantidad-danno .form-control {
     width: 90px;
 }
 
 .danno-check {
     font-size: 13px;
+}
+
+/* Grupo de cada tipo en la vista previa */
+.danno-preview .preview-tipo {
+    list-style: none;
+    margin-left: -18px;
+    font-weight: bold;
+    color: #8a6d2a;
+}
+
+.danno-preview .preview-tipo:not(:first-child) {
+    margin-top: 4px;
 }
 
 .danno-preview {
@@ -882,6 +1140,24 @@
 .btn-sao:hover {
     background: #b8933f;
     color: #fbfbfb;
+}
+
+.btn-crear-objeto:disabled,
+.btn-crear-objeto:disabled:hover {
+    background: #c9c9c9;
+    color: #f4f4f4;
+    cursor: not-allowed;
+}
+
+/* Aviso de lo que no se puede hacer en la zona actual (p. ej. el baúl fuera de la base) */
+.aviso-zona {
+    margin: 0 0 10px;
+    padding: 6px 10px;
+    border-left: 4px solid #d1ab52;
+    border-radius: 4px;
+    background: #f3efe3;
+    color: #6b5420;
+    font-size: 13px;
 }
 
 .texto-modal {
@@ -1325,4 +1601,195 @@ body:not(.modo-master) .mods-equipo .quitar-mod {
 
 .valor-combate:not(.con-nota) .valor-nota {
     display: none;
+}
+
+/* ==========================================================================
+   Reliquias: habilidades en la tarjeta de la mano (reliquias.js, pintarHabilidadesReliquia)
+   ========================================================================== */
+/* Marca "Reliquia" junto al nombre de un accesorio reliquia */
+.accesorio-marca-reliquia {
+    flex-shrink: 0;
+    padding: 1px 8px;
+    border-radius: 10px;
+    background: #EBA601;
+    color: #fbfbfb;
+    font-family: 'SAOUI', sans-serif;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.accesorio-marca-reliquia[hidden] {
+    display: none;
+}
+
+.reliquia-habilidades {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.reliquia-habilidades[hidden] {
+    display: none;
+}
+
+/* "+" de las habilidades: mismo aspecto que el de los modificadores, pero siempre visible */
+.btn-anadir-habilidad {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #d1ab52;
+    color: #ffffff;
+    border: none;
+    border-radius: 50%;
+    font-size: 16px;
+    font-weight: bold;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+}
+
+.btn-anadir-habilidad:hover {
+    background: #b8933b;
+    transform: scale(1.1);
+}
+
+.lista-habilidades-reliquia {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.lista-habilidades-reliquia:empty::before {
+    content: attr(data-vacia);
+    color: #aaa;
+    font-size: 12px;
+    font-style: italic;
+}
+
+#listaHabilidadesObjeto:empty::before {
+    content: "Sin habilidades";
+}
+
+.habilidad-reliquia {
+    --enfriamiento: 0;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 5px 6px 7px;
+    border: 1px solid #e6dcc0;
+    border-left: 4px solid #d1ab52;
+    border-radius: 4px;
+    background: #fffdf7;
+    font-size: 12px;
+    overflow: hidden;
+}
+
+/* Barra de enfriamiento: lo que queda respecto al total */
+.habilidad-reliquia::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 3px;
+    width: calc(var(--enfriamiento) * 100%);
+    background: #7f8c8d;
+    transition: width 0.3s ease;
+}
+
+.habilidad-reliquia.en-enfriamiento {
+    border-left-color: #9aa3a4;
+}
+
+/* Dos líneas: [nombre ×] y debajo [Enfr. N ... Usar]; caben también en la tarjeta estrecha de una mano */
+.habilidad-fila {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+}
+
+.habilidad-fila .nombreHabilidad {
+    order: 0;
+    flex: 1 1 calc(100% - 30px);
+    min-width: 0;
+    padding: 2px 6px;
+    font-size: 13px;
+    font-weight: bold;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.habilidad-enfriamiento {
+    order: 2;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    margin: 0;
+    color: #666;
+    white-space: nowrap;
+}
+
+.habilidad-enfriamiento input {
+    width: 44px;
+    padding: 1px 2px;
+    text-align: center;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.btn-usar-habilidad {
+    order: 3;
+    margin-left: auto;
+    min-width: 50px;
+    padding: 2px 10px;
+    border: none;
+    border-radius: 12px;
+    background: #EBA601;
+    color: #fbfbfb;
+    font-family: 'SAOUI', sans-serif;
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+}
+
+.btn-usar-habilidad:hover:not(:disabled) {
+    background: #c98e00;
+    transform: scale(1.05);
+}
+
+.btn-usar-habilidad:disabled {
+    background: #b9b9b9;
+    cursor: not-allowed;
+}
+
+.habilidad-reliquia .quitar-habilidad {
+    order: 1;
+    width: 20px;
+    padding: 0;
+    background: none;
+    border: none;
+    color: #c0392b;
+    font-size: 16px;
+    font-weight: bold;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.habilidad-reliquia .descripcionHabilidad {
+    width: 100%;
+    min-height: 34px;
+    padding: 3px 6px;
+    font-size: 12px;
+    font-family: inherit;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    resize: vertical;
 }

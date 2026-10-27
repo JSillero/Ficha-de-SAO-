@@ -278,6 +278,39 @@ const GLIFOS = {
         <path class="p" d="M50 38C55 45 58 49 58 54C57 60 54 63 50 63C46 63 43 60 43 54C43 49 47 45 50 38Z"/>
         <path class="t" style="stroke-width:9" d="M24 84L76 68M24 68L76 84"/>`,
 
+    /* Reliquia: gema tallada */
+    reliquia: `
+        <polygon class="s" points="34,20 66,20 80,38 20,38"/>
+        <polygon class="p" points="20,41 80,41 50,84"/>
+        <path class="tf" style="stroke-width:3" d="M38 41L50 82L62 41"/>
+        <path class="t o" style="stroke-width:3" d="M50 8V14M30 12L34 17M70 12L66 17"/>`,
+
+    /* Zonas y descansos */
+    mapa: `
+        <polygon class="p" points="16,28 37,20 37,74 16,82"/>
+        <polygon class="s" points="39,20 61,28 61,82 39,74"/>
+        <polygon class="p" points="63,28 84,20 84,74 63,82"/>
+        <path class="tf" style="stroke-width:4" d="M48 38L54 44M54 38L48 44"/>`,
+    pueblo: `
+        <polygon class="s" points="50,44 66,26 82,44"/>
+        <rect class="s" x="54" y="44" width="24" height="38"/>
+        <rect class="f" x="62" y="52" width="8" height="8" rx="1"/>
+        <polygon class="p" points="14,56 36,36 58,56"/>
+        <rect class="p" x="19" y="56" width="34" height="26"/>
+        <rect class="f" x="31" y="64" width="10" height="18" rx="2"/>`,
+    casa: `
+        <rect class="s" x="62" y="22" width="10" height="20"/>
+        <polygon class="p" points="14,52 50,20 86,52"/>
+        <rect class="p" x="24" y="50" width="52" height="32"/>
+        <rect class="f" x="44" y="60" width="12" height="22" rx="2"/>`,
+    cama: `
+        <rect class="p" x="14" y="28" width="9" height="54" rx="2"/>
+        <rect class="s" x="27" y="46" width="18" height="11" rx="4"/>
+        <rect class="s" x="47" y="44" width="39" height="13" rx="3"/>
+        <rect class="p" x="14" y="58" width="72" height="13" rx="2"/>
+        <rect class="p" x="77" y="70" width="9" height="12" rx="2"/>
+        <path class="t o" style="stroke-width:4" d="M58 18H70L58 32H70"/>`,
+
     otros: enDiagonal(`
         <rect class="p" x="46.5" y="24" width="7" height="64" rx="3"/>
         <path class="p" d="M18 34C34 14 66 14 82 34L78 38C62 26 38 26 22 38Z"/>

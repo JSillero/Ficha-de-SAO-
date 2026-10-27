@@ -57,6 +57,7 @@ export function crearPersonajePrueba() {
         else if (typeof valor === "string") pj[campo] = `prueba ${campo}`;
     }
     pj.nivel = 20;
+    pj.zona = "base"; // solo admite claves de ZONAS
 
     ESTADOS_LISTA.forEach((estado, i) => {
         pj.estados[estado] = { valor: i + 1, turnos: i % 2 ? TURNOS_PERMANENTE : i + 2 };
@@ -70,10 +71,11 @@ export function crearPersonajePrueba() {
     };
 
     // Un objeto de cada tipo, con todo lo anidado (modificadores, estado, elemental, equipo)
-    const pocion = cargarObjeto({ tipo: "pocion", nombre: "poción", descripcion: "cura", cantidad: 2, pv: 4,
+    const pocion = cargarObjeto({ tipo: "pocion", nombre: "poción", descripcion: "cura", cantidad: 2, pv: 4, pa: 1,
         estado: { clave: "regeneracion", valor: 1, turnos: 3, quitar: false } });
     const objetos = [
-        { tipo: "comida", nombre: "café", cantidad: 3, modificadores: [{ nombre: "café", modificado: "percepcion", numero: 2, turnos: TURNOS_PERMANENTE }] },
+        { tipo: "comida", nombre: "café", cantidad: 3, modificadores: [{ nombre: "café", modificado: "percepcion", numero: 2, turnos: TURNOS_PERMANENTE }],
+            estado: { clave: "regeneracion", valor: 1, turnos: TURNOS_PERMANENTE, quitar: false } },
         pocion,
         { tipo: "pocion", nombre: "antídoto", cantidad: 1, pv: 0, estado: { clave: "veneno", valor: 0, turnos: TURNOS_PERMANENTE, quitar: true } },
         { tipo: "equipo", nombre: "hacha", descripcion: "pesada", equipo: crearEquipo("hacha", "hacha") },
@@ -90,6 +92,15 @@ export function crearPersonajePrueba() {
     pj.manoIzquierda = crearEquipo("escudo", "escudo");
     pj.equipoArmadura = crearEquipo("cota", "ligera");
     pj.accesorios = [crearEquipo("anillo", "accesorio"), crearEquipo("collar", "accesorio")];
+    // Reliquias: el arma de la mano derecha, el primer accesorio y un amuleto (reliquia de mano) en el inventario
+    pj.accesorios[0].reliquia = { habilidades: [{ nombre: "eco", descripcion: "repite", enfriamiento: 4, restante: 2 }] };
+    pj.manoDerecha.reliquia = { habilidades: [{ nombre: "corte", descripcion: "x2", enfriamiento: 2, restante: 1 }] };
+    const amuleto = crearEquipo("amuleto", "reliquia");
+    amuleto.reliquia = { habilidades: [
+        { nombre: "destello", descripcion: "ciega", enfriamiento: 3, restante: 3 },
+        { nombre: "escudo", descripcion: "+3 defensa", enfriamiento: 0, restante: 0 }
+    ] };
+    pj.inventario[pj.inventario.findIndex(hueco => !hueco)] = cargarObjeto({ tipo: "equipo", nombre: "amuleto", equipo: amuleto });
     pj.estados.veneno.descansoCorto = true; // se quita con el descanso corto
     const deComida = new Modificador("café", "percepcion", 2, TURNOS_PERMANENTE);
     deComida.origen = "comida";

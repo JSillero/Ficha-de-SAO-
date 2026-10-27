@@ -87,6 +87,8 @@ export function describirEfecto(objeto, conNombre = true) {
     const pv = Number(objeto?.pv) || 0;
     if (pv > 0) partes.push(`cura ${pv} PV`);
     if (pv < 0) partes.push(`${-pv} de daño`);
+    const pa = Number(objeto?.pa) || 0;
+    if (pa > 0) partes.push(`recupera ${pa} PA`);
     const estado = objeto?.estado;
     if (estado?.clave) {
         const etiqueta = ESTADOS_INFO[estado.clave]?.etiqueta ?? estado.clave;

@@ -3,7 +3,7 @@
 // No toca el DOM: recibe el personaje, lo modifica y devuelve lo que ha pasado.
 
 import { TURNOS_PERMANENTE } from "./modificador.js";
-import { efectoHielo, salirDeSigilo } from "./turno.js";
+import { efectoHielo, salirDeSigilo, dannoHemorragia } from "./turno.js";
 
 /* Los estados provocados por daño elemental duran 3 turnos y se reinician con cada daño nuevo */
 export const DURACION_ELEMENTAL = 3;
@@ -30,7 +30,7 @@ export const ESTADOS_INFO = {
     veneno: { etiqueta: "Envenenado", icono: "veneno", color: "#5E9E2F", unidad: "PV/turno", turnos: TURNOS_PERMANENTE, valorPorDefecto: 2,
         descripcion: "Pierde PV cada turno. Se cura con antídoto del nivel del veneno." },
     hemorragia: { etiqueta: "Hemorragia", icono: "hemorragia", color: "#B0172B", unidad: "Acumulado", turnos: TURNOS_PERMANENTE,
-        descripcion: "Se acumula. Al superar el Aguante, cada turno se pierden PV iguales al valor acumulado hasta que se cura." },
+        descripcion: "Se acumula. Cada turno quita el Aguante en PV por cada vez que el acumulado lo contiene (Aguante 8: 15 → 8 PV, 20 → 16 PV) hasta que se cura." },
     regeneracion: { etiqueta: "Regeneración", icono: "regeneracion", color: "#E05583", unidad: "PV/turno", turnos: TURNOS_PERMANENTE,
         descripcion: "Recupera PV cada turno (comida, artes, cristales)." },
     aturdido: { etiqueta: "Aturdido", icono: "aturdido", color: "#16A085", unidad: null, turnos: TURNOS_PERMANENTE,
@@ -200,9 +200,10 @@ export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
             const actual = Number(pj.estados.hemorragia?.valor) || 0;
             const total = actual + cantidad;
             pj.estados.hemorragia = { ...pj.estados.hemorragia, valor: total, turnos: TURNOS_PERMANENTE };
-            resumen.push(total > pj.aguante
-                ? `Hemorragia ${total} supera el Aguante (${pj.aguante}): −${total} PV cada turno`
-                : `Hemorragia ${total}: sin efecto hasta superar el Aguante (${pj.aguante})`);
+            const sangrado = dannoHemorragia(total, pj.aguante);
+            resumen.push(sangrado > 0
+                ? `Hemorragia ${total} (Aguante ${pj.aguante}): −${sangrado} PV cada turno`
+                : `Hemorragia ${total}: sin efecto hasta llegar al Aguante (${pj.aguante})`);
             break;
         }
         default:

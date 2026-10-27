@@ -3,9 +3,10 @@
 // No toca el DOM: recibe el personaje, lo modifica y devuelve lo que ha pasado.
 
 import Modificador, { cargarModificador, TURNOS_PERMANENTE } from "./modificador.js";
-import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ARMADURA, TIPO_ACCESORIO, cargarEquipamiento } from "./equipamiento.js";
+import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, cargarEquipamiento } from "./equipamiento.js";
 import { activarEstado, quitarEstado, ESTADOS_INFO, TIPOS_DANNO } from "./estados.js";
 import { MANOS, gastarVarias, gastarTodas, partesDeMano, parteDeMano, manoVacia, puedeGastar } from "./turno.js";
+import { esZonaSegura } from "./zonas.js";
 
 /* Huecos base del inventario: 10 objetos distintos apilables */
 export const TAMANO_INVENTARIO = 10;
@@ -74,9 +75,11 @@ export function cargarObjeto(datos) {
     switch (tipo) {
         case "comida":
             objeto.modificadores = Array.isArray(datos.modificadores) ? datos.modificadores.map(cargarModificador) : [];
+            objeto.estado = cargarEstadoObjeto(datos.estado);
             break;
         case "pocion":
             objeto.pv = Number(datos.pv) || 0;
+            objeto.pa = Math.max(0, Number(datos.pa) || 0); // PA que recupera (solo en zona segura o base)
             objeto.estado = cargarEstadoObjeto(datos.estado);
             break;
         case "arrojadiza":
@@ -208,10 +211,14 @@ export function manoParaUsar(pj) {
     return vacias.find(mano => puedeGastar(pj, parteDeMano(mano))) ?? vacias[0] ?? null;
 }
 
-/* Comida: un solo efecto activo; se pierde con el descanso corto */
+/* Comida: un solo efecto activo; se pierde con el descanso corto.
+   Sus modificadores y el estado que provoca llevan origen "comida" y se van con ella. */
 export function quitarComida(pj) {
     const antes = pj.comidaActiva;
     pj.modificadores = pj.modificadores.filter(mod => mod.origen !== "comida");
+    for (const [clave, estado] of Object.entries(pj.estados)) {
+        if (estado.origen === "comida") quitarEstado(pj, clave);
+    }
     pj.comidaActiva = "";
     pj.calcularCaracteristicas();
     return antes;
@@ -227,12 +234,34 @@ export function comer(pj, indice) {
         pj.modificadores.push(nuevo);
     });
     pj.comidaActiva = objeto.nombre || "Comida";
+    const lineasEstado = aplicarEstadoObjeto(pj, objeto.estado, "comida");
     consumir(pj, indice);
     pj.calcularCaracteristicas();
-    const resumen = [`Comes ${pj.comidaActiva}`];
+    const resumen = [`Comes ${pj.comidaActiva}`, ...lineasEstado];
     if (anterior) resumen.push(`Pierdes el efecto de ${anterior}`);
     resumen.push("Dura hasta el siguiente descanso corto");
     return exito(...resumen);
+}
+
+/* Estado que provoca o cura un objeto (poción o comida). origen: marca el estado (p. ej. "comida"). */
+function aplicarEstadoObjeto(pj, estado, origen = null) {
+    if (!estado?.clave) return [];
+    const etiqueta = ESTADOS_INFO[estado.clave].etiqueta;
+    if (estado.quitar) {
+        quitarEstado(pj, estado.clave);
+        return [`Cura: ${etiqueta}`];
+    }
+    if (!(estado.valor > 0)) return [];
+    activarEstado(pj, estado.clave, estado.valor, estado.turnos);
+    if (origen) pj.estados[estado.clave].origen = origen;
+    return [`${etiqueta} ${estado.valor}` + (estado.turnos === TURNOS_PERMANENTE ? " (permanente)" : ` (${estado.turnos} turnos)`)];
+}
+
+/** Las pociones que recuperan PA solo se pueden tomar en zona segura o en la base */
+export function motivoNoBeber(pj, pocion) {
+    return (Number(pocion?.pa) || 0) > 0 && !esZonaSegura(pj)
+        ? "Las pociones que recuperan PA solo se toman en zona segura o en la base."
+        : null;
 }
 
 /* Efecto de una poción sobre el personaje */
@@ -244,17 +273,13 @@ function aplicarEfectoPocion(pj, pocion) {
         pj.vida = pv > 0 ? Math.min(pj.vidaMax, pj.vida + pv) : Math.max(0, pj.vida + pv);
         resumen.push(`PV: ${antes} → ${pj.vida}`);
     }
-    const estado = pocion.estado;
-    if (estado?.clave) {
-        const etiqueta = ESTADOS_INFO[estado.clave].etiqueta;
-        if (estado.quitar) {
-            quitarEstado(pj, estado.clave);
-            resumen.push(`Cura: ${etiqueta}`);
-        } else if (estado.valor > 0) {
-            activarEstado(pj, estado.clave, estado.valor, estado.turnos);
-            resumen.push(`${etiqueta} ${estado.valor}` + (estado.turnos === TURNOS_PERMANENTE ? " (permanente)" : ` (${estado.turnos} turnos)`));
-        }
+    const pa = Number(pocion.pa) || 0;
+    if (pa > 0) {
+        const antes = pj.puntosArte;
+        pj.puntosArte = Math.min(pj.puntosArteMax, pj.puntosArte + pa);
+        resumen.push(`PA: ${antes} → ${pj.puntosArte}`);
     }
+    resumen.push(...aplicarEstadoObjeto(pj, pocion.estado));
     pj.calcularCaracteristicas();
     if (!resumen.length) resumen.push("Sin efecto");
     return resumen;
@@ -264,6 +289,8 @@ function aplicarEfectoPocion(pj, pocion) {
 export function beberPocion(pj, indice, gastar = gastarEstricto(pj)) {
     const objeto = pj.inventario[indice];
     if (objeto?.tipo !== "pocion") return fallo("No es una poción.");
+    const motivo = motivoNoBeber(pj, objeto);
+    if (motivo) return fallo(motivo);
     if (!gastar(["cabeza"], `Beber ${objeto.nombre}`)) return fallo("Sin acción de cabeza.");
     const resumen = aplicarEfectoPocion(pj, objeto);
     consumir(pj, indice);
@@ -321,9 +348,9 @@ export function lanzarArrojadiza(pj, indice, gastar = gastarEstricto(pj)) {
 
 /* Equipo _____________________________________________________________________ */
 
-/** "mano", "armadura", "accesorio" o null según el tipo de Equipamiento */
+/** "mano", "armadura", "accesorio" o null según el tipo de Equipamiento (la reliquia se lleva en la mano) */
 export function categoriaEquipo(tipo) {
-    if (ARMAS[tipo]) return "mano";
+    if (ARMAS[tipo] || tipo === TIPO_RELIQUIA) return "mano";
     if (TIPOS_ARMADURA.includes(tipo)) return "armadura";
     if (tipo === TIPO_ACCESORIO) return "accesorio";
     return null;
@@ -398,6 +425,7 @@ export function motivoNoEquipar(pj, objeto) {
  * - Arma o escudo: en una mano vacía (destino), gasta la acción de esa mano (o de las dos).
  * - Armadura: si no llevas ninguna, gasta todas las acciones del turno.
  * - Accesorio: en la primera ranura libre, gasta la acción de una mano libre.
+ * - Reliquia que no es arma: como un arma de una mano.
  */
 export function equipar(pj, indice, destino, gastar = gastarEstricto(pj)) {
     const objeto = pj.inventario[indice];
@@ -487,34 +515,3 @@ export function guardarEquipado(pj, ranura, gastar = gastarEstricto(pj)) {
     pj.calcularCaracteristicas();
     return exito(`${nombre} → inventario`);
 }
-
-/* Descanso corto _____________________________________________________________ */
-
-/**
- * Descanso corto en zona segura: se pierde la comida, se quitan los modificadores y estados
- * marcados con "Descanso corto" (descansoCorto: true) y se recargan los PA.
- */
-export function descansoCorto(pj) {
-    const resumen = [];
-    const comida = quitarComida(pj);
-    if (comida) resumen.push(`Termina el efecto de ${comida}`);
-
-    const quitados = pj.modificadores.filter(mod => mod.descansoCorto);
-    pj.modificadores = pj.modificadores.filter(mod => !mod.descansoCorto);
-    quitados.forEach(mod => resumen.push(`Termina el modificador: ${mod.nombre || mod.modificado}`));
-
-    for (const [clave, estado] of Object.entries(pj.estados)) {
-        if (!estado.descansoCorto) continue;
-        if ((Number(estado.valor) || 0) > 0) resumen.push(`Termina: ${ESTADOS_INFO[clave]?.etiqueta ?? clave}`);
-        quitarEstado(pj, clave);
-    }
-    pj.calcularCaracteristicas();
-
-    if (pj.puntosArte < pj.puntosArteMax) {
-        resumen.push(`PA: ${pj.puntosArte} → ${pj.puntosArteMax}`);
-        pj.puntosArte = pj.puntosArteMax;
-    }
-    if (!resumen.length) resumen.push("Sin cambios");
-    return resumen;
-}
-

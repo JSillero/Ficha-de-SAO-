@@ -167,10 +167,13 @@
                             <img class="icono-off" src="./imgs/artes.svg" alt="">
                             <img class="icono-on" src="./imgs/artes_on.svg" alt="">
                         </button>
-                        <button type="button" id="btnDescanso" class="btn-icono-sao btn-menu-descanso" title="Descanso corto: termina el efecto de la comida y recarga los PA" aria-label="Descanso corto">
-                            <img class="icono-off" src="./imgs/descanso.svg" alt="">
-                            <img class="icono-on" src="./imgs/descanso_on.svg" alt="">
+                        <!-- Zona actual: abre el menú de zonas (inicializarZona en interfaz.js cambia el icono) -->
+                        <button type="button" id="btnZona" class="btn-icono-sao btn-menu-zona" title="Zona no segura" aria-label="Cambiar de zona"
+                            aria-haspopup="menu" aria-expanded="false" aria-controls="menuZona">
+                            <img class="icono-off" src="./imgs/mapa.svg" alt="">
+                            <img class="icono-on" src="./imgs/mapa_on.svg" alt="">
                         </button>
+                        <div id="menuZona" class="menu-zona" role="menu" aria-label="Zona" hidden></div>
                         <!-- viewBox desplazado (-22, 17) para centrar la figura dentro del círculo de botones -->
                         <svg version="1.0" width="300pt" height="300pt" viewBox="-22 17 1024 1024"
                             preserveAspectRatio="xMidYMid meet" id="svg1" xmlns="http://www.w3.org/2000/svg"
@@ -271,6 +274,7 @@
                                         <option value="escudo">Escudo</option>
                                         <option value="gran_escudo">Gran escudo</option>
                                         <option value="otros">Otros</option>
+                                        <option value="reliquia">Reliquia</option>
                                     </select>
                                     <span class="tipoEquipoTexto"></span>
                                     <button type="button" class="btn-guardar-equipo" title="Guardar en el inventario" aria-label="Guardar en el inventario"></button>
@@ -295,6 +299,8 @@
                                         <button type="button" class="btn-anadir-mod-equipo">+</button>
                                     </div>
                                     <ul class="mods-equipo"></ul>
+                                    <!-- Si el arma es reliquia: sus habilidades se editan y se usan aquí (pintarHabilidadesReliquia) -->
+                                    <div class="reliquia-habilidades" hidden></div>
                                 </div>
                             </div>
                         </template>
@@ -343,7 +349,7 @@
                         </div>
 
                     </div>
-                    <h2>Habilidades <span id="contadorPuntosHab" class="contador-puntos-hab">(Puntos: <strong id="puntosHabDisponibles">40</strong> / <span id="puntosHabTotal">40</span>)</span></h2>
+                    <h2>Habilidades <span id="contadorPuntosHab" class="contador-puntos-hab">(Puntos: <strong id="puntosHabDisponibles">40</strong> / <span id="puntosHabTotal">40</span>)</span><span id="avisoZonaHab" class="aviso-zona-hab" hidden>Solo en zona segura</span></h2>
                     <div id="habilidadesDiv">
 
                         <div>
@@ -355,6 +361,7 @@
                                 <input type="number" id="atletismo" min="0">
                                 <button type="button" class="btn-hab btn-hab-mas" data-hab="atletismo" title="Añadir punto">+</button>
                             </div>
+                            <span class="hab-efectivo" data-hab="atletismo" aria-live="polite"></span>
                         </div>
                         <div>
                             <img src="./imgs/percepcion.svg" onmouseover="this.src='./imgs/percepcion_on.svg'"
@@ -365,6 +372,7 @@
                                 <input type="number" id="percepcion" min="0">
                                 <button type="button" class="btn-hab btn-hab-mas" data-hab="percepcion" title="Añadir punto">+</button>
                             </div>
+                            <span class="hab-efectivo" data-hab="percepcion" aria-live="polite"></span>
                         </div>
                         <div>
                             <img src="./imgs/cultura.svg" onmouseover="this.src='./imgs/cultura_on.svg'"
@@ -375,6 +383,7 @@
                                 <input type="number" id="cultura" min="0">
                                 <button type="button" class="btn-hab btn-hab-mas" data-hab="cultura" title="Añadir punto">+</button>
                             </div>
+                            <span class="hab-efectivo" data-hab="cultura" aria-live="polite"></span>
                         </div>
                         <div>
                             <img src="./imgs/profesion.svg" onmouseover="this.src='./imgs/profesion_on.svg'"
@@ -385,6 +394,7 @@
                                 <input type="number" id="profesion" min="0">
                                 <button type="button" class="btn-hab btn-hab-mas" data-hab="profesion" title="Añadir punto">+</button>
                             </div>
+                            <span class="hab-efectivo" data-hab="profesion" aria-live="polite"></span>
                             <!-- Oculto por ahora: el oficio se sigue guardando en el JSON -->
                             <select id="tipoProfesion" class="select-profesion" aria-label="Oficio" hidden>
                                 <option value="herrero">Herrero</option>
@@ -402,6 +412,7 @@
                                 <input type="number" id="combate" min="0">
                                 <button type="button" class="btn-hab btn-hab-mas" data-hab="combate" title="Añadir punto">+</button>
                             </div>
+                            <span class="hab-efectivo" data-hab="combate" aria-live="polite"></span>
                         </div>
                     
                         <div>
@@ -413,6 +424,7 @@
                                 <input type="number" id="subterfugio" min="0">
                                 <button type="button" class="btn-hab btn-hab-mas" data-hab="subterfugio" title="Añadir punto">+</button>
                             </div>
+                            <span class="hab-efectivo" data-hab="subterfugio" aria-live="polite"></span>
                         </div>
                         <div>
                             <img src="./imgs/carisma.svg" onmouseover="this.src='./imgs/carisma_on.svg'"
@@ -423,6 +435,7 @@
                                 <input type="number" id="comunicacion" min="0">
                                 <button type="button" class="btn-hab btn-hab-mas" data-hab="comunicacion" title="Añadir punto">+</button>
                             </div>
+                            <span class="hab-efectivo" data-hab="comunicacion" aria-live="polite"></span>
                         </div>
                         <div>
                             <img src="./imgs/sacro.svg" onmouseover="this.src='./imgs/sacro_on.svg'"
@@ -433,6 +446,7 @@
                                 <input type="number" id="sacro" min="0">
                                 <button type="button" class="btn-hab btn-hab-mas" data-hab="sacro" title="Añadir punto">+</button>
                             </div>
+                            <span class="hab-efectivo" data-hab="sacro" aria-live="polite"></span>
                         </div>
                     </div>
                 </div>
@@ -531,25 +545,21 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body" style="background: #fbfbfb;">
-                    <div class="danno-opciones" role="radiogroup" aria-label="Tipo de daño">
-                        <label class="opcion-danno"><input type="radio" name="tipoDanno" value="fisico" checked> Físico</label>
-                        <label class="opcion-danno"><input type="radio" name="tipoDanno" value="elemental"> Elemental</label>
-                        <label class="opcion-danno"><input type="radio" name="tipoDanno" value="hemorragia"> Hemorragia</label>
+                    <!-- Se pueden marcar varios tipos a la vez; cada uno tiene su cantidad -->
+                    <div class="danno-opciones" role="group" aria-label="Tipos de daño">
+                        <label class="opcion-danno"><input type="checkbox" name="tipoDanno" value="fisico" checked> Físico</label>
+                        <label class="opcion-danno"><input type="checkbox" name="tipoDanno" value="elemental"> Elemental</label>
+                        <label class="opcion-danno"><input type="checkbox" name="tipoDanno" value="hemorragia"> Hemorragia</label>
                     </div>
-                    <div id="dannoSubElemental" class="danno-opciones danno-subopciones" role="radiogroup" aria-label="Elemento" style="display: none;">
-                        <label class="opcion-danno"><input type="radio" name="elementoDanno" value="fuego" checked> Fuego</label>
-                        <label class="opcion-danno"><input type="radio" name="elementoDanno" value="electricidad"> Electricidad</label>
-                        <label class="opcion-danno"><input type="radio" name="elementoDanno" value="hielo"> Hielo</label>
-                        <label class="opcion-danno"><input type="radio" name="elementoDanno" value="luz"> Luz</label>
-                        <label class="opcion-danno"><input type="radio" name="elementoDanno" value="oscuridad"> Oscuridad</label>
+                    <div id="dannoSubElemental" class="danno-opciones danno-subopciones" role="group" aria-label="Elementos" style="display: none;">
+                        <label class="opcion-danno"><input type="checkbox" name="elementoDanno" value="fuego"> Fuego</label>
+                        <label class="opcion-danno"><input type="checkbox" name="elementoDanno" value="electricidad"> Electricidad</label>
+                        <label class="opcion-danno"><input type="checkbox" name="elementoDanno" value="hielo"> Hielo</label>
+                        <label class="opcion-danno"><input type="checkbox" name="elementoDanno" value="luz"> Luz</label>
+                        <label class="opcion-danno"><input type="checkbox" name="elementoDanno" value="oscuridad"> Oscuridad</label>
                     </div>
-                    <div class="danno-cantidad">
-                        <label for="inputCantidadDanno">Cantidad:</label>
-                        <input type="number" class="form-control" id="inputCantidadDanno" min="0" value="0">
-                        <label id="labelIgnorarArmadura" class="danno-check">
-                            <input type="checkbox" id="checkIgnorarArmadura"> Ignorar armadura
-                        </label>
-                    </div>
+                    <!-- Una fila de cantidad por tipo marcado (generadas en inicializarDanno) -->
+                    <div id="dannoCantidades" class="danno-cantidades"></div>
                     <ul id="previewDanno" class="danno-preview"></ul>
                 </div>
                 <div class="modal-footer" style="border-top: none; background: #fbfbfb;">
@@ -587,6 +597,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body">
+                    <p id="avisoZonaBaul" class="aviso-zona" hidden>Solo en la base se pueden mover objetos entre el baúl y el inventario o crear objetos en el baúl.</p>
                     <div id="listaBaul" class="lista-objetos"></div>
                 </div>
             </div>
@@ -630,11 +641,21 @@
                             <label data-equipo="escudo">Defensa <input type="number" id="objetoEquipoDefensa" min="0" value="0"></label>
                             <label data-equipo="armadura">Armadura <input type="number" id="objetoEquipoArmadura" min="0" value="0"></label>
                             <label data-equipo="armadura">Pen. Atletismo <input type="number" id="objetoEquipoPenalizacion" min="0" value="0"></label>
+                            <label data-equipo="arma accesorio" title="Una reliquia tiene habilidades con enfriamiento; se editan en la tarjeta del arma o del accesorio"><input type="checkbox" id="objetoEsReliquia"> Es reliquia</label>
+                        </div>
+                        <!-- Habilidades de reliquia (tipo Reliquia, o arma marcada como reliquia) -->
+                        <div class="campo-objeto" id="campoHabilidadesReliquia">
+                            <div class="equipamiento-mods-header">
+                                <span>Habilidades de reliquia:</span>
+                                <button type="button" id="btnAnadirHabilidadObjeto" class="btn-anadir-mod-objeto" title="Añadir habilidad" aria-label="Añadir habilidad">+</button>
+                            </div>
+                            <ul id="listaHabilidadesObjeto" class="lista-habilidades-reliquia"></ul>
                         </div>
 
                         <!-- Poción -->
                         <div class="fila-campos" data-campos="pocion">
                             <label title="Positivo cura, negativo quita PV">PV <input type="number" id="objetoPv" value="0"></label>
+                            <label title="PA que recupera. Solo se puede beber en zona segura o en la base">PA <input type="number" id="objetoPa" min="0" value="0"></label>
                         </div>
 
                         <!-- Arrojadiza -->
@@ -644,10 +665,10 @@
                             <label>Cantidad <input type="number" id="objetoElementalCantidad" min="0" value="0"></label>
                         </div>
 
-                        <!-- Estado (poción y arrojadiza) -->
-                        <div class="fila-campos" data-campos="pocion arrojadiza">
+                        <!-- Estado (comida, poción y arrojadiza). El de la comida dura lo que dure la comida -->
+                        <div class="fila-campos" data-campos="comida pocion arrojadiza">
                             <label>Estado <select id="objetoEstado"></select></label>
-                            <label data-campos="pocion">Efecto
+                            <label data-campos="comida pocion">Efecto
                                 <select id="objetoEstadoAccion">
                                     <option value="activar">Provoca</option>
                                     <option value="quitar">Cura</option>

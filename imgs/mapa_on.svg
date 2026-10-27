@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generado con los glifos de scripts/iconos.js -->
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><style>.ic-fondo{fill:#FBFBFB}.p{fill:#EBA601}.s{fill:#EBA601;opacity:.71}.f{fill:#FBFBFB}.o{opacity:.71}.t{fill:none;stroke:#EBA601;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}.tf{fill:none;stroke:#FBFBFB;stroke-width:14;stroke-linecap:round}</style>
+        <circle class="ic-fondo" cx="50" cy="50" r="50"/>
+        <polygon class="p" points="16,28 37,20 37,74 16,82"/>
+        <polygon class="s" points="39,20 61,28 61,82 39,74"/>
+        <polygon class="p" points="63,28 84,20 84,74 63,82"/>
+        <path class="tf" style="stroke-width:4" d="M48 38L54 44M54 38L48 44"/></svg>

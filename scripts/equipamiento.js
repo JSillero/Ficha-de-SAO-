@@ -44,6 +44,7 @@ export default class Equipamiento {
         this.defensa = 0; // defensa que aporta un escudo mientras está en uso
         this.enUso = false; // true cuando el escudo se ha activado con el botón Usar
         this.pocionAplicada = null; // poción untada en el arma: se aplica en el siguiente ataque
+        this.reliquia = tipo === TIPO_RELIQUIA ? { habilidades: [] } : null; // { habilidades } si es reliquia (reliquias.js)
     }
 
     esEscudo() {
@@ -73,6 +74,8 @@ export default class Equipamiento {
             "ligera",
             "ropa",
             "real",
+            // Reliquia que no es arma (ranura propia)
+            "reliquia",
             // Legados
             "arma",
             "accesorio"
@@ -101,7 +104,8 @@ export default class Equipamiento {
             armadura: this.armadura,
             defensa: this.defensa,
             enUso: this.enUso,
-            pocionAplicada: this.pocionAplicada
+            pocionAplicada: this.pocionAplicada,
+            reliquia: this.reliquia
         });
     }
 }
@@ -109,6 +113,28 @@ export default class Equipamiento {
 /* Tipos de armadura y de accesorio (el resto de tipos de equipo son los de ARMAS) */
 export const TIPOS_ARMADURA = ["pesada", "media", "ligera", "ropa", "real"];
 export const TIPO_ACCESORIO = "accesorio";
+/* Reliquia que no es arma: se lleva en una mano (como un arma de una mano, pero sin ataque).
+   Un arma también puede ser reliquia (campo reliquia). */
+export const TIPO_RELIQUIA = "reliquia";
+
+/** Habilidad de reliquia normalizada */
+export function cargarHabilidadReliquia(datos = {}) {
+    const enfriamiento = Math.max(0, Math.floor(Number(datos.enfriamiento) || 0));
+    return {
+        nombre: String(datos.nombre ?? ""),
+        descripcion: String(datos.descripcion ?? ""),
+        enfriamiento,
+        // Turnos que faltan para poder volver a usarla (0 = lista)
+        restante: Math.min(enfriamiento, Math.max(0, Math.floor(Number(datos.restante) || 0)))
+    };
+}
+
+/** Parte "reliquia" de un equipo guardado: null si no es reliquia */
+export function cargarReliquia(datos) {
+    if (!datos || typeof datos !== "object") return null;
+    const habilidades = Array.isArray(datos.habilidades) ? datos.habilidades.map(cargarHabilidadReliquia) : [];
+    return { habilidades };
+}
 
 /* Reconstruye un equipamiento guardado (modificadores incluidos) */
 export function cargarEquipamiento(datos) {
@@ -117,5 +143,7 @@ export function cargarEquipamiento(datos) {
         ? equipo.modificadores.map(cargarModificador)
         : [];
     if (!equipo.pocionAplicada || typeof equipo.pocionAplicada !== "object") equipo.pocionAplicada = null;
+    // Una reliquia sin arma siempre tiene su lista de habilidades
+    equipo.reliquia = cargarReliquia(equipo.reliquia) ?? (equipo.tipo === TIPO_RELIQUIA ? { habilidades: [] } : null);
     return equipo;
 }

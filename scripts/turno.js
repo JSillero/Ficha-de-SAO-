@@ -4,6 +4,8 @@
 
 import { TURNOS_PERMANENTE } from "./modificador.js";
 import { TIPOS_DOS_MANOS } from "./equipamiento.js";
+import { esZonaSegura } from "./zonas.js";
+import { avanzarEnfriamientos } from "./reliquias.js";
 
 /* Máximo de acciones por turno: se pueden usar 3 de los 4 tipos */
 export const ACCIONES_MAX = 3;
@@ -12,6 +14,8 @@ export const ACCIONES_MAX = 3;
 export const PARTES_ACCION = ["izquierda", "derecha", "cabeza", "pies"];
 
 /* Acciones ____________________________________________________________________ */
+// En zona segura y en la base no se gastan acciones: las comprobaciones dicen que se puede
+// (salvo incapacitado) y las funciones de gastar no marcan nada.
 
 /* Estados que impiden actuar mientras estén activos (no solo al iniciar turno) */
 const ESTADOS_INCAPACITANTES = ["paralisis", "dormido"];
@@ -31,18 +35,21 @@ export function accionesRestantes(pj) {
 }
 
 export function puedeGastar(pj, parte) {
-    return !estaIncapacitado(pj) && Boolean(pj[parte]) && accionesUsadas(pj) < pj.numeroAcciones;
+    if (estaIncapacitado(pj)) return false;
+    if (esZonaSegura(pj)) return true;
+    return Boolean(pj[parte]) && accionesUsadas(pj) < pj.numeroAcciones;
 }
 
 /** Gasta la acción de una parte del cuerpo. Devuelve false si no se puede. */
 export function gastarAccion(pj, parte) {
     if (!puedeGastar(pj, parte)) return false;
-    pj[parte] = false;
+    if (!esZonaSegura(pj)) pj[parte] = false;
     return true;
 }
 
 /** ¿Se pueden gastar todas estas acciones a la vez? (p. ej. un arma a dos manos gasta ambos brazos) */
 export function puedeGastarVarias(pj, partes) {
+    if (esZonaSegura(pj)) return !estaIncapacitado(pj);
     return !estaIncapacitado(pj)
         && partes.every(parte => pj[parte])
         && accionesUsadas(pj) + partes.length <= pj.numeroAcciones;
@@ -51,7 +58,7 @@ export function puedeGastarVarias(pj, partes) {
 /** Gasta varias acciones; no gasta ninguna si no se pueden gastar todas. */
 export function gastarVarias(pj, partes) {
     if (!puedeGastarVarias(pj, partes)) return false;
-    partes.forEach(parte => { pj[parte] = false; });
+    if (!esZonaSegura(pj)) partes.forEach(parte => { pj[parte] = false; });
     return true;
 }
 
@@ -63,12 +70,13 @@ export function partesDeMano(propMano, aDosManos) {
 
 /** Gasta todas las acciones del turno (p. ej. cambiar de armadura). Solo si aún no se ha gastado ninguna. */
 export function puedeGastarTodas(pj) {
+    if (esZonaSegura(pj)) return !estaIncapacitado(pj);
     return !estaIncapacitado(pj) && accionesUsadas(pj) === 0 && pj.numeroAcciones > 0;
 }
 
 export function gastarTodas(pj) {
     if (!puedeGastarTodas(pj)) return false;
-    PARTES_ACCION.forEach(parte => { pj[parte] = false; });
+    if (!esZonaSegura(pj)) PARTES_ACCION.forEach(parte => { pj[parte] = false; });
     return true;
 }
 
@@ -115,14 +123,17 @@ export function puedeMoverse(pj) {
 
 /** Correr gasta las tres acciones del turno y no se puede en sigilo. */
 export function puedeCorrer(pj) {
-    return !estaIncapacitado(pj) && !pj.enSigilo && accionesUsadas(pj) === 0 && pj.numeroAcciones >= ACCIONES_MAX;
+    if (estaIncapacitado(pj) || pj.enSigilo) return false;
+    return esZonaSegura(pj) || (accionesUsadas(pj) === 0 && pj.numeroAcciones >= ACCIONES_MAX);
 }
 
 export function correr(pj) {
     if (!puedeCorrer(pj)) return false;
-    pj.pies = false;
-    pj.izquierda = false;
-    pj.derecha = false;
+    if (!esZonaSegura(pj)) {
+        pj.pies = false;
+        pj.izquierda = false;
+        pj.derecha = false;
+    }
     return true;
 }
 
@@ -149,7 +160,7 @@ export function puedeEntrarEnSigilo(pj) {
 
 export function entrarEnSigilo(pj, valorTirada) {
     if (!puedeEntrarEnSigilo(pj)) return false;
-    pj.pies = false;
+    if (!esZonaSegura(pj)) pj.pies = false;
     pj.enSigilo = true;
     pj.valorSigilo = valorTirada;
     pj.calcularCaracteristicas(); // los bonificadores de daño pasan a usar Sigilo
@@ -173,6 +184,15 @@ export function efectoHielo(escarcha, aguante) {
     };
 }
 
+/* Hemorragia (05-combate-y-estados.md §3) ____________________________________ */
+
+/** PV que quita la hemorragia cada turno: el Aguante por cada vez que el acumulado lo contiene
+    (Aguante 8: 15 → 8, 20 → 16). Por debajo del Aguante no hace daño. */
+export function dannoHemorragia(acumulado, aguante) {
+    if (!(aguante > 0) || !(acumulado > 0)) return 0;
+    return Math.floor(Math.floor(acumulado / aguante) * aguante);
+}
+
 /* Inicio de turno _____________________________________________________________ */
 
 /**
@@ -183,6 +203,7 @@ export function efectoHielo(escarcha, aguante) {
  * 3. Efectos de los estados sobre los PV.
  * 4. Escarcha: quita acciones o PA y después se reduce a la mitad.
  * 5. Descuenta un turno de estados y modificadores temporales.
+ * 6. Avanza el enfriamiento de las habilidades de reliquia.
  *
  * Duración de los estados: un estado de N turnos está activo durante los N turnos siguientes
  * del personaje y termina al iniciar el turno N+1 (se descuenta en el paso 5 y se quita en el 0).
@@ -199,6 +220,7 @@ export function iniciarTurno(pj) {
         if (estado.turnos === 0 && estado.valor > 0) {
             estado.valor = 0;
             delete estado.descansoCorto;
+            delete estado.origen;
             resumen.push(`Termina: ${nombre}`);
         }
     }
@@ -228,9 +250,10 @@ export function iniciarTurno(pj) {
         pj.vida -= sobranteQuemadura;
         resumen.push(`Quemadura: −${sobranteQuemadura} PV (Combate por debajo de 0)`);
     }
-    if (valor("hemorragia") > 0 && valor("hemorragia") > pj.aguante) {
-        pj.vida -= valor("hemorragia");
-        resumen.push(`Hemorragia: −${valor("hemorragia")} PV`);
+    const sangrado = dannoHemorragia(valor("hemorragia"), pj.aguante);
+    if (sangrado > 0) {
+        pj.vida -= sangrado;
+        resumen.push(`Hemorragia: −${sangrado} PV`);
     }
     if (valor("wither") > 0 && pj.vida > 1) {
         const antes = pj.vida;
@@ -288,6 +311,9 @@ export function iniciarTurno(pj) {
             }
         }
     }
+
+    // 6. Enfriamiento de las habilidades de reliquia
+    resumen.push(...avanzarEnfriamientos(pj));
 
     pj.calcularCaracteristicas();
     if (resumen.length === 0) resumen.push("Sin efectos");

@@ -1,6 +1,7 @@
 import Equipamiento from "./equipamiento.js";
 import Modificador, { TURNOS_PERMANENTE, cargarModificador } from "./modificador.js";
 import { TAMANO_INVENTARIO, crearInventarioVacio, cargarObjeto, cargarBaul, cargarEquipo } from "./objetos.js";
+import { ZONAS, ZONA_POR_DEFECTO } from "./zonas.js";
 
 export { TAMANO_INVENTARIO };
 
@@ -29,7 +30,7 @@ const CAMPOS_SIMPLES = [
     'puntosArte', 'vida',
     'numeroAcciones', 'izquierda', 'derecha', 'cabeza', 'pies', 'reaccionGuardada',
     'enSigilo', 'valorSigilo',
-    'comidaActiva', 'tipoProfesion',
+    'comidaActiva', 'tipoProfesion', 'zona',
     'notas', 'listadoArtes', 'listaDeAmigos', 'recetasProfesion'
 ];
 
@@ -94,6 +95,9 @@ export default class PJ {
         this.inventario = crearInventarioVacio();
         this.baul = [];
         this.comidaActiva = ""; // nombre de la comida cuyo efecto está activo (sus modificadores llevan origen "comida")
+
+        /* Zona actual (claves de ZONAS en zonas.js): "noSegura", "segura" o "base" */
+        this.zona = ZONA_POR_DEFECTO;
 
         /* Array de modificaciones */
         this.modificadores;
@@ -316,6 +320,7 @@ export default class PJ {
             // Las fichas antiguas guardaban "vacio" en los bloques de texto sin rellenar
             if (this[campo] === "vacio") this[campo] = "";
         }
+        if (!ZONAS[this.zona]) this.zona = ZONA_POR_DEFECTO;
 
         /* Estados */
         this.estados = crearEstadosVacios();
@@ -328,6 +333,8 @@ export default class PJ {
             };
             // Marcado para quitarse con el descanso corto (solo se guarda si es true)
             if (guardado.descansoCorto) this.estados[estado].descansoCorto = true;
+            // Provocado por la comida activa: se quita con ella
+            if (guardado.origen === "comida") this.estados[estado].origen = "comida";
         }
 
         /* Inventario: se conservan los huecos guardados aunque superen el tamaño base.
