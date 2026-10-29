@@ -463,6 +463,24 @@
     color: #e74c3c;
 }
 
+/* Daño elemental del arma: una etiqueta por elemento con su color */
+.popup-elemental {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.popup-elemento {
+    padding: 1px 8px;
+    border-radius: 10px;
+    background: var(--color);
+    color: var(--color-texto, #fbfbfb);
+    font-size: 12px;
+    font-weight: bold;
+}
+
 .popup-nota {
     font-size: 11px;
     color: #aaa;

@@ -89,8 +89,10 @@ export function crearPersonajePrueba() {
 
     pj.manoDerecha = crearEquipo("espada", "espada");
     pj.manoDerecha.pocionAplicada = { ...pocion, cantidad: 1 };
+    pj.manoDerecha.dannoElemental = { fuego: 1, electricidad: 0, hielo: 2, luz: 0, oscuridad: 3 };
     pj.manoIzquierda = crearEquipo("escudo", "escudo");
     pj.equipoArmadura = crearEquipo("cota", "ligera");
+    pj.equipoArmadura.resistencias = { fuego: 1, electricidad: 2, hielo: 3, luz: 4, oscuridad: 5 };
     pj.accesorios = [crearEquipo("anillo", "accesorio"), crearEquipo("collar", "accesorio")];
     // Reliquias: el arma de la mano derecha, el primer accesorio y un amuleto (reliquia de mano) en el inventario
     pj.accesorios[0].reliquia = { habilidades: [{ nombre: "eco", descripcion: "repite", enfriamiento: 4, restante: 2 }] };

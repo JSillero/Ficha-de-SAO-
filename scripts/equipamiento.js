@@ -21,7 +21,16 @@ export const ARMAS = {
     otros: { etiqueta: "Otros", manos: 1, caracteristica: "mejor", dado: 1 }
 };
 
-export const TIPOS_DOS_MANOS = Object.keys(ARMAS).filter(tipo => ARMAS[tipo].manos === 2);
+/* Elementos (claves de TIPOS_DANNO en estados.js): resistencias de la armadura y daño elemental de las armas */
+export const ELEMENTOS = ["fuego", "electricidad", "hielo", "luz", "oscuridad"];
+
+/** Un valor por elemento, normalizado: { fuego: n, ... } con enteros >= 0 (resistencias y daño elemental) */
+export function cargarValoresElementales(datos) {
+    return Object.fromEntries(ELEMENTOS.map(elemento =>
+        [elemento, Math.max(0, Math.floor(Number(datos?.[elemento]) || 0))]));
+}
+
+export const TIPOS_DOS_MANOS =Object.keys(ARMAS).filter(tipo => ARMAS[tipo].manos === 2);
 export const TIPOS_ESCUDO = Object.keys(ARMAS).filter(tipo => ARMAS[tipo].escudo);
 
 export default class Equipamiento {
@@ -41,6 +50,10 @@ export default class Equipamiento {
         this.danno = Number(danno) || 0;
         this.penalizacionAtletismo = Number(penalizacionAtletismo) || 0;
         this.armadura = Number(armadura) || 0;
+        // Armadura elemental: resta el daño de cada elemento como la armadura resta el físico
+        this.resistencias = cargarValoresElementales();
+        // Daño elemental del arma: se suma a cada ataque, aparte del físico (lo reducen las resistencias del objetivo)
+        this.dannoElemental = cargarValoresElementales();
         this.defensa = 0; // defensa que aporta un escudo mientras está en uso
         this.enUso = false; // true cuando el escudo se ha activado con el botón Usar
         this.pocionAplicada = null; // poción untada en el arma: se aplica en el siguiente ataque
@@ -102,6 +115,8 @@ export default class Equipamiento {
             danno: this.danno,
             penalizacionAtletismo: this.penalizacionAtletismo,
             armadura: this.armadura,
+            resistencias: this.resistencias,
+            dannoElemental: this.dannoElemental,
             defensa: this.defensa,
             enUso: this.enUso,
             pocionAplicada: this.pocionAplicada,
@@ -143,6 +158,9 @@ export function cargarEquipamiento(datos) {
         ? equipo.modificadores.map(cargarModificador)
         : [];
     if (!equipo.pocionAplicada || typeof equipo.pocionAplicada !== "object") equipo.pocionAplicada = null;
+    // Fichas antiguas: todo a 0
+    equipo.resistencias = cargarValoresElementales(equipo.resistencias);
+    equipo.dannoElemental = cargarValoresElementales(equipo.dannoElemental);
     // Una reliquia sin arma siempre tiene su lista de habilidades
     equipo.reliquia = cargarReliquia(equipo.reliquia) ?? (equipo.tipo === TIPO_RELIQUIA ? { habilidades: [] } : null);
     return equipo;

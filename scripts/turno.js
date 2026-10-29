@@ -260,10 +260,12 @@ export function iniciarTurno(pj) {
         pj.vida = Math.max(1, pj.vida - 2);
         resumen.push(`Wither: −${antes - pj.vida} PV`);
     }
-    if (valor("regeneracion") > 0) {
+    // Regeneración: la del estado más la que dan equipo y modificadores (atributo "regeneracion")
+    const regeneracion = valor("regeneracion") + (Number(pj.getModificador("regeneracion")) || 0);
+    if (regeneracion > 0) {
         // vidaMax ya descuenta la oscuridad
         const antes = pj.vida;
-        pj.vida = Math.min(pj.vidaMax, pj.vida + valor("regeneracion"));
+        pj.vida = Math.min(pj.vidaMax, pj.vida + regeneracion);
         if (pj.vida > antes) resumen.push(`Regeneración: +${pj.vida - antes} PV`);
     }
     pj.vida = Math.max(0, pj.vida);

@@ -578,6 +578,100 @@
     border-radius: 5px;
 }
 
+/* Valores elementales del equipo (resistencias de la armadura, daño elemental de las armas):
+   icono del elemento + valor. El icono toma el color del elemento cuando el valor es mayor que 0. */
+.bloque-elemental {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.subtitulo-elemental {
+    font-size: 12px;
+    font-weight: 600;
+    color: #555;
+}
+
+.valores-elementales {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+}
+
+.campo-elemental {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    margin: 0;
+}
+
+.campo-elemental .icono-elemental {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    opacity: 0.5;
+}
+
+.campo-elemental.activa .icono-elemental {
+    opacity: 1;
+}
+
+.campo-elemental.activa .icono-sao {
+    --fondo: var(--color);
+    --glifo: var(--color-glifo, #FBFBFB);
+}
+
+.bloque-elemental[hidden],
+.campo-elemental[hidden] {
+    display: none;
+}
+
+/* Formulario de objetos: valores elementales plegados en un acordeón */
+.acordeon-elemental {
+    border: 1px solid #e3d3a6;
+    border-radius: 8px;
+    background: #fff;
+    padding: 4px 10px;
+}
+
+.acordeon-elemental + .acordeon-elemental {
+    margin-top: 6px;
+}
+
+.acordeon-elemental summary {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: #555;
+}
+
+.acordeon-elemental[open] summary {
+    margin-bottom: 6px;
+}
+
+.acordeon-elemental .valores-elementales {
+    gap: 8px 14px;
+    padding-bottom: 4px;
+}
+
+.acordeon-elemental .icono-elemental {
+    width: 26px;
+    height: 26px;
+}
+
+.form-objeto .campo-elemental input {
+    width: 56px;
+}
+
+.campo-elemental input {
+    width: 40px;
+    text-align: center;
+    padding: 2px 3px;
+    font-size: 13px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
 /* Botón Usar: icono del arma o escudo (scripts/iconos.js) */
 .btn-usar-equipo {
     width: 40px;
@@ -1222,7 +1316,6 @@
 .modal-sao .danno-preview .preview-tipo,
 .modal-sao .contador-objetos,
 .modal-sao .objeto-cantidad,
-.modal-sao .btn-eleccion,
 .modal-sao .aviso-zona {
     color: #5a5a5a;
 }
@@ -1233,12 +1326,25 @@
     background: #f4f4f4;
 }
 
+/* Formas de usar un objeto: azul de aceptar; Cancelar en rojo */
 .modal-sao .btn-eleccion {
-    background: #fff;
+    background: #3478bf;
+    color: #fff;
 }
 
 .modal-sao .btn-eleccion:hover {
-    background: #ececec;
+    background: #2a62a0;
+    color: #fff;
+}
+
+.modal-sao .btn-eleccion.cancelar {
+    background: #c0392b;
+    color: #fff;
+}
+
+.modal-sao .btn-eleccion.cancelar:hover {
+    background: #a03024;
+    color: #fff;
 }
 
 .modal-sao .mod-equipo,
@@ -1374,6 +1480,70 @@
     font-family: inherit;
     box-sizing: border-box;
     resize: vertical;
+}
+
+/* Cor (monedas) en el inventario: no ocupa hueco */
+.barra-cor {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding: 6px 10px;
+    border: 1px solid #e3d3a6;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.barra-cor .cor-icono {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+}
+
+.barra-cor .cor-total {
+    flex: 1;
+    min-width: 90px;
+    font-weight: bold;
+    color: #8a6d2a;
+}
+
+.barra-cor input {
+    width: 90px;
+    padding: 3px 6px;
+    border: 1px solid #c9b88a;
+    border-radius: 6px;
+}
+
+/* Añadir (azul de aceptar) y gastar (rojo) Cor; al pasar el ratón se invierten los colores */
+.btn-cor {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.1s;
+}
+
+.btn-cor.anadir { --color-cor: #3478bf; }
+.btn-cor.gastar { --color-cor: #c0392b; }
+
+.btn-cor .icono-sao {
+    --fondo: var(--color-cor);
+    --glifo: #FBFBFB;
+}
+
+.btn-cor:hover {
+    transform: scale(1.08);
+}
+
+.btn-cor:hover .icono-sao,
+.btn-cor:focus-visible .icono-sao {
+    --fondo: #FBFBFB;
+    --glifo: var(--color-cor);
 }
 
 /* Filas de objetos del inventario y del baúl */

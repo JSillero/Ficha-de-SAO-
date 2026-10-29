@@ -30,7 +30,7 @@ const CAMPOS_SIMPLES = [
     'puntosArte', 'vida',
     'numeroAcciones', 'izquierda', 'derecha', 'cabeza', 'pies', 'reaccionGuardada',
     'enSigilo', 'valorSigilo',
-    'comidaActiva', 'tipoProfesion', 'zona',
+    'comidaActiva', 'tipoProfesion', 'zona', 'cor',
     'notas', 'listadoArtes', 'listaDeAmigos', 'recetasProfesion'
 ];
 
@@ -95,6 +95,7 @@ export default class PJ {
         this.inventario = crearInventarioVacio();
         this.baul = [];
         this.comidaActiva = ""; // nombre de la comida cuyo efecto está activo (sus modificadores llevan origen "comida")
+        this.cor = 0; // monedas: no ocupan hueco, sin límite, nunca negativas
 
         /* Zona actual (claves de ZONAS en zonas.js): "noSegura", "segura" o "base" */
         this.zona = ZONA_POR_DEFECTO;
@@ -183,6 +184,13 @@ export default class PJ {
             const esEscudo = mano?.tipo === "escudo" || mano?.tipo === "gran_escudo";
             return acc + (esEscudo && mano.enUso ? Number(mano.defensa) || 0 : 0);
         }, 0);
+    }
+
+    /* Daño de un elemento que se resta a cada impacto: la resistencia de la armadura
+       más los modificadores "res_<elemento>" (equipo, accesorios...). Nunca negativa. */
+    getResistencia(elemento) {
+        const deArmadura = Number(this.equipoArmadura?.resistencias?.[elemento]) || 0;
+        return Math.max(0, deArmadura + (Number(this.getModificador("res_" + elemento)) || 0));
     }
 
     /* Habilidad con la que se ataca: Sigilo si está en sigilo, Combate si no */
@@ -321,6 +329,7 @@ export default class PJ {
             if (this[campo] === "vacio") this[campo] = "";
         }
         if (!ZONAS[this.zona]) this.zona = ZONA_POR_DEFECTO;
+        this.cor = Math.max(0, Math.floor(Number(this.cor) || 0));
 
         /* Estados */
         this.estados = crearEstadosVacios();

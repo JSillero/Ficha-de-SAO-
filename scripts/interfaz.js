@@ -1,4 +1,4 @@
-import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ESCUDO, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA } from "./equipamiento.js";
+import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ESCUDO, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, ELEMENTOS, cargarValoresElementales } from "./equipamiento.js";
 import { esReliquia, usarHabilidadReliquia, motivoNoUsarHabilidad, cargarHabilidadReliquia, equipoDeRanura } from "./reliquias.js";
 import Modificador, { TURNOS_PERMANENTE } from "./modificador.js";
 import PJ from "./PJ.js";
@@ -8,7 +8,8 @@ import {
     TIPOS_OBJETO, MAX_PILA_INVENTARIO, ELEMENTOS_ARROJADIZA, cargarObjeto, anadirAInventario, anadirABaul,
     transferirABaul, transferirAInventario, descartar, comer, beberPocion, aplicarPocionAArma, manosConArma,
     usarCristal, lanzarArrojadiza, manoParaUsar, categoriaEquipo, manosParaEquipar, motivoNoEquipar, equipar,
-    motivoNoGuardar, motivoNoBeber, guardarEquipado, ranuraTieneEquipo, getCantidadAccesoriosPorArmadura, cabenEnInventario
+    motivoNoGuardar, motivoNoBeber, guardarEquipado, ranuraTieneEquipo, getCantidadAccesoriosPorArmadura, cabenEnInventario,
+    anadirCor, gastarCor
 } from "./objetos.js";
 import {
     puedeGastarVarias, gastarVarias, gastarTodas, partesDeMano, estaIncapacitado,
@@ -624,8 +625,11 @@ const GRUPOS_ATRIBUTOS = [
     ]],
     ["Otros", [
         ["aguante", "Aguante"], ["vidaMax", "PV máximos"], ["arte", "PA máximos"], ["espacios", "Memoria de artes"],
-        ["perspicacia", "Perspicacia"], ["percepcionPasiva", "Percepción pasiva"]
-    ]]
+        ["perspicacia", "Perspicacia"], ["percepcionPasiva", "Percepción pasiva"],
+        ["regeneracion", "Regeneración (PV/turno)"]
+    ]],
+    // Se suman a la armadura elemental (PJ.getResistencia)
+    ["Resistencias", ELEMENTOS.map(elemento => [`res_${elemento}`, `Resistencia a ${TIPOS_DANNO[elemento].etiqueta.toLowerCase()}`])]
 ];
 
 function opcionesAtributo(seleccionado) {
@@ -751,7 +755,8 @@ function equipamientoTieneContenido(propEquipo) {
     const tieneNombre = Boolean(item.nombre && item.nombre.trim().length > 0);
     const tieneDanno = Boolean(item.danno && Number(item.danno) !== 0);
     const tienePen = Boolean(item.penalizacionAtletismo && Number(item.penalizacionAtletismo) !== 0);
-    const tieneArm = Boolean(item.armadura && Number(item.armadura) !== 0) || Boolean(item.defensa && Number(item.defensa) !== 0);
+    const tieneArm = Boolean(item.armadura && Number(item.armadura) !== 0) || Boolean(item.defensa && Number(item.defensa) !== 0)
+        || [item.resistencias, item.dannoElemental].some(valores => Object.values(valores || {}).some(valor => Number(valor) > 0));
     const tieneMods = Boolean(Array.isArray(item.modificadores) && item.modificadores.length > 0);
     const tieneHabilidades = Boolean(item.reliquia?.habilidades?.length);
     return tieneNombre || tieneDanno || tienePen || tieneArm || tieneMods || tieneHabilidades;
@@ -764,6 +769,8 @@ function limpiarContenidoEquipamiento(propEquipo) {
     item.danno = 0;
     item.penalizacionAtletismo = 0;
     item.armadura = 0;
+    item.resistencias = cargarValoresElementales();
+    item.dannoElemental = cargarValoresElementales();
     item.defensa = 0;
     item.enUso = false;
     item.modificadores = [];
@@ -1130,6 +1137,102 @@ function actualizarEquipamiento() {
         }
         pintarDescripcionEquipo(elemento.querySelector(".equipamiento-descripcion"), item);
     });
+    actualizarBloquesElementales();
+}
+
+/* Valores elementales del equipo ______________________________________________
+   Un campo con el icono de cada elemento. Dos campos de Equipamiento los usan:
+   - resistencias (armaduras): restan el daño de ese elemento a cada impacto;
+   - dannoElemental (armas): se suma a cada ataque, aparte del físico.
+   En las tarjetas (.bloque-elemental[data-elemental]) solo se ven los elementos con valor y el bloque
+   entero se oculta si no hay ninguno; en modo master se ven todos para poder editarlos.
+   En el formulario de objetos van plegados en un acordeón. */
+
+const TEXTO_ELEMENTAL = {
+    resistencias: (etiqueta) => `Resistencia a ${etiqueta}`,
+    dannoElemental: (etiqueta) => `Daño de ${etiqueta}`
+};
+
+/* Campos del formulario de objetos: id del contenedor, del acordeón y prefijo de los inputs */
+const FORMULARIO_ELEMENTAL = {
+    resistencias: { contenedor: "objetoResistencias", acordeon: "detallesResistenciasObjeto", prefijo: "objetoRes_" },
+    dannoElemental: { contenedor: "objetoDannoElemental", acordeon: "detallesDannoElementalObjeto", prefijo: "objetoElem_" }
+};
+
+function campoElemental(campo, elemento, atributosInput = "") {
+    const info = TIPOS_DANNO[elemento];
+    const nombre = TEXTO_ELEMENTAL[campo](info.etiqueta.toLowerCase());
+    return `<label class="campo-elemental" title="${nombre}" style="${estiloColor(info)}">
+        <span class="icono-elemental">${iconoSao(info.icono)}</span>
+        <input type="number" min="0" value="0" data-elemento="${elemento}" aria-label="${nombre}" ${atributosInput}>
+    </label>`;
+}
+
+/* El icono se colorea en cuanto el valor pasa de 0 */
+function marcarElementalesActivos(contenedor) {
+    contenedor.querySelectorAll("input[data-elemento]").forEach(input => {
+        input.closest(".campo-elemental").classList.toggle("activa", (Number(input.value) || 0) > 0);
+    });
+}
+
+/* ¿La tarjeta muestra ese campo? Resistencias, la armadura; daño elemental, un arma de ataque */
+function tarjetaUsaElemental(item, campo) {
+    if (campo === "resistencias") return TIPOS_ARMADURA.includes(item?.tipo);
+    return Boolean(ARMAS[item?.tipo]) && !ARMAS[item.tipo].escudo;
+}
+
+function inicializarBloquesElementales() {
+    document.querySelectorAll(".equipamiento .bloque-elemental").forEach(bloque => {
+        const propEquipo = getPropiedadEquipo(bloque.closest(".equipamiento"));
+        const campo = bloque.dataset.elemental;
+        const valores = bloque.querySelector(".valores-elementales");
+        valores.innerHTML = ELEMENTOS.map(elemento => campoElemental(campo, elemento, MODO_MASTER ? "" : "readonly")).join("");
+        valores.addEventListener("input", (e) => {
+            const elemento = e.target.dataset.elemento;
+            const item = personaje[propEquipo];
+            if (!elemento || !item) return;
+            item[campo] = cargarValoresElementales({ ...item[campo], [elemento]: e.target.value });
+            marcarElementalesActivos(valores);
+        });
+    });
+
+    for (const [campo, { contenedor, prefijo }] of Object.entries(FORMULARIO_ELEMENTAL)) {
+        const elemento = document.getElementById(contenedor);
+        elemento.innerHTML = ELEMENTOS.map(e => campoElemental(campo, e, `id="${prefijo}${e}"`)).join("");
+        elemento.addEventListener("input", () => marcarElementalesActivos(elemento));
+    }
+}
+
+function actualizarBloquesElementales() {
+    document.querySelectorAll(".equipamiento .bloque-elemental").forEach(bloque => {
+        const item = personaje[getPropiedadEquipo(bloque.closest(".equipamiento"))];
+        const campo = bloque.dataset.elemental;
+        let visibles = 0;
+        bloque.querySelectorAll("input[data-elemento]").forEach(input => {
+            const valor = Number(item?.[campo]?.[input.dataset.elemento]) || 0;
+            if (document.activeElement !== input) input.value = valor;
+            const campoEl = input.closest(".campo-elemental");
+            campoEl.classList.toggle("activa", valor > 0);
+            campoEl.hidden = !(MODO_MASTER || valor > 0);
+            if (!campoEl.hidden) visibles++;
+        });
+        bloque.hidden = !tarjetaUsaElemental(item, campo) || visibles === 0;
+    });
+}
+
+/* Formulario de objetos: rellenar, leer y reiniciar los valores elementales */
+function rellenarElementalesFormulario(campo, valores) {
+    const { contenedor, acordeon, prefijo } = FORMULARIO_ELEMENTAL[campo];
+    ELEMENTOS.forEach(elemento => { document.getElementById(prefijo + elemento).value = valores?.[elemento] || 0; });
+    // El acordeón se abre solo si el objeto ya tiene alguno
+    document.getElementById(acordeon).open = ELEMENTOS.some(elemento => valores?.[elemento] > 0);
+    marcarElementalesActivos(document.getElementById(contenedor));
+}
+
+function leerElementalesFormulario(campo) {
+    const { prefijo } = FORMULARIO_ELEMENTAL[campo];
+    return cargarValoresElementales(Object.fromEntries(
+        ELEMENTOS.map(elemento => [elemento, document.getElementById(prefijo + elemento).value])));
 }
 
 /* Descripción del objeto equipado (la que se le puso al crearlo en el inventario) */
@@ -2328,6 +2431,16 @@ function iconoObjeto(objeto) {
     return tipo === TIPO_ACCESORIO ? "accesorio" : "armadura";
 }
 
+/* Valores elementales con valor, p. ej. "+3 fuego, +2 hielo" o "res. fuego 5" */
+function textoElemental(valores, prefijo) {
+    return ELEMENTOS.filter(elemento => valores?.[elemento] > 0)
+        .map(elemento => {
+            const etiqueta = TIPOS_DANNO[elemento].etiqueta.toLowerCase();
+            return prefijo === "+" ? `+${valores[elemento]} ${etiqueta}` : `${prefijo}${etiqueta} ${valores[elemento]}`;
+        })
+        .join(", ");
+}
+
 /* Resumen de lo que hace el objeto, bajo su nombre */
 function detalleObjeto(objeto) {
     switch (objeto.tipo) {
@@ -2341,8 +2454,16 @@ function detalleObjeto(objeto) {
             const equipo = objeto.equipo;
             const partes = [etiquetaTipoEquipo(equipo.tipo)];
             if (ARMAS[equipo.tipo]?.escudo) partes.push(`defensa ${equipo.defensa || 0}`);
-            else if (ARMAS[equipo.tipo]) partes.push(`daño ${equipo.danno || 0}`, ARMAS[equipo.tipo].manos === 2 ? "dos manos" : "una mano");
-            if (TIPOS_ARMADURA.includes(equipo.tipo)) partes.push(`armadura ${equipo.armadura || 0}`, `−${equipo.penalizacionAtletismo || 0} Atletismo`);
+            else if (ARMAS[equipo.tipo]) {
+                partes.push(`daño ${equipo.danno || 0}`, ARMAS[equipo.tipo].manos === 2 ? "dos manos" : "una mano");
+                const elemental = textoElemental(equipo.dannoElemental, "+");
+                if (elemental) partes.push(elemental);
+            }
+            if (TIPOS_ARMADURA.includes(equipo.tipo)) {
+                partes.push(`armadura ${equipo.armadura || 0}`, `−${equipo.penalizacionAtletismo || 0} Atletismo`);
+                const resistencias = textoElemental(equipo.resistencias, "res. ");
+                if (resistencias) partes.push(resistencias);
+            }
             const mods = textoModificadores(equipo.modificadores);
             if (mods) partes.push(mods);
             if (equipo.pocionAplicada) partes.push(`con ${equipo.pocionAplicada.nombre}`);
@@ -2472,12 +2593,29 @@ function actualizarObjetos() {
     const ocupados = personaje.inventario.filter(Boolean).length;
     document.getElementById("contadorInventario").textContent = `(${ocupados} / ${personaje.inventario.length})`;
     document.getElementById("contadorBaul").textContent = `(${personaje.baul.length})`;
+    document.getElementById("cantidadCor").textContent = personaje.cor;
 
     // Fuera de la base no se crean objetos en el baúl
     const crearEnBaul = document.querySelector('.btn-crear-objeto[data-destino="baul"]');
     crearEnBaul.disabled = !baulAccesible(personaje);
     crearEnBaul.title = crearEnBaul.disabled ? MOTIVOS_ZONA.crearEnBaul : "";
     document.getElementById("avisoZonaBaul").hidden = baulAccesible(personaje);
+}
+
+/* Cor: añadir o gastar la cantidad del campo */
+function inicializarCor() {
+    document.querySelector(".barra-cor .cor-icono").innerHTML = iconoSao("cor");
+    document.getElementById("btnAnadirCor").innerHTML = iconoSao("corMas");
+    document.getElementById("btnGastarCor").innerHTML = iconoSao("corMenos");
+    const inputCor = document.getElementById("inputCor");
+    const operar = (operacion) => {
+        reproducir("click");
+        const resultado = operacion(personaje, inputCor.value);
+        if (!resultado.ok) mostrarPopupInfo("Cor", resultado.resumen.map(escaparHtml));
+        actualizarTodo();
+    };
+    document.getElementById("btnAnadirCor").addEventListener("click", () => operar(anadirCor));
+    document.getElementById("btnGastarCor").addEventListener("click", () => operar(gastarCor));
 }
 
 /* Pregunta antes de descartar la última unidad de un hueco */
@@ -2734,6 +2872,7 @@ function inicializarCrearObjeto() {
 
     const reiniciar = () => {
         campo("formCrearObjeto").reset();
+        Object.keys(FORMULARIO_ELEMENTAL).forEach(campoElem => rellenarElementalesFormulario(campoElem, null));
         selectTipo.value = "material";
         campo("objetoCantidad").value = 1;
         mods = [];
@@ -2779,6 +2918,8 @@ function inicializarCrearObjeto() {
             campo("objetoEquipoDefensa").value = equipo.defensa || 0;
             campo("objetoEquipoArmadura").value = equipo.armadura || 0;
             campo("objetoEquipoPenalizacion").value = equipo.penalizacionAtletismo || 0;
+            rellenarElementalesFormulario("resistencias", equipo.resistencias);
+            rellenarElementalesFormulario("dannoElemental", equipo.dannoElemental);
             checkReliquia.checked = Boolean(equipo.reliquia);
             habilidades = (equipo.reliquia?.habilidades ?? []).map(cargarHabilidadReliquia);
             pintarHabilidades();
@@ -2832,6 +2973,11 @@ function inicializarCrearObjeto() {
                 defensa: Math.max(0, numero("objetoEquipoDefensa")),
                 armadura: Math.max(0, numero("objetoEquipoArmadura")),
                 penalizacionAtletismo: Math.max(0, numero("objetoEquipoPenalizacion")),
+                // Resistencias solo en armaduras; daño elemental solo en armas de ataque
+                resistencias: tarjetaUsaElemental({ tipo: selectTipoEquipo.value }, "resistencias")
+                    ? leerElementalesFormulario("resistencias") : cargarValoresElementales(),
+                dannoElemental: tarjetaUsaElemental({ tipo: selectTipoEquipo.value }, "dannoElemental")
+                    ? leerElementalesFormulario("dannoElemental") : cargarValoresElementales(),
                 modificadores,
                 reliquia: conHabilidades() ? { habilidades: habilidades.map(cargarHabilidadReliquia) } : null
             };
@@ -2987,6 +3133,7 @@ function mostrarInformeDebug() {
 document.addEventListener("DOMContentLoaded", () => {
     construirManosEquipamiento();
     inicializarEquipamiento();
+    inicializarBloquesElementales();
     inicializarModsEquipo();
     inicializarHabilidadesReliquia();
     actualizarModificadores();
@@ -2999,6 +3146,7 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarZona();
     inicializarMenuInventario();
     inicializarObjetos();
+    inicializarCor();
     precargarSonidos();
     inicializarOpciones();
     inicializarBotonesModales();

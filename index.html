@@ -281,6 +281,11 @@
                                         </div>
                                         <button type="button" class="btn-usar-equipo" title="Usar">Usar</button>
                                     </div>
+                                    <!-- Daño elemental del arma: solo se ven los elementos que tiene -->
+                                    <div class="bloque-elemental" data-elemental="dannoElemental" title="Se suma a cada ataque, aparte del daño físico">
+                                        <span class="subtitulo-elemental">Daño elemental:</span>
+                                        <div class="valores-elementales"></div>
+                                    </div>
                                     <p class="equipamiento-descripcion"></p>
                                     <div class="equipamiento-mods-header">
                                         <span>Modificadores:</span>
@@ -320,6 +325,11 @@
                                         <label>Armadura:</label>
                                         <input type="number" class="inputValorArmadura" min="0" value="0">
                                     </div>
+                                </div>
+                                <!-- Armadura elemental: un campo por elemento; solo se ven los que tiene (inicializarBloquesElementales en interfaz.js) -->
+                                <div class="bloque-elemental" data-elemental="resistencias" title="Restan el daño de cada elemento a cada impacto">
+                                    <span class="subtitulo-elemental">Resistencias elementales:</span>
+                                    <div class="valores-elementales"></div>
                                 </div>
                                 <p class="equipamiento-descripcion"></p>
                                 <div class="equipamiento-mods-header">
@@ -554,6 +564,14 @@
                     <button type="button" class="btn-crear-objeto" data-destino="inventario">+ Crear objeto</button>
                 </div>
                 <div class="modal-body">
+                    <!-- Cor: monedas, no ocupan hueco (anadirCor/gastarCor en objetos.js) -->
+                    <div class="barra-cor">
+                        <span class="cor-icono" aria-hidden="true"></span>
+                        <span class="cor-total"><span id="cantidadCor">0</span> Cor</span>
+                        <input type="number" id="inputCor" min="1" step="1" value="1" aria-label="Cantidad de Cor">
+                        <button type="button" id="btnAnadirCor" class="btn-cor anadir" title="Añadir esta cantidad" aria-label="Añadir Cor"></button>
+                        <button type="button" id="btnGastarCor" class="btn-cor gastar" title="Gastar esta cantidad" aria-label="Gastar Cor"></button>
+                    </div>
                     <div id="listaInventario" class="lista-objetos"></div>
                 </div>
                 <div class="modal-footer">
@@ -619,6 +637,20 @@
                             <label data-equipo="armadura">Armadura <input type="number" id="objetoEquipoArmadura" min="0" value="0"></label>
                             <label data-equipo="armadura">Pen. Atletismo <input type="number" id="objetoEquipoPenalizacion" min="0" value="0"></label>
                             <label data-equipo="arma accesorio" title="Una reliquia tiene habilidades con enfriamiento; se editan en la tarjeta del arma o del accesorio"><input type="checkbox" id="objetoEsReliquia"> Es reliquia</label>
+                        </div>
+                        <!-- Armadura elemental: resta el daño de cada elemento a cada impacto -->
+                        <!-- Resistencias (armaduras) y daño elemental (armas): plegados; se abren solos al editar
+                             un objeto que ya tiene alguno. Campos generados en inicializarBloquesElementales
+                             (ids objetoRes_<elemento> y objetoElem_<elemento>) -->
+                        <div data-campos="equipo">
+                            <details id="detallesResistenciasObjeto" class="acordeon-elemental" data-equipo="armadura">
+                                <summary>Resistencias elementales</summary>
+                                <div id="objetoResistencias" class="valores-elementales"></div>
+                            </details>
+                            <details id="detallesDannoElementalObjeto" class="acordeon-elemental" data-equipo="arma">
+                                <summary>Daño elemental</summary>
+                                <div id="objetoDannoElemental" class="valores-elementales"></div>
+                            </details>
                         </div>
                         <!-- Habilidades de reliquia (tipo Reliquia, o arma marcada como reliquia) -->
                         <div class="campo-objeto" id="campoHabilidadesReliquia">

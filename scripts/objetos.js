@@ -205,6 +205,27 @@ export function gastarEstricto(pj) {
 function exito(...resumen) { return { ok: true, resumen }; }
 function fallo(motivo) { return { ok: false, resumen: [motivo] }; }
 
+/* Cor (monedas): no ocupan hueco, sin límite y nunca en negativo _____________ */
+
+const cantidadCor = (cantidad) => Math.floor(Number(cantidad) || 0);
+
+export function anadirCor(pj, cantidad) {
+    const n = cantidadCor(cantidad);
+    if (n <= 0) return fallo("Indica una cantidad mayor que 0.");
+    pj.cor = (Number(pj.cor) || 0) + n;
+    return exito(`+${n} Cor`, `Total: ${pj.cor} Cor`);
+}
+
+/** Gasta Cor; si no hay bastante no gasta nada. */
+export function gastarCor(pj, cantidad) {
+    const n = cantidadCor(cantidad);
+    if (n <= 0) return fallo("Indica una cantidad mayor que 0.");
+    const actual = Number(pj.cor) || 0;
+    if (n > actual) return fallo(`No tienes suficiente Cor (tienes ${actual}).`);
+    pj.cor = actual - n;
+    return exito(`−${n} Cor`, `Total: ${pj.cor} Cor`);
+}
+
 /** Mano vacía para usar algo (prefiere una con la acción disponible). null si las dos están ocupadas. */
 export function manoParaUsar(pj) {
     const vacias = MANOS.filter(mano => manoVacia(pj, mano));

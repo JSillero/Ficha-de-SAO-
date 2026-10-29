@@ -2,7 +2,7 @@
 // Ataques con armas (05-combate-y-estados.md §1, 04-tiradas.md §2, 10-sigilo.md §5).
 // No toca el DOM: prepara los valores de la tirada y calcula el daño.
 
-import { ARMAS } from "./equipamiento.js";
+import { ARMAS, ELEMENTOS } from "./equipamiento.js";
 import { combinarModos } from "./dados.js";
 import { ESTADOS_INFO, TIPOS_DANNO } from "./estados.js";
 
@@ -75,8 +75,21 @@ export function calcularDannoAtaque(pj, item, critico) {
             `${conMult(dannoArma, multArma)} (Arma)`,
             `${conMult(bono, multBono)} (Bonif. CaC)`
         ],
+        elemental: dannoElementalArma(item),
         notas
     };
+}
+
+/**
+ * Daño elemental del arma: [{ tipo, cantidad, etiqueta }] de los elementos con daño > 0.
+ * Va aparte del físico (no lo multiplican crítico ni sigilo; al objetivo lo reducen sus resistencias).
+ */
+export function dannoElementalArma(item) {
+    return ELEMENTOS
+        .map(tipo => ({ tipo, cantidad: Math.max(0, Number(item?.dannoElemental?.[tipo]) || 0) }))
+        .filter(({ cantidad }) => cantidad > 0)
+        .map(({ tipo, cantidad }) => ({ tipo, cantidad, etiqueta: TIPOS_DANNO[tipo].etiqueta,
+            color: TIPOS_DANNO[tipo].color, colorTexto: TIPOS_DANNO[tipo].colorGlifo }));
 }
 
 const conMult = (valor, mult) => mult > 1 ? `${valor}×${mult}` : `${valor}`;

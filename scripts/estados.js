@@ -4,6 +4,7 @@
 
 import { TURNOS_PERMANENTE } from "./modificador.js";
 import { efectoHielo, salirDeSigilo, dannoHemorragia } from "./turno.js";
+import { ELEMENTOS } from "./equipamiento.js";
 
 /* Los estados provocados por daño elemental duran 3 turnos y se reinician con cada daño nuevo */
 export const DURACION_ELEMENTAL = 3;
@@ -32,7 +33,7 @@ export const ESTADOS_INFO = {
     hemorragia: { etiqueta: "Hemorragia", icono: "hemorragia", color: "#B0172B", unidad: "Acumulado", turnos: TURNOS_PERMANENTE,
         descripcion: "Se acumula. Cada turno quita el Aguante en PV por cada vez que el acumulado lo contiene (Aguante 8: 15 → 8 PV, 20 → 16 PV) hasta que se cura." },
     regeneracion: { etiqueta: "Regeneración", icono: "regeneracion", color: "#E05583", unidad: "PV/turno", turnos: TURNOS_PERMANENTE,
-        descripcion: "Recupera PV cada turno (comida, artes, cristales)." },
+        descripcion: "Recupera PV cada turno (comida, artes, cristales). El equipo y los modificadores de Regeneración se suman a este valor." },
     aturdido: { etiqueta: "Aturdido", icono: "aturdido", color: "#16A085", unidad: null, turnos: TURNOS_PERMANENTE,
         descripcion: "Tira con desventaja en todas las tiradas (se combina con el panel y el arma)." },
     cegado: { etiqueta: "Cegado", icono: "cegado", color: "#34495E", unidad: null, turnos: TURNOS_PERMANENTE,
@@ -106,6 +107,18 @@ export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
     const resumen = [];
     // Daño directo (no de estados) rompe el sigilo. La luz cura, así que no cuenta.
     let rompeSigilo = false;
+
+    // Armadura elemental: resta su valor a cada impacto del elemento (en la luz, también a lo que cura)
+    if (ELEMENTOS.includes(tipo) && !opciones.ignorarArmadura) {
+        const resistencia = pj.getResistencia(tipo);
+        if (resistencia > 0) {
+            const etiqueta = TIPOS_DANNO[tipo].etiqueta.toLowerCase();
+            const recibido = Math.max(0, cantidad - resistencia);
+            if (recibido === 0) return [`Impacto ${cantidad} − resistencia a ${etiqueta} ${resistencia}: sin efecto`];
+            resumen.push(`Impacto ${cantidad} − resistencia a ${etiqueta} ${resistencia} = ${recibido}`);
+            cantidad = recibido;
+        }
+    }
 
     switch (tipo) {
         case "fisico": {

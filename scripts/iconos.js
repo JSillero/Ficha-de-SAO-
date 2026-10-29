@@ -33,6 +33,15 @@ const enDiagonal = (contenido) => `<g transform="rotate(45 50 50)">${contenido}<
 const brazoCopo = (angulo) =>
     `<path class="t" transform="rotate(${angulo} 50 50)" d="M50 18V82M41 25L50 34L59 25M41 75L50 66L59 75"/>`;
 
+/* Moneda de Cor con un signo dentro de un círculo recortado (añadir / gastar) */
+const monedaConSigno = (signo) => `
+        <circle class="p" cx="42" cy="42" r="26"/>
+        <circle class="f" cx="42" cy="42" r="18"/>
+        <path class="t" d="M50 33A12 12 0 1 0 50 51"/>
+        <circle class="f" cx="70" cy="70" r="20"/>
+        <circle class="p" cx="70" cy="70" r="16"/>
+        <path class="tf" style="stroke-width:6;stroke-linecap:round" d="${signo}"/>`;
+
 const GLIFOS = {
     fuego: `
         <path class="s" d="M50 16C59 31 73 40 71 60C70 74 61 83 50 83C39 83 30 74 29 62C28 49 37 43 40 32C44 40 46 45 47 50C50 39 53 29 50 16Z"/>
@@ -240,6 +249,16 @@ const GLIFOS = {
         <rect class="p" x="38" y="56" width="24" height="6" rx="2"/>
         <rect class="p" x="46" y="62" width="8" height="18" rx="3"/>`)}
         <path class="t o" d="M14 66L28 52M22 80L34 68M34 88L42 80"/>`,
+
+    /* Cor: dos monedas apiladas con una C */
+    cor: `
+        <circle class="s" cx="57" cy="57" r="27"/>
+        <circle class="p" cx="45" cy="45" r="27"/>
+        <circle class="f" cx="45" cy="45" r="19"/>
+        <path class="t" d="M53 36A12 12 0 1 0 53 54"/>`,
+    /* Añadir y gastar Cor: moneda con + o − abajo a la derecha */
+    corMas: monedaConSigno("M70 58V82M58 70H82"),
+    corMenos: monedaConSigno("M58 70H82"),
 
     /* Acciones de los objetos y menús */
     inventario: `

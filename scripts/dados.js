@@ -19,7 +19,8 @@
  * @property {number} [bonificador] - Bonificador extra (p. ej. ventaja acumulada)
  * @property {string} [etiquetaBonificador]
  * @property {string} [etiquetaTotal]
- * @property {{ total: number, desglose: string[], notas?: string[] }|null} [danno] - Daño del ataque, si lo hay
+ * @property {{ total: number, desglose: string[], notas?: string[], elemental?: { cantidad: number, etiqueta: string, color?: string }[] }|null} [danno]
+ *   Daño del ataque, si lo hay (el elemental va aparte del total físico)
  */
 
 
@@ -218,14 +219,19 @@ function crearPopupResultado(resultado) {
     // Bloque de daño (ataques)
     let dannoHtml = "";
     if (resultado.danno) {
-        const { total, desglose = [], notas = [] } = resultado.danno;
+        const { total, desglose = [], notas = [], elemental = [] } = resultado.danno;
+        // Daño elemental: aparte del físico, un valor por elemento con su color
+        const elementalHtml = elemental.length ? `
+            <div class="popup-elemental">${elemental.map(({ cantidad, etiqueta, color, colorTexto }) =>
+                `<span class="popup-elemento" style="--color:${color ?? "#9B59B6"};--color-texto:${colorTexto ?? "#FBFBFB"}">+${cantidad} ${etiqueta}</span>`).join("")}
+            </div>` : "";
         dannoHtml = `
         <div class="popup-danno">
             <div class="popup-operacion">${desglose.join(" + ")}</div>
             <div class="popup-total-wrapper">
                 <span class="popup-total-label">DAÑO</span>
                 <span class="popup-total-valor">${total}</span>
-            </div>
+            </div>${elementalHtml}
             ${notas.map(nota => `<div class="popup-nota">${nota}</div>`).join("")}
         </div>`;
     }
