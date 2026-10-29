@@ -6,7 +6,7 @@ import PJ, { ESTADOS_LISTA } from "./PJ.js";
 import Equipamiento from "./equipamiento.js";
 import Modificador, { TURNOS_PERMANENTE } from "./modificador.js";
 import { cargarObjeto } from "./objetos.js";
-import { cargarArte, artesEquipadas, ranurasUsadas, motivoRequisitos } from "./artes.js";
+import { cargarArte, artesEquipadas, ranurasUsadas, motivoRequisitos, desbloqueosDisponibles } from "./artes.js";
 
 /* Ids de la interfaz que no coinciden con el nombre del campo en PJ */
 const ALIAS_INTERFAZ = { arte: "puntosArte" };
@@ -236,6 +236,8 @@ export function validarFicha(pj) {
     }
 
     if (pj.cor < 0) avisos.push(`Cor negativo (${pj.cor}).`);
+    // Puede pasar si se baja de nivel después de gastar desbloqueos
+    if (desbloqueosDisponibles(pj) < 0) avisos.push(`Desbloqueos de arte en negativo (${desbloqueosDisponibles(pj)}).`);
 
     // Artes: memoria y requisitos (un arte que deja de cumplirlos queda inactiva, no se desequipa)
     if (ranurasUsadas(pj) > pj.espaciosArte) {

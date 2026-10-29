@@ -32,6 +32,7 @@ const CAMPOS_SIMPLES = [
     'numeroAcciones', 'izquierda', 'derecha', 'cabeza', 'pies', 'reaccionGuardada',
     'enSigilo', 'valorSigilo',
     'comidaActiva', 'tipoProfesion', 'zona', 'cor',
+    'desbloqueosArteExtra', 'desbloqueosArteGastados',
     'notas', 'listadoArtes', 'listaDeAmigos', 'recetasProfesion'
 ];
 
@@ -115,6 +116,9 @@ export default class PJ {
 
         /* Artes (formato de data/artes.schema.json; lógica en artes.js): equipadas y sin equipar */
         this.artes = [];
+        // Desbloqueos de arte (artes.js): disponibles = naturales por nivel + extra − gastados
+        this.desbloqueosArteExtra = 0;    // sumados o quitados a mano (otras fuentes)
+        this.desbloqueosArteGastados = 0; // gastados en conseguir artes
 
         /* Bloques de texto */
         this.notas = ""; /* String, como todos */
@@ -337,6 +341,8 @@ export default class PJ {
         }
         if (!ZONAS[this.zona]) this.zona = ZONA_POR_DEFECTO;
         this.cor = Math.max(0, Math.floor(Number(this.cor) || 0));
+        this.desbloqueosArteExtra = Math.trunc(Number(this.desbloqueosArteExtra) || 0);
+        this.desbloqueosArteGastados = Math.max(0, Math.trunc(Number(this.desbloqueosArteGastados) || 0));
 
         /* Estados */
         this.estados = crearEstadosVacios();

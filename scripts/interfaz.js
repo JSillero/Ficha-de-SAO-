@@ -29,6 +29,7 @@ import {
     descargarCatalogo, copiarDelCatalogo, estadoRequisitos, motivoRequisitos, ranurasUsadas, PARTES_USO_ARTE,
     equiparArte, desequiparArte, motivoNoEquiparArte, motivoNoDesequiparArte, usarArte, motivoNoUsarArte,
     cargarArte, cargarRequisito, cumpleRequisitos, ajustarMemoriaArtes, GRUPOS_ARTE, TIPOS_REQUISITO,
+    desbloqueosDisponibles, desbloqueosNaturales, anadirDesbloqueos, quitarDesbloqueos, motivoNoConseguirArte, conseguirArte,
     ETIQUETAS_CARACTERISTICA, ETIQUETAS_HABILIDAD, ETIQUETAS_ARMADURA as ETIQUETAS_TIPO_ARMADURA
 } from "./artes.js";
 
@@ -290,6 +291,7 @@ function inicializarBotonesModales() {
 
 function actualizarTodo() {
     comprobarMemoriaArtes();
+    comprobarDesbloqueosNaturales();
     actualizarInformacion();
     actualizarAtributos();
     actualizarHabilidades();
@@ -589,6 +591,7 @@ document.getElementById('fileInput').addEventListener('change', function (event)
             try {
                 const jsonData = JSON.parse(e.target.result);  // Parse the JSON string into an object
                 personaje.cargarJSON(jsonData);
+                desbloqueosNaturalesVistos = null; // ficha nueva: no avisar de los desbloqueos que ya tenía
                 actualizarTodo();
                 reproducir("linkStart");
 
@@ -2401,6 +2404,7 @@ function inicializarArtes() {
     });
 
     [listaArtesEquipadasEl, listaArtesSinEquiparEl].forEach(lista => lista.addEventListener("click", alPulsarArte));
+    inicializarDesbloqueos();
 
     // Tarjetas de "Artes pasivas" (columna derecha): clic o Enter/Espacio abre su detalle
     const abrirDetallePasiva = (e) => {
@@ -2510,16 +2514,17 @@ function requisitosArteHtml(arte) {
 }
 
 /**
- * Fila de un arte. En el catálogo (enCatalogo) solo tiene el botón Añadir; yaLaTiene lo bloquea.
+ * Fila de un arte. En el catálogo (enCatalogo) solo tiene el botón Añadir; motivoAnadir lo bloquea
+ * (ya la tiene o no quedan desbloqueos).
  */
-function filaArte(arte, indice, { enCatalogo = false, yaLaTiene = false } = {}) {
+function filaArte(arte, indice, { enCatalogo = false, motivoAnadir = null } = {}) {
     const activa = arte.tipo === "activa";
     const inactiva = arte.equipada && motivoRequisitos(personaje, arte);
     const coste = [activa ? `${arte.costePA} PA` : "Pasiva", `${arte.ranuras} ranura${arte.ranuras === 1 ? "" : "s"}`].join(" · ");
 
     let botones;
     if (enCatalogo) {
-        botones = botonObjeto("anadir", "artesSinEquipar", yaLaTiene ? "Ya la tienes" : "Añadir a las artes sin equipar", yaLaTiene);
+        botones = botonObjeto("anadir", "artesSinEquipar", motivoAnadir || "Añadir a las artes sin equipar (gasta 1 desbloqueo de arte)", Boolean(motivoAnadir));
     } else if (arte.equipada) {
         const motivoUsar = activa ? motivoNoUsarArte(personaje, arte) : null;
         const motivoGuardar = motivoNoDesequiparArte(personaje, arte);
@@ -2571,12 +2576,51 @@ function actualizarArtes() {
     document.getElementById("memoriaArtes").textContent = `(${usadas} / ${personaje.espaciosArte})`;
     document.getElementById("contadorArtesSinEquipar").textContent = `(${sinEquipar.length})`;
 
+    // Desbloqueos de arte: total y botón de crear (crear gasta uno)
+    document.getElementById("cantidadDesbloqueos").textContent = desbloqueosDisponibles(personaje);
+    const botonCrear = document.getElementById("btnAbrirCrearArte");
+    const sinDesbloqueos = motivoNoConseguirArte(personaje);
+    botonCrear.disabled = Boolean(sinDesbloqueos);
+    botonCrear.title = sinDesbloqueos || "Crear un arte nueva (gasta 1 desbloqueo de arte)";
+
     // Avisos: memoria superada (no debería verse: comprobarMemoriaArtes desequipa antes) y zona
     const fueraDeZona = esZonaSegura(personaje) ? "" : MOTIVOS_ZONA.artes + ".";
     const exceso = usadas > personaje.espaciosArte
         ? `Las artes equipadas ocupan ${usadas} de memoria y solo tienes ${personaje.espaciosArte}.` : "";
     pintarAviso("avisoArtesEquipadas", [exceso, fueraDeZona]);
     pintarAviso("avisoArtesSinEquipar", [fueraDeZona]);
+}
+
+/* Desbloqueos de arte: añadir o quitar la cantidad del campo (como el Cor) */
+function inicializarDesbloqueos() {
+    document.querySelector(".barra-desbloqueos .cor-icono").innerHTML = iconoSao("desbloqueo");
+    document.getElementById("btnAnadirDesbloqueos").innerHTML = iconoSao("desbloqueoMas");
+    document.getElementById("btnQuitarDesbloqueos").innerHTML = iconoSao("desbloqueoMenos");
+    const input = document.getElementById("inputDesbloqueos");
+    const operar = (operacion) => {
+        reproducir("click");
+        const resultado = operacion(personaje, input.value);
+        if (!resultado.ok) mostrarPopupInfo("Desbloqueos de arte", resultado.resumen.map(escaparHtml));
+        actualizarTodo();
+    };
+    document.getElementById("btnAnadirDesbloqueos").addEventListener("click", () => operar(anadirDesbloqueos));
+    document.getElementById("btnQuitarDesbloqueos").addEventListener("click", () => operar(quitarDesbloqueos));
+}
+
+/* Al subir de nivel se avisa si se consigue un desbloqueo de arte natural.
+   null = aún no se conoce (al cargar una ficha se vuelve a null para no avisar). */
+let desbloqueosNaturalesVistos = null;
+
+function comprobarDesbloqueosNaturales() {
+    const naturales = desbloqueosNaturales(personaje.nivel);
+    if (desbloqueosNaturalesVistos !== null && naturales > desbloqueosNaturalesVistos) {
+        const nuevos = naturales - desbloqueosNaturalesVistos;
+        mostrarPopupInfo("Desbloqueo de arte", [
+            `Nivel ${personaje.nivel}: +${nuevos} desbloqueo${nuevos === 1 ? "" : "s"} de arte.`,
+            `Disponibles: ${desbloqueosDisponibles(personaje)}. Úsalos en Artes sin equipar (catálogo o crear arte).`
+        ]);
+    }
+    desbloqueosNaturalesVistos = naturales;
 }
 
 /* Notificación de un arte pasiva: solo sus modificadores (si tiene) y su descripción */
@@ -2901,8 +2945,16 @@ function inicializarFormularioArte() {
             dannoElemental: Object.fromEntries(ELEMENTOS.map(e => [e, campo(`arteElem_${e}`).value]))
         };
         const arte = cargarArte(datos);
-        if (edicion) personaje.artes[personaje.artes.indexOf(edicion)] = arte;
-        else personaje.artes.push(arte);
+        if (edicion) {
+            personaje.artes[personaje.artes.indexOf(edicion)] = arte;
+        } else {
+            // Crear un arte nueva gasta un desbloqueo de arte (editar no)
+            const resultado = conseguirArte(personaje, arte);
+            if (!resultado.ok) {
+                aviso.textContent = resultado.resumen.join(" ");
+                return;
+            }
+        }
         personaje.calcularCaracteristicas();
         reproducir("click");
         actualizarTodo();
@@ -2938,6 +2990,8 @@ let estadoCatalogoArtes = "cargando";
 const normalizarTexto = (texto) => String(texto ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
 function actualizarCatalogoArtes() {
+    const disponibles = desbloqueosDisponibles(personaje);
+    document.getElementById("desbloqueosCatalogo").textContent = `(${disponibles} desbloqueo${disponibles === 1 ? "" : "s"})`;
     if (estadoCatalogoArtes !== "ok") {
         pintarLista(listaCatalogoArtesEl, `<p class="lista-vacia">${estadoCatalogoArtes === "cargando"
             ? "Cargando el catálogo…"
@@ -2949,6 +3003,7 @@ function actualizarCatalogoArtes() {
     const tipo = document.getElementById("catalogoTipo").value;
     const soloCumplo = document.getElementById("catalogoSoloCumplo").checked;
     const tengo = new Set(personaje.artes.map(arte => arte.idCatalogo).filter(Boolean));
+    const sinDesbloqueos = motivoNoConseguirArte(personaje);
 
     const visibles = catalogoArtes
         .map((arte, i) => ({ arte, i }))
@@ -2961,7 +3016,10 @@ function actualizarCatalogoArtes() {
         const delGrupo = visibles.filter(({ arte }) => arte.grupo === clave);
         if (!delGrupo.length) return "";
         return `<h6 class="grupo-catalogo">${GRUPOS_ARTE[clave]}</h6>`
-            + delGrupo.map(({ arte, i }) => filaArte(arte, i, { enCatalogo: true, yaLaTiene: tengo.has(arte.id) })).join("");
+            + delGrupo.map(({ arte, i }) => filaArte(arte, i, {
+                enCatalogo: true,
+                motivoAnadir: tengo.has(arte.id) ? "Ya la tienes" : sinDesbloqueos
+            })).join("");
     }).join("");
     pintarLista(listaCatalogoArtesEl, html || `<p class="lista-vacia">Ningún arte coincide con los filtros.</p>`);
 }
@@ -2986,9 +3044,10 @@ function inicializarCatalogoArtes() {
         const arte = catalogoArtes[Number(boton?.closest(".fila-objeto")?.dataset.index)];
         if (!boton || boton.disabled || !arte) return;
         reproducir("click");
-        personaje.artes.push(copiarDelCatalogo(arte));
+        // Gasta un desbloqueo de arte
+        const resultado = conseguirArte(personaje, copiarDelCatalogo(arte));
         actualizarTodo();
-        mostrarPopupInfo("Arte añadida", [`${escaparHtml(arte.nombre)} está en las artes sin equipar.`]);
+        mostrarPopupInfo(resultado.ok ? "Arte añadida" : "No se puede añadir", resultado.resumen.map(escaparHtml));
     });
 }
 

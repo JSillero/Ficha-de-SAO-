@@ -761,6 +761,15 @@
                     </div>
                 </div>
                 <div class="modal-body">
+                    <!-- Desbloqueos de arte: conseguir un arte (catálogo o creada) gasta uno; se suman o quitan
+                         como el Cor (anadirDesbloqueos/quitarDesbloqueos en artes.js) -->
+                    <div class="barra-cor barra-desbloqueos" title="Conseguir un arte, del catálogo o creada, gasta un desbloqueo. Se consigue uno en los niveles 16, 31, 46 y 61, y después uno cada 5 niveles.">
+                        <span class="cor-icono" aria-hidden="true"></span>
+                        <span class="cor-total"><span id="cantidadDesbloqueos">0</span> desbloqueos de arte</span>
+                        <input type="number" id="inputDesbloqueos" min="1" step="1" value="1" aria-label="Cantidad de desbloqueos">
+                        <button type="button" id="btnAnadirDesbloqueos" class="btn-cor anadir" title="Añadir esta cantidad" aria-label="Añadir desbloqueos"></button>
+                        <button type="button" id="btnQuitarDesbloqueos" class="btn-cor gastar" title="Quitar esta cantidad" aria-label="Quitar desbloqueos"></button>
+                    </div>
                     <p id="avisoArtesSinEquipar" class="aviso-zona" hidden></p>
                     <div id="listaArtesSinEquipar" class="lista-objetos"></div>
                     <!-- Texto libre de las fichas antiguas (antes las artes se apuntaban aquí) -->
@@ -868,7 +877,7 @@
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="modalCatalogoArtesLabel">Catálogo de artes</h5>
+                    <h5 class="modal-title" id="modalCatalogoArtesLabel">Catálogo de artes <span id="desbloqueosCatalogo" class="contador-objetos" title="Desbloqueos de arte disponibles: añadir un arte gasta uno"></span></h5>
                 </div>
                 <div class="modal-body">
                     <div class="filtros-catalogo">

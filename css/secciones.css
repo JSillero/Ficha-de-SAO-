@@ -1553,8 +1553,15 @@
     cursor: pointer;
 }
 
-.btn-cabecera:hover {
+.btn-cabecera:hover:not(:disabled) {
     background: #2a62a0;
+}
+
+/* Sin desbloqueos de arte: no se puede crear */
+.btn-cabecera:disabled {
+    background: #c9c9c9;
+    color: #f4f4f4;
+    cursor: not-allowed;
 }
 
 .contador-objetos {

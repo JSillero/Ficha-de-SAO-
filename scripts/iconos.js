@@ -33,14 +33,28 @@ const enDiagonal = (contenido) => `<g transform="rotate(45 50 50)">${contenido}<
 const brazoCopo = (angulo) =>
     `<path class="t" transform="rotate(${angulo} 50 50)" d="M50 18V82M41 25L50 34L59 25M41 75L50 66L59 75"/>`;
 
-/* Moneda de Cor con un signo dentro de un círculo recortado (añadir / gastar) */
+/* Signo (+ o −) en un círculo recortado abajo a la derecha, para los botones de añadir y quitar */
+const insigniaSigno = (signo) => `
+        <circle class="f" cx="70" cy="70" r="20"/>
+        <circle class="p" cx="70" cy="70" r="16"/>
+        <path class="tf" style="stroke-width:6;stroke-linecap:round" d="${signo}"/>`;
+
+/* Moneda de Cor con un signo (añadir / gastar) */
 const monedaConSigno = (signo) => `
         <circle class="p" cx="42" cy="42" r="26"/>
         <circle class="f" cx="42" cy="42" r="18"/>
         <path class="t" d="M50 33A12 12 0 1 0 50 51"/>
-        <circle class="f" cx="70" cy="70" r="20"/>
-        <circle class="p" cx="70" cy="70" r="16"/>
-        <path class="tf" style="stroke-width:6;stroke-linecap:round" d="${signo}"/>`;
+        ${insigniaSigno(signo)}`;
+
+/* Candado abierto (desbloqueo de arte); pequeño y arriba a la izquierda si lleva signo */
+const candado = (x = 0, y = 0, escala = 1) => `
+        <g transform="translate(${x} ${y}) scale(${escala})">
+            <path class="t" style="stroke-width:8" d="M34 46V30A16 16 0 0 1 66 30V32"/>
+            <rect class="p" x="24" y="44" width="52" height="40" rx="7"/>
+            <circle class="f" cx="50" cy="60" r="6"/>
+            <rect class="f" x="47" y="62" width="6" height="12" rx="2"/>
+        </g>`;
+const candadoConSigno = (signo) => `${candado(-4, -6, 0.82)}${insigniaSigno(signo)}`;
 
 const GLIFOS = {
     fuego: `
@@ -259,6 +273,10 @@ const GLIFOS = {
     /* Añadir y gastar Cor: moneda con + o − abajo a la derecha */
     corMas: monedaConSigno("M70 58V82M58 70H82"),
     corMenos: monedaConSigno("M58 70H82"),
+    /* Desbloqueos de arte: candado abierto; con + o − para los botones */
+    desbloqueo: candado(),
+    desbloqueoMas: candadoConSigno("M70 58V82M58 70H82"),
+    desbloqueoMenos: candadoConSigno("M58 70H82"),
 
     /* Acciones de los objetos y menús */
     inventario: `

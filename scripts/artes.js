@@ -163,6 +163,59 @@ export function copiarDelCatalogo(arteCatalogo) {
     return cargarArte({ ...copia, id: nuevoIdArte(arteCatalogo.id), idCatalogo: arteCatalogo.id, equipada: false });
 }
 
+/* Desbloqueos de arte _________________________________________________________
+   Conseguir un arte (del catálogo o creada) cuesta un desbloqueo. Se consiguen de forma natural
+   con el nivel y se pueden sumar o quitar a mano (otras fuentes), como el Cor.
+   Disponibles = naturales (por nivel) + extra (a mano) − gastados. Así, si el nivel sube o baja,
+   los naturales se recalculan solos. */
+
+export const COSTE_DESBLOQUEO_ARTE = 1;
+
+/** Naturales por nivel: uno en el 16, 31, 46 y 61; desde el 61, uno cada 5 niveles (66, 71...) */
+export function desbloqueosNaturales(nivel) {
+    const n = Number(nivel) || 0;
+    if (n >= 61) return 4 + Math.floor((n - 61) / 5);
+    if (n >= 16) return Math.floor((n - 1) / 15);
+    return 0;
+}
+
+export function desbloqueosDisponibles(pj) {
+    return desbloqueosNaturales(pj.nivel) + (Number(pj.desbloqueosArteExtra) || 0) - (Number(pj.desbloqueosArteGastados) || 0);
+}
+
+const cantidadDesbloqueos = (cantidad) => Math.floor(Number(cantidad) || 0);
+
+export function anadirDesbloqueos(pj, cantidad) {
+    const n = cantidadDesbloqueos(cantidad);
+    if (n <= 0) return { ok: false, resumen: ["Indica una cantidad mayor que 0."] };
+    pj.desbloqueosArteExtra = (Number(pj.desbloqueosArteExtra) || 0) + n;
+    return { ok: true, resumen: [`+${n} desbloqueo${n === 1 ? "" : "s"} de arte`, `Disponibles: ${desbloqueosDisponibles(pj)}`] };
+}
+
+/** Quita desbloqueos; si no hay bastantes no quita nada (nunca quedan en negativo) */
+export function quitarDesbloqueos(pj, cantidad) {
+    const n = cantidadDesbloqueos(cantidad);
+    if (n <= 0) return { ok: false, resumen: ["Indica una cantidad mayor que 0."] };
+    const disponibles = desbloqueosDisponibles(pj);
+    if (n > disponibles) return { ok: false, resumen: [`No tienes suficientes desbloqueos de arte (tienes ${Math.max(0, disponibles)}).`] };
+    pj.desbloqueosArteExtra = (Number(pj.desbloqueosArteExtra) || 0) - n;
+    return { ok: true, resumen: [`−${n} desbloqueo${n === 1 ? "" : "s"} de arte`, `Disponibles: ${desbloqueosDisponibles(pj)}`] };
+}
+
+/** Motivo por el que no se puede conseguir un arte nueva, o null */
+export function motivoNoConseguirArte(pj) {
+    return desbloqueosDisponibles(pj) < COSTE_DESBLOQUEO_ARTE ? "No te quedan desbloqueos de arte." : null;
+}
+
+/** Añade un arte nueva a las sin equipar gastando un desbloqueo */
+export function conseguirArte(pj, arte) {
+    const motivo = motivoNoConseguirArte(pj);
+    if (motivo) return { ok: false, resumen: [motivo] };
+    pj.desbloqueosArteGastados = (Number(pj.desbloqueosArteGastados) || 0) + COSTE_DESBLOQUEO_ARTE;
+    pj.artes.push(arte);
+    return { ok: true, resumen: [`${arte.nombre} está en las artes sin equipar.`, `Desbloqueos de arte: ${desbloqueosDisponibles(pj)}`] };
+}
+
 /* Requisitos ___________________________________________________________________ */
 // Las características y habilidades se comparan con su valor base (sin modificadores).
 // Así los modificadores de las propias artes no pueden activar ni desactivar otras.
