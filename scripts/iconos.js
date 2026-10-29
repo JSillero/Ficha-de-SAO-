@@ -292,6 +292,19 @@ const GLIFOS = {
         ${estrella(48, 54, 30)}
         ${estrella(78, 22, 9, "s")}
         ${estrella(20, 22, 6, "s")}`,
+    /* Artes: activa (destello de cuatro puntas), pasiva (aura) y sin equipar (estrella hueca) */
+    arteActiva: `
+        ${poligonoEstrella(50, 50, 38, 11, 4)}
+        ${poligonoEstrella(50, 50, 22, 8, 4, "s")}
+        <circle class="f" cx="50" cy="50" r="6"/>`,
+    artePasiva: `
+        <circle class="t o" cx="50" cy="50" r="31"/>
+        <circle class="t" style="stroke-width:5" cx="50" cy="50" r="22" stroke-dasharray="8 6"/>
+        ${estrella(50, 50, 14)}`,
+    artesSinEquipar: `
+        <g class="t" style="stroke-width:5">${estrella(48, 54, 28, "")}</g>
+        ${estrella(78, 22, 9, "s")}
+        ${estrella(20, 22, 6, "s")}`,
     descanso: `
         <path class="s" d="M50 14C57 26 68 33 66 48C65 59 58 64 50 64C42 64 35 59 34 50C33 40 40 35 42 26C45 32 47 36 48 40C50 31 52 24 50 14Z"/>
         <path class="p" d="M50 38C55 45 58 49 58 54C57 60 54 63 50 63C46 63 43 60 43 54C43 49 47 45 50 38Z"/>

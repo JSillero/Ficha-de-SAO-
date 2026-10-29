@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ficha-sao/data/artes.schema.json",
+  "title": "Catálogo de artes (SAO homebrew)",
+  "description": "Formato de las artes. Lo usan el catálogo (data/artes.json) y las artes guardadas en la ficha (personaje.artes). Solo datos: la lógica (requisitos, equipar, usar) está en scripts/artes.js. Versión 1.",
+  "type": "object",
+  "required": ["version", "artes"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "artes": { "type": "array", "items": { "$ref": "#/$defs/arte" } }
+  },
+  "$defs": {
+    "elemento": { "enum": ["fuego", "electricidad", "hielo", "luz", "oscuridad"] },
+
+    "valoresElementales": {
+      "description": "Un valor por elemento (enteros >= 0). Igual que Equipamiento.dannoElemental.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fuego": { "type": "integer", "minimum": 0 },
+        "electricidad": { "type": "integer", "minimum": 0 },
+        "hielo": { "type": "integer", "minimum": 0 },
+        "luz": { "type": "integer", "minimum": 0 },
+        "oscuridad": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "tipoArma": {
+      "description": "Claves de ARMAS (scripts/equipamiento.js).",
+      "enum": ["cuchillo", "espada", "estoque", "maza", "lanza", "espadon", "martillo_guerra", "hacha", "escudo", "gran_escudo", "otros"]
+    },
+
+    "requisito": {
+      "description": "Un requisito. Todos son 'mínimo' (>=). Se cumple el arte si cumple todos los requisitos no alternativos y, si hay alternativos, al menos uno de ellos.",
+      "type": "object",
+      "required": ["tipo"],
+      "properties": {
+        "alternativo": { "type": "boolean", "default": false }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "tipo": { "const": "nivel" },
+            "valor": { "type": "integer", "minimum": 1 },
+            "alternativo": { "type": "boolean" }
+          },
+          "required": ["tipo", "valor"],
+          "additionalProperties": false
+        },
+        {
+          "description": "Característica base. 'aguante' = fortaleza + voluntad / 2 (sin modificadores).",
+          "properties": {
+            "tipo": { "const": "caracteristica" },
+            "clave": { "enum": ["fortaleza", "reflejos", "voluntad", "inteligencia", "aguante"] },
+            "valor": { "type": "number", "minimum": 0 },
+            "alternativo": { "type": "boolean" }
+          },
+          "required": ["tipo", "clave", "valor"],
+          "additionalProperties": false
+        },
+        {
+          "description": "Habilidad: se compara con los puntos repartidos (valor base, sin modificadores).",
+          "properties": {
+            "tipo": { "const": "habilidad" },
+            "clave": { "enum": ["atletismo", "combate", "percepcion", "subterfugio", "comunicacion", "cultura", "profesion", "sacro"] },
+            "valor": { "type": "integer", "minimum": 0 },
+            "alternativo": { "type": "boolean" }
+          },
+          "required": ["tipo", "clave", "valor"],
+          "additionalProperties": false
+        },
+        {
+          "description": "Armadura equipada de uno de estos tipos.",
+          "properties": {
+            "tipo": { "const": "armadura" },
+            "tipos": { "type": "array", "minItems": 1, "items": { "enum": ["pesada", "media", "ligera", "ropa", "real"] } },
+            "alternativo": { "type": "boolean" }
+          },
+          "required": ["tipo", "tipos"],
+          "additionalProperties": false
+        },
+        {
+          "description": "Arma de uno de estos tipos en alguna mano (en las dos si ambasManos, para armas duales).",
+          "properties": {
+            "tipo": { "const": "arma" },
+            "tipos": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/tipoArma" } },
+            "ambasManos": { "type": "boolean", "default": false },
+            "alternativo": { "type": "boolean" }
+          },
+          "required": ["tipo", "tipos"],
+          "additionalProperties": false
+        },
+        {
+          "description": "Escudo de uno de estos tipos en alguna mano.",
+          "properties": {
+            "tipo": { "const": "escudo" },
+            "tipos": { "type": "array", "minItems": 1, "items": { "enum": ["escudo", "gran_escudo"] } },
+            "alternativo": { "type": "boolean" }
+          },
+          "required": ["tipo", "tipos"],
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "modificador": {
+      "description": "Modificador permanente mientras el arte pasiva esté equipada y activa. 'modificado' es un atributo de PJ.getModificador (habilidades, defensa, regeneracion, res_fuego...).",
+      "type": "object",
+      "required": ["modificado", "numero"],
+      "additionalProperties": false,
+      "properties": {
+        "modificado": { "type": "string" },
+        "numero": { "type": "integer" }
+      }
+    },
+
+    "uso": {
+      "description": "Qué gasta un arte activa al usarse: la acción de una parte del cuerpo ('ninguna' = no gasta acción) o la mano que lleve un arma de esos tipos (las dos si el arma es a dos manos o ambasManos).",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["tipo", "parte"],
+          "additionalProperties": false,
+          "properties": {
+            "tipo": { "const": "parte" },
+            "parte": { "enum": ["izquierda", "derecha", "cabeza", "pies", "ninguna"] }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["tipo", "armas"],
+          "additionalProperties": false,
+          "properties": {
+            "tipo": { "const": "arma" },
+            "armas": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/tipoArma" } },
+            "ambasManos": { "type": "boolean", "default": false }
+          }
+        }
+      ]
+    },
+
+    "arte": {
+      "type": "object",
+      "required": ["id", "nombre", "tipo", "grupo", "descripcion", "requisitos"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "description": "Estable, en kebab-case. En la ficha, id propio de esa copia.", "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "idCatalogo": { "description": "Solo en la ficha: id del arte del catálogo de la que salió, o null si es propia.", "type": ["string", "null"] },
+        "equipada": { "description": "Solo en la ficha.", "type": "boolean", "default": false },
+        "nombre": { "type": "string", "minLength": 1 },
+        "tipo": { "enum": ["activa", "pasiva"] },
+        "grupo": {
+          "enum": ["cuchillo", "lanza", "estoque", "espadon", "espada", "hacha", "martillo", "escudo", "profesion",
+                   "atletismo", "percepcion", "sigilo", "carisma", "cultura", "gritos", "underworld", "ocultas", "propia"]
+        },
+        "etiquetas": { "description": "Palabras para buscar o filtrar.", "type": "array", "items": { "type": "string" }, "default": [] },
+        "descripcion": { "type": "string" },
+        "ranuras": { "description": "Memoria de artes que ocupa.", "type": "integer", "minimum": 1, "default": 1 },
+        "requisitos": { "type": "array", "items": { "$ref": "#/$defs/requisito" } },
+        "notaRequisitos": { "description": "Requisitos que no se validan (hazañas, artes previas, profesión, objetos concretos): los comprueba el máster.", "type": "string", "default": "" },
+
+        "modificadores": { "description": "Pasivas.", "type": "array", "items": { "$ref": "#/$defs/modificador" }, "default": [] },
+
+        "costePA": { "description": "Activas.", "type": "integer", "minimum": 0, "default": 1 },
+        "combo": { "description": "Activas: no gasta acción.", "type": "boolean", "default": false },
+        "uso": { "description": "Activas.", "oneOf": [{ "$ref": "#/$defs/uso" }, { "type": "null" }] },
+        "danno": { "description": "Activas: daño extra (con arma se suma al del arma y al bonificador CaC).", "type": "integer", "minimum": 0, "default": 0 },
+        "dannoElemental": { "description": "Activas: daño elemental propio del arte (se suma al del arma, si la usa).", "$ref": "#/$defs/valoresElementales" },
+        "golpes": { "description": "Activas: ataques separados que hace al usarla (cada uno con su daño). Con ambasManos alternan arma derecha e izquierda.", "type": "integer", "minimum": 1, "default": 1 },
+        "haceDanno": { "description": "Activas: false = solo muestra la descripción.", "type": "boolean", "default": true }
+      }
+    }
+  }
+}

@@ -2,7 +2,7 @@ import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ESCUDO, TIPOS_ARMADURA, TIP
 import { esReliquia, usarHabilidadReliquia, motivoNoUsarHabilidad, cargarHabilidadReliquia, equipoDeRanura } from "./reliquias.js";
 import Modificador, { TURNOS_PERMANENTE } from "./modificador.js";
 import PJ from "./PJ.js";
-import { ejecutarTirada, combinarModos, esCritico } from "./dados.js";
+import { ejecutarTirada, combinarModos, esCritico, mostrarPopupDanno } from "./dados.js";
 import { prepararAtaque, calcularDannoAtaque, prepararLanzamiento, calcularDannoLanzamiento, describirEfecto } from "./ataque.js";
 import {
     TIPOS_OBJETO, MAX_PILA_INVENTARIO, ELEMENTOS_ARROJADIZA, cargarObjeto, anadirAInventario, anadirABaul,
@@ -25,6 +25,12 @@ import {
 } from "./zonas.js";
 import { reproducir, iniciarBucle, pararBucle, precargarSonidos, estaSilenciado, setSilenciado } from "./sonidos.js";
 import { ejecutarDebug, crearPersonajePrueba, validarFicha } from "./debug.js";
+import {
+    descargarCatalogo, copiarDelCatalogo, estadoRequisitos, motivoRequisitos, ranurasUsadas, PARTES_USO_ARTE,
+    equiparArte, desequiparArte, motivoNoEquiparArte, motivoNoDesequiparArte, usarArte, motivoNoUsarArte,
+    cargarArte, cargarRequisito, cumpleRequisitos, ajustarMemoriaArtes, GRUPOS_ARTE, TIPOS_REQUISITO,
+    ETIQUETAS_CARACTERISTICA, ETIQUETAS_HABILIDAD, ETIQUETAS_ARMADURA as ETIQUETAS_TIPO_ARMADURA
+} from "./artes.js";
 
 let personaje = new PJ(); //objeto que almaacena y define el comportamiento y limites de toda la informacion relevante
 
@@ -283,6 +289,7 @@ function inicializarBotonesModales() {
 }
 
 function actualizarTodo() {
+    comprobarMemoriaArtes();
     actualizarInformacion();
     actualizarAtributos();
     actualizarHabilidades();
@@ -294,6 +301,9 @@ function actualizarTodo() {
     parseModificadoresEquipo();
     pintarHabilidadesReliquia();
     actualizarObjetos();
+    actualizarArtes();
+    actualizarArtesPasivas();
+    actualizarCatalogoArtes();
     actualizarAcciones();
     actualizarEstados();
     actualizarZona();
@@ -2363,6 +2373,625 @@ function inicializarMenuInventario() {
     });
 }
 
+/* Artes (reglas en artes.js) ________________________________________________
+   El botón Artes abre un menú: artes equipadas (#modalArtesEquipadas, un hueco por ranura de memoria)
+   o sin equipar (#modalArtesSinEquipar), como el inventario y el baúl.
+   Las filas se regeneran solo si cambia su HTML (pintarLista); un listener delegado en cada lista. */
+
+const listaArtesEquipadasEl = document.getElementById("listaArtesEquipadas");
+const listaArtesSinEquiparEl = document.getElementById("listaArtesSinEquipar");
+
+function inicializarArtes() {
+    const ventanas = { equipadas: "modalArtesEquipadas", sinEquipar: "modalArtesSinEquipar" };
+    crearMenuSao({
+        boton: document.getElementById("btnArtes"),
+        menu: document.getElementById("menuArtes"),
+        opciones: () => [
+            { clave: "equipadas", etiqueta: "Artes equipadas", icono: "artes" },
+            { clave: "sinEquipar", etiqueta: "Artes sin equipar", icono: "artesSinEquipar" }
+        ],
+        alElegir: (clave, menu) => {
+            // Como el inventario: al elegir solo suena el click
+            reproducir("click");
+            menu.cerrar({ sonido: false });
+            const ventana = document.getElementById(ventanas[clave]);
+            ventana.dataset.sinSonidoAbrir = "1";
+            bootstrap.Modal.getOrCreateInstance(ventana).show();
+        }
+    });
+
+    [listaArtesEquipadasEl, listaArtesSinEquiparEl].forEach(lista => lista.addEventListener("click", alPulsarArte));
+
+    // Tarjetas de "Artes pasivas" (columna derecha): clic o Enter/Espacio abre su detalle
+    const abrirDetallePasiva = (e) => {
+        const tarjeta = e.target.closest(".arte-pasiva");
+        const arte = personaje.artes[Number(tarjeta?.dataset.index)];
+        // Las inactivas (requisitos sin cumplir) no abren notificación
+        if (!arte || motivoRequisitos(personaje, arte)) return;
+        reproducir("click");
+        mostrarDetalleArte(arte);
+    };
+    listaArtesPasivasEl.addEventListener("click", abrirDetallePasiva);
+    listaArtesPasivasEl.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        abrirDetallePasiva(e);
+    });
+}
+
+function alPulsarArte(e) {
+    const boton = e.target.closest("button[data-accion]");
+    const arte = personaje.artes[Number(boton?.closest(".fila-objeto")?.dataset.index)];
+    if (!boton || boton.disabled || !arte) return;
+    reproducir("click");
+    switch (boton.dataset.accion) {
+        case "usar": {
+            const resultado = usarArte(personaje, arte, gastarAccionesOConfirmar);
+            actualizarTodo();
+            mostrarPopupArte(arte, resultado);
+            return;
+        }
+        case "equipar":
+        case "desequipar": {
+            const resultado = (boton.dataset.accion === "equipar" ? equiparArte : desequiparArte)(personaje, arte);
+            actualizarTodo();
+            if (!resultado.ok) mostrarPopupInfo("No se puede", resultado.resumen.map(escaparHtml));
+            return;
+        }
+        case "editar":
+            abrirEditorArte(arte, boton.closest(".modal"));
+            return;
+        case "borrar":
+            if (!confirm(`¿Borrar el arte ${arte.nombre}? No se puede deshacer.`)) return;
+            personaje.artes.splice(personaje.artes.indexOf(arte), 1);
+            personaje.calcularCaracteristicas();
+            actualizarTodo();
+            return;
+    }
+}
+
+/* Notificación al usar un arte: descripción, PA y, si hace daño, el daño (sin tirar dados) */
+function mostrarPopupArte(arte, resultado) {
+    if (!resultado.ok) {
+        mostrarPopupInfo(`No se puede usar ${escaparHtml(arte.nombre)}`, resultado.resumen.map(escaparHtml));
+        return;
+    }
+    // resumen = [descripción, PA gastados, combo...]
+    const [descripcion, ...extras] = resultado.resumen.map(escaparHtml);
+    const golpes = resultado.danno;
+    if (!golpes) {
+        mostrarPopupInfo(escaparHtml(arte.nombre), [descripcion, ...extras]);
+        return;
+    }
+    // Hace daño: popup como el de las tiradas, sin dados (el arte no falla); un bloque por golpe
+    mostrarPopupDanno({
+        titulo: escaparHtml(arte.nombre),
+        subtitulo: ["Arte", ...(golpes.length > 1 ? [`${golpes.length} golpes`] : []), ...extras].join(" · "),
+        descripcion,
+        golpes: golpes.map(golpe => ({
+            ...golpe,
+            etiqueta: escaparHtml(golpe.etiqueta),
+            desglose: golpe.desglose.map(escaparHtml),
+            notas: golpe.notas.map(escaparHtml)
+        }))
+    });
+}
+
+/* Línea de lo que hace el arte: uso, coste y daño (activas) o modificadores (pasivas) */
+function detalleArte(arte) {
+    if (arte.tipo === "pasiva") return textoModificadores(arte.modificadores) || "Sin modificadores";
+    const partes = [];
+    const uso = arte.uso.tipo === "arma"
+        ? arte.uso.armas.map(tipo => ARMAS[tipo]?.etiqueta ?? tipo).join(" o ") + (arte.uso.ambasManos ? " (las dos manos)" : "")
+        : PARTES_USO_ARTE[arte.uso.parte];
+    partes.push(arte.combo ? `Usa: ${uso} · combo (no gasta acción)` : `Usa: ${uso}`);
+    if (arte.haceDanno) {
+        const extra = arte.danno > 0 ? ` + ${arte.danno}` : "";
+        if (arte.uso.tipo === "arma") partes.push(`Daño: arma + CaC${extra}`);
+        else if (arte.danno > 0) partes.push(`Daño ${arte.danno}`);
+        const elemental = textoElemental(arte.dannoElemental, "+");
+        if (elemental) partes.push(elemental);
+        if (arte.golpes > 1) partes.push(`${arte.golpes} golpes`);
+    }
+    return partes.join(" · ");
+}
+
+/* Requisitos con ✓ / ✗; los alternativos van juntos ("Uno de: …") */
+function requisitosArteHtml(arte) {
+    const { obligatorios, alternativos } = estadoRequisitos(personaje, arte);
+    const chip = ({ ok, texto }) => `<span class="req-arte ${ok ? "ok" : "no"}">${ok ? "✓" : "✗"} ${escaparHtml(texto)}</span>`;
+    const partes = obligatorios.map(chip);
+    if (alternativos.length) {
+        const algunoOk = alternativos.some(r => r.ok);
+        partes.push(`<span class="req-arte-grupo ${algunoOk ? "ok" : "no"}">Uno de: ${alternativos.map(chip).join("")}</span>`);
+    }
+    if (arte.notaRequisitos) partes.push(`<span class="req-arte nota" title="No se comprueba: lo valida el máster">${escaparHtml(arte.notaRequisitos)}</span>`);
+    return partes.length ? `<div class="arte-requisitos">${partes.join("")}</div>` : "";
+}
+
+/**
+ * Fila de un arte. En el catálogo (enCatalogo) solo tiene el botón Añadir; yaLaTiene lo bloquea.
+ */
+function filaArte(arte, indice, { enCatalogo = false, yaLaTiene = false } = {}) {
+    const activa = arte.tipo === "activa";
+    const inactiva = arte.equipada && motivoRequisitos(personaje, arte);
+    const coste = [activa ? `${arte.costePA} PA` : "Pasiva", `${arte.ranuras} ranura${arte.ranuras === 1 ? "" : "s"}`].join(" · ");
+
+    let botones;
+    if (enCatalogo) {
+        botones = botonObjeto("anadir", "artesSinEquipar", yaLaTiene ? "Ya la tienes" : "Añadir a las artes sin equipar", yaLaTiene);
+    } else if (arte.equipada) {
+        const motivoUsar = activa ? motivoNoUsarArte(personaje, arte) : null;
+        const motivoGuardar = motivoNoDesequiparArte(personaje, arte);
+        botones = botonObjeto("editar", "editar", "Editar")
+            + botonObjeto("desequipar", "cancelar", motivoGuardar || "Desequipar", Boolean(motivoGuardar))
+            + (activa ? botonObjeto("usar", "usar", motivoUsar || `Usar (${arte.costePA} PA)`, Boolean(motivoUsar)) : "");
+    } else {
+        const motivoEquipar = motivoNoEquiparArte(personaje, arte);
+        botones = botonObjeto("editar", "editar", "Editar")
+            + botonObjeto("borrar", "descartar", "Borrar")
+            + botonObjeto("equipar", "artes", motivoEquipar || "Equipar", Boolean(motivoEquipar));
+    }
+
+    // Equipada, ocupa tantos huecos como ranuras (grid-row: span N en la lista de equipadas)
+    const huecos = arte.equipada && arte.ranuras > 1 ? ` style="--ranuras:${arte.ranuras}"` : "";
+    return `<div class="fila-objeto fila-arte${inactiva ? " inactiva" : ""}" data-index="${indice}"${huecos}>
+        <span class="objeto-icono" title="${activa ? "Activa" : "Pasiva"}">${iconoSao(activa ? "arteActiva" : "artePasiva")}</span>
+        <div class="objeto-info">
+            <div class="objeto-cabecera">
+                <span class="objeto-nombre">${escaparHtml(arte.nombre)}</span>
+                <span class="objeto-cantidad">${coste}</span>
+            </div>
+            <div class="objeto-detalle">${escaparHtml(detalleArte(arte))}</div>
+            ${requisitosArteHtml(arte)}
+            ${arte.descripcion ? `<div class="objeto-descripcion">${escaparHtml(arte.descripcion)}</div>` : ""}
+            ${inactiva ? `<div class="arte-inactiva">Inactiva: ${escaparHtml(inactiva.replace(/^Requisitos no cumplidos: /, "falta "))}</div>` : ""}
+        </div>
+        <div class="objeto-acciones">${botones}</div>
+    </div>`;
+}
+
+function actualizarArtes() {
+    const conIndice = personaje.artes.map((arte, i) => ({ arte, i }));
+    const equipadas = conIndice.filter(({ arte }) => arte.equipada);
+    const sinEquipar = conIndice.filter(({ arte }) => !arte.equipada);
+
+    // Equipadas: las artes y después un hueco libre por cada ranura de memoria que quede
+    const usadas = ranurasUsadas(personaje);
+    const libres = Math.max(0, personaje.espaciosArte - usadas);
+    const huecos = Array.from({ length: libres }, () => `<div class="fila-objeto vacia"><span class="objeto-hueco">Hueco libre</span></div>`);
+    const filasEquipadas = [...equipadas.map(({ arte, i }) => filaArte(arte, i)), ...huecos];
+    pintarLista(listaArtesEquipadasEl, filasEquipadas.length ? filasEquipadas.join("")
+        : `<p class="lista-vacia">Sin memoria de artes: se consigue a partir del nivel 16.</p>`);
+
+    pintarLista(listaArtesSinEquiparEl, sinEquipar.length
+        ? sinEquipar.map(({ arte, i }) => filaArte(arte, i)).join("")
+        : `<p class="lista-vacia">No tienes artes sin equipar.</p>`);
+
+    document.getElementById("memoriaArtes").textContent = `(${usadas} / ${personaje.espaciosArte})`;
+    document.getElementById("contadorArtesSinEquipar").textContent = `(${sinEquipar.length})`;
+
+    // Avisos: memoria superada (no debería verse: comprobarMemoriaArtes desequipa antes) y zona
+    const fueraDeZona = esZonaSegura(personaje) ? "" : MOTIVOS_ZONA.artes + ".";
+    const exceso = usadas > personaje.espaciosArte
+        ? `Las artes equipadas ocupan ${usadas} de memoria y solo tienes ${personaje.espaciosArte}.` : "";
+    pintarAviso("avisoArtesEquipadas", [exceso, fueraDeZona]);
+    pintarAviso("avisoArtesSinEquipar", [fueraDeZona]);
+}
+
+/* Notificación de un arte pasiva: solo sus modificadores (si tiene) y su descripción */
+function mostrarDetalleArte(arte) {
+    const lineas = [];
+    const modificadores = textoModificadores(arte.modificadores);
+    if (modificadores) lineas.push(escaparHtml(modificadores));
+    if (arte.descripcion) lineas.push(escaparHtml(arte.descripcion));
+    mostrarPopupInfo(escaparHtml(arte.nombre), lineas);
+}
+
+/* Si se pierde memoria de artes (baja Cultura, nivel...), se desequipan las últimas equipadas y se avisa */
+function comprobarMemoriaArtes() {
+    const desequipadas = ajustarMemoriaArtes(personaje);
+    if (!desequipadas.length) return;
+    mostrarPopupInfo("Memoria de artes insuficiente", [
+        `Tienes ${personaje.espaciosArte} de memoria de artes. Se ha${desequipadas.length === 1 ? "" : "n"} desequipado:`,
+        ...desequipadas.map(arte => `<b>${escaparHtml(arte.nombre)}</b> (${arte.ranuras} ranura${arte.ranuras === 1 ? "" : "s"})`),
+        desequipadas.length === 1 ? "Está en las artes sin equipar." : "Están en las artes sin equipar."
+    ]);
+}
+
+/* Apartado "Artes pasivas" (columna derecha, bajo Modificadores): las pasivas equipadas con lo que
+   modifican y su descripción. Las inactivas (requisitos sin cumplir) salen atenuadas con el motivo. */
+const listaArtesPasivasEl = document.getElementById("listaArtesPasivas");
+
+function actualizarArtesPasivas() {
+    const pasivas = personaje.artes
+        .map((arte, indice) => ({ arte, indice }))
+        .filter(({ arte }) => arte.equipada && arte.tipo === "pasiva");
+    const visible = pasivas.length > 0;
+    document.getElementById("tituloArtesPasivas").style.display = visible ? "" : "none";
+    listaArtesPasivasEl.style.display = visible ? "" : "none";
+
+    pintarLista(listaArtesPasivasEl, pasivas.map(({ arte, indice }) => {
+        const motivo = motivoRequisitos(personaje, arte);
+        const modificadores = arte.modificadores.map(mod => {
+            const numero = Number(mod.numero) || 0;
+            return `<span class="chip-mod-pasiva ${numero < 0 ? "negativo" : "positivo"}">${conSigno(numero)} ${escaparHtml(ETIQUETAS_ATRIBUTO[mod.modificado] ?? mod.modificado)}</span>`;
+        }).join("");
+        // Activa: al pulsarla se abre su notificación (mostrarDetalleArte). Inactiva: no se puede pulsar
+        const pulsable = motivo ? "" : ` role="button" tabindex="0" title="Ver detalle" aria-label="${escaparHtml(arte.nombre)}: ver detalle"`;
+        return `<div class="arte-pasiva${motivo ? " inactiva" : ""}" data-index="${indice}"${pulsable}>
+            <div class="arte-pasiva-cabecera">
+                <span class="arte-pasiva-icono">${iconoSao("artePasiva")}</span>
+                <span class="arte-pasiva-nombre">${escaparHtml(arte.nombre)}</span>
+                ${motivo ? `<span class="arte-pasiva-estado" title="${escaparHtml(motivo)}">Inactiva</span>` : ""}
+            </div>
+            ${modificadores ? `<div class="arte-pasiva-mods">${modificadores}</div>` : ""}
+            ${arte.descripcion ? `<div class="arte-pasiva-descripcion">${escaparHtml(arte.descripcion)}</div>` : ""}
+            ${motivo ? `<div class="arte-pasiva-motivo">${escaparHtml(motivo)}</div>` : ""}
+        </div>`;
+    }).join(""));
+}
+
+function pintarAviso(id, textos) {
+    const aviso = document.getElementById(id);
+    const texto = textos.filter(Boolean).join(" ");
+    aviso.textContent = texto;
+    aviso.hidden = !texto;
+}
+
+/**
+ * Ventana que se abre desde otra (p. ej. crear arte desde las artes sin equipar): oculta la de origen
+ * y vuelve a ella al cerrarse, sin los sonidos de abrir y cerrar (es un cambio de ventana).
+ */
+function crearVentanaHija(modalEl) {
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    let origen = null;
+    modalEl.addEventListener("hide.bs.modal", () => {
+        if (origen) modalEl.dataset.sinSonidoCerrar = "1";
+    });
+    modalEl.addEventListener("hidden.bs.modal", () => {
+        if (!origen) return;
+        const anterior = origen;
+        origen = null;
+        anterior.dataset.sinSonidoAbrir = "1";
+        bootstrap.Modal.getOrCreateInstance(anterior).show();
+    });
+    return {
+        abrirDesde(ventanaOrigen) {
+            origen = ventanaOrigen;
+            ventanaOrigen.addEventListener("hidden.bs.modal", () => modal.show(), { once: true });
+            ventanaOrigen.dataset.sinSonidoCerrar = "1";
+            modalEl.dataset.sinSonidoAbrir = "1";
+            bootstrap.Modal.getOrCreateInstance(ventanaOrigen).hide();
+        },
+        cerrar: () => modal.hide()
+    };
+}
+
+/* Crear o editar un arte ______________________________________________________ */
+
+/** Abre el formulario para editar un arte (o para crear una si arte es null); se asigna en inicializarFormularioArte */
+let abrirEditorArte = () => {};
+
+const ETIQUETAS_TIPO_REQUISITO = {
+    nivel: "Nivel", caracteristica: "Característica", habilidad: "Habilidad",
+    armadura: "Armadura", arma: "Arma", escudo: "Escudo"
+};
+/* Tipos que se pueden elegir en cada requisito de equipo */
+const TIPOS_ARMA_ATAQUE = Object.keys(ARMAS).filter(tipo => !ARMAS[tipo].escudo);
+const OPCIONES_TIPOS_REQUISITO = {
+    armadura: Object.entries(ETIQUETAS_TIPO_ARMADURA),
+    arma: TIPOS_ARMA_ATAQUE.map(tipo => [tipo, ARMAS[tipo].etiqueta]),
+    escudo: TIPOS_ESCUDO.map(tipo => [tipo, ARMAS[tipo].etiqueta])
+};
+const REQUISITO_POR_DEFECTO = {
+    nivel: { valor: 16 },
+    caracteristica: { clave: "fortaleza", valor: 5 },
+    habilidad: { clave: "combate", valor: 10 },
+    armadura: { tipos: ["ligera"] },
+    arma: { tipos: ["espada"], ambasManos: false },
+    escudo: { tipos: ["escudo"] }
+};
+
+/* Casillas para elegir varios tipos (armas, armaduras...) */
+function casillasTipos(opciones, elegidos, clase) {
+    return opciones.map(([valor, etiqueta]) =>
+        `<label class="casilla-tipo"><input type="checkbox" class="${clase}" value="${valor}" ${elegidos.includes(valor) ? "checked" : ""}> ${escaparHtml(etiqueta)}</label>`
+    ).join("");
+}
+
+function filaRequisitoArte(req, i) {
+    const opciones = (lista, elegido) => Object.entries(lista)
+        .map(([valor, etiqueta]) => `<option value="${valor}" ${valor === elegido ? "selected" : ""}>${etiqueta}</option>`).join("");
+    let campos = "";
+    if (req.tipo === "nivel") {
+        campos = `<input type="number" class="req-valor" min="1" value="${req.valor}" aria-label="Nivel mínimo">`;
+    } else if (req.tipo === "caracteristica" || req.tipo === "habilidad") {
+        const lista = req.tipo === "caracteristica" ? ETIQUETAS_CARACTERISTICA : ETIQUETAS_HABILIDAD;
+        campos = `<select class="req-clave" aria-label="Cuál">${opciones(lista, req.clave)}</select>
+            <input type="number" class="req-valor" min="0" step="${req.clave === "aguante" ? "0.5" : "1"}" value="${req.valor}" aria-label="Mínimo">`;
+    } else {
+        campos = `<span class="casillas-tipos">${casillasTipos(OPCIONES_TIPOS_REQUISITO[req.tipo], req.tipos, "req-tipos")}</span>`;
+        if (req.tipo === "arma") {
+            campos += `<label class="casilla-tipo"><input type="checkbox" class="req-ambas" ${req.ambasManos ? "checked" : ""}> En las dos manos</label>`;
+        }
+    }
+    return `<li class="requisito-arte" data-index="${i}">
+        <select class="req-tipo" aria-label="Tipo de requisito">${opciones(ETIQUETAS_TIPO_REQUISITO, req.tipo)}</select>
+        ${campos}
+        <label class="casilla-tipo" title="Basta con cumplir uno de los alternativos"><input type="checkbox" class="req-alternativo" ${req.alternativo ? "checked" : ""}> Alternativo</label>
+        <button type="button" class="quitar-mod" title="Eliminar requisito" aria-label="Eliminar requisito">×</button>
+    </li>`;
+}
+
+/* Lee una fila de requisito del formulario */
+function leerFilaRequisito(fila) {
+    const tipo = fila.querySelector(".req-tipo").value;
+    const req = { tipo, alternativo: fila.querySelector(".req-alternativo").checked };
+    const clave = fila.querySelector(".req-clave");
+    const valor = fila.querySelector(".req-valor");
+    if (clave) req.clave = clave.value;
+    if (valor) req.valor = Number(valor.value) || 0;
+    if (fila.querySelector(".req-tipos")) req.tipos = [...fila.querySelectorAll(".req-tipos:checked")].map(c => c.value);
+    if (tipo === "arma") req.ambasManos = fila.querySelector(".req-ambas")?.checked ?? false;
+    return req;
+}
+
+function inicializarFormularioArte() {
+    const modalEl = document.getElementById("modalCrearArte");
+    const ventana = crearVentanaHija(modalEl);
+    const campo = (id) => document.getElementById(id);
+    const listaRequisitos = campo("listaRequisitosArte");
+    const listaMods = campo("listaModsArte");
+    const aviso = campo("avisoCrearArte");
+    let requisitos = [];
+    let mods = [];
+    /* Arte que se está editando, o null al crear */
+    let edicion = null;
+
+    // Desplegables y casillas fijas
+    campo("arteUsoParte").innerHTML = Object.entries(PARTES_USO_ARTE)
+        .map(([valor, etiqueta]) => `<option value="${valor}">${etiqueta}</option>`).join("");
+    campo("arteUsoArmas").innerHTML = casillasTipos(Object.entries(ARMAS).map(([tipo, arma]) => [tipo, arma.etiqueta]), [], "uso-arma");
+    campo("arteDannoElemental").innerHTML = ELEMENTOS.map(e => campoElemental("dannoElemental", e, `id="arteElem_${e}"`)).join("");
+    campo("arteDannoElemental").addEventListener("input", () => marcarElementalesActivos(campo("arteDannoElemental")));
+
+    const pintarRequisitos = () => {
+        listaRequisitos.innerHTML = requisitos.map(filaRequisitoArte).join("")
+            || `<li class="lista-vacia">Sin requisitos: cualquiera puede equiparla.</li>`;
+    };
+    const pintarMods = () => {
+        listaMods.innerHTML = mods.map((mod, i) => `
+            <li class="mod-equipo" data-index="${i}">
+                <select class="listValores" aria-label="Atributo">${opcionesAtributo(mod.modificado)}</select>
+                <input type="number" class="cantidadMod" aria-label="Cantidad" value="${mod.numero}">
+                <button type="button" class="quitar-mod" title="Eliminar modificador" aria-label="Eliminar modificador">×</button>
+            </li>`).join("");
+    };
+
+    // Muestra los campos del tipo (activa / pasiva), del uso (parte / arma) y del daño
+    const actualizarCampos = () => {
+        const tipo = campo("arteTipo").value;
+        const uso = campo("arteUsoTipo").value;
+        const haceDanno = campo("arteHaceDanno").checked;
+        modalEl.querySelectorAll("[data-tipo-arte], [data-uso], [data-danno]").forEach(el => {
+            const visible = (!el.dataset.tipoArte || el.dataset.tipoArte === tipo)
+                && (!el.dataset.uso || el.dataset.uso === uso)
+                && (el.dataset.danno === undefined || haceDanno);
+            el.style.display = visible ? "" : "none";
+        });
+    };
+    modalEl.addEventListener("change", actualizarCampos);
+
+    // Requisitos: al cambiar el tipo se ponen sus valores por defecto; lo demás se lee de la fila
+    campo("btnAnadirRequisitoArte").addEventListener("click", () => {
+        requisitos.push({ tipo: "habilidad", alternativo: false, ...REQUISITO_POR_DEFECTO.habilidad });
+        pintarRequisitos();
+    });
+    listaRequisitos.addEventListener("change", (e) => {
+        const fila = e.target.closest(".requisito-arte");
+        if (!fila) return;
+        const i = Number(fila.dataset.index);
+        if (e.target.classList.contains("req-tipo")) {
+            const tipo = e.target.value;
+            requisitos[i] = { tipo, alternativo: requisitos[i].alternativo, ...REQUISITO_POR_DEFECTO[tipo] };
+            pintarRequisitos();
+            return;
+        }
+        requisitos[i] = leerFilaRequisito(fila);
+        // El paso del valor cambia si la característica es el Aguante (admite ,5)
+        if (e.target.classList.contains("req-clave")) pintarRequisitos();
+    });
+    listaRequisitos.addEventListener("click", (e) => {
+        if (!e.target.closest(".quitar-mod")) return;
+        requisitos.splice(Number(e.target.closest(".requisito-arte").dataset.index), 1);
+        pintarRequisitos();
+    });
+
+    // Modificadores de las pasivas
+    campo("btnAnadirModArte").addEventListener("click", () => {
+        mods.push({ modificado: "regeneracion", numero: 1 });
+        pintarMods();
+    });
+    listaMods.addEventListener("change", (e) => {
+        const mod = mods[Number(e.target.closest(".mod-equipo")?.dataset.index)];
+        if (!mod) return;
+        if (e.target.classList.contains("listValores")) mod.modificado = e.target.value;
+        if (e.target.classList.contains("cantidadMod")) mod.numero = parseInt(e.target.value) || 0;
+    });
+    listaMods.addEventListener("click", (e) => {
+        if (!e.target.closest(".quitar-mod")) return;
+        mods.splice(Number(e.target.closest(".mod-equipo").dataset.index), 1);
+        pintarMods();
+    });
+
+    // Rellena el formulario con un arte (o con los valores por defecto)
+    const rellenar = (arte) => {
+        campo("formCrearArte").reset();
+        const datos = arte ?? cargarArte({ nombre: "", tipo: "activa" });
+        campo("arteNombre").value = arte ? datos.nombre : "";
+        campo("arteTipo").value = datos.tipo;
+        campo("arteRanuras").value = datos.ranuras;
+        campo("arteDescripcion").value = datos.descripcion;
+        campo("arteNotaRequisitos").value = datos.notaRequisitos;
+        requisitos = datos.requisitos.map(req => ({ ...req, tipos: req.tipos ? [...req.tipos] : undefined }));
+        mods = (datos.modificadores ?? []).map(mod => ({ ...mod }));
+        const activa = datos.tipo === "activa";
+        campo("arteCostePA").value = activa ? datos.costePA : 1;
+        campo("arteCombo").checked = activa && datos.combo;
+        campo("arteUsoTipo").value = activa ? datos.uso.tipo : "parte";
+        campo("arteUsoParte").value = activa && datos.uso.tipo === "parte" ? datos.uso.parte : "ninguna";
+        const armas = activa && datos.uso.tipo === "arma" ? datos.uso.armas : [];
+        campo("arteUsoArmas").querySelectorAll(".uso-arma").forEach(c => { c.checked = armas.includes(c.value); });
+        campo("arteUsoAmbasManos").checked = activa && datos.uso.tipo === "arma" && datos.uso.ambasManos;
+        campo("arteHaceDanno").checked = !activa || datos.haceDanno;
+        campo("arteDanno").value = activa ? datos.danno : 0;
+        campo("arteGolpes").value = activa ? datos.golpes : 1;
+        const elemental = activa ? datos.dannoElemental : {};
+        ELEMENTOS.forEach(e => { campo(`arteElem_${e}`).value = elemental?.[e] || 0; });
+        campo("detallesDannoElementalArte").open = ELEMENTOS.some(e => elemental?.[e] > 0);
+        marcarElementalesActivos(campo("arteDannoElemental"));
+        aviso.textContent = "";
+        pintarRequisitos();
+        pintarMods();
+        actualizarCampos();
+        const textoBoton = arte ? "Guardar" : "Crear";
+        campo("modalCrearArteLabel").textContent = arte ? "Editar arte" : "Crear arte";
+        campo("btnGuardarArte").title = textoBoton;
+        campo("btnGuardarArte").setAttribute("aria-label", textoBoton);
+    };
+
+    const guardar = () => {
+        const nombre = campo("arteNombre").value.trim();
+        if (!nombre) {
+            aviso.textContent = "Ponle un nombre al arte.";
+            campo("arteNombre").focus();
+            return;
+        }
+        // Un requisito de equipo sin ningún tipo marcado no tendría sentido
+        if (requisitos.some(req => req.tipos && req.tipos.length === 0)) {
+            aviso.textContent = "Marca al menos un tipo en cada requisito de armadura, arma o escudo.";
+            return;
+        }
+        const tipo = campo("arteTipo").value;
+        const usoTipo = campo("arteUsoTipo").value;
+        const armas = [...campo("arteUsoArmas").querySelectorAll(".uso-arma:checked")].map(c => c.value);
+        if (tipo === "activa" && usoTipo === "arma" && armas.length === 0) {
+            aviso.textContent = "Marca al menos un arma con la que se usa el arte.";
+            return;
+        }
+        const numero = (id) => parseInt(campo(id).value) || 0;
+        const datos = {
+            // Al editar se conservan id, origen del catálogo, si está equipada, grupo y etiquetas
+            ...(edicion ? { id: edicion.id, idCatalogo: edicion.idCatalogo, equipada: edicion.equipada, grupo: edicion.grupo, etiquetas: edicion.etiquetas } : { grupo: "propia" }),
+            nombre, tipo,
+            descripcion: campo("arteDescripcion").value.trim(),
+            ranuras: Math.max(1, numero("arteRanuras")),
+            requisitos: requisitos.map(cargarRequisito).filter(Boolean),
+            notaRequisitos: campo("arteNotaRequisitos").value.trim(),
+            modificadores: mods,
+            costePA: Math.max(0, numero("arteCostePA")),
+            combo: campo("arteCombo").checked,
+            uso: usoTipo === "arma"
+                ? { tipo: "arma", armas, ambasManos: campo("arteUsoAmbasManos").checked }
+                : { tipo: "parte", parte: campo("arteUsoParte").value },
+            haceDanno: campo("arteHaceDanno").checked,
+            danno: Math.max(0, numero("arteDanno")),
+            golpes: Math.max(1, numero("arteGolpes")),
+            dannoElemental: Object.fromEntries(ELEMENTOS.map(e => [e, campo(`arteElem_${e}`).value]))
+        };
+        const arte = cargarArte(datos);
+        if (edicion) personaje.artes[personaje.artes.indexOf(edicion)] = arte;
+        else personaje.artes.push(arte);
+        personaje.calcularCaracteristicas();
+        reproducir("click");
+        actualizarTodo();
+        ventana.cerrar();
+    };
+
+    campo("btnGuardarArte").addEventListener("click", guardar);
+    campo("arteNombre").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); guardar(); }
+    });
+    modalEl.addEventListener("shown.bs.modal", () => campo("arteNombre").focus());
+
+    abrirEditorArte = (arte, origen) => {
+        edicion = arte;
+        rellenar(arte);
+        ventana.abrirDesde(origen);
+    };
+    campo("btnAbrirCrearArte").addEventListener("click", (e) => {
+        reproducir("click");
+        abrirEditorArte(null, e.target.closest(".modal"));
+    });
+}
+
+/* Catálogo de artes ___________________________________________________________ */
+
+const listaCatalogoArtesEl = document.getElementById("listaCatalogoArtes");
+/* Catálogo (data/artes.json), cargado al iniciar (cargarCatalogoArtes). Si no carga, la ficha sigue sin él. */
+let catalogoArtes = [];
+/* "cargando", "ok" o "error" */
+let estadoCatalogoArtes = "cargando";
+
+/* Texto sin tildes ni mayúsculas, para buscar */
+const normalizarTexto = (texto) => String(texto ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+
+function actualizarCatalogoArtes() {
+    if (estadoCatalogoArtes !== "ok") {
+        pintarLista(listaCatalogoArtesEl, `<p class="lista-vacia">${estadoCatalogoArtes === "cargando"
+            ? "Cargando el catálogo…"
+            : "No se pudo cargar el catálogo (data/artes.json). Abre la ficha con un servidor, p. ej. npx http-server."}</p>`);
+        return;
+    }
+    const busqueda = normalizarTexto(document.getElementById("catalogoBuscar").value.trim());
+    const grupo = document.getElementById("catalogoGrupo").value;
+    const tipo = document.getElementById("catalogoTipo").value;
+    const soloCumplo = document.getElementById("catalogoSoloCumplo").checked;
+    const tengo = new Set(personaje.artes.map(arte => arte.idCatalogo).filter(Boolean));
+
+    const visibles = catalogoArtes
+        .map((arte, i) => ({ arte, i }))
+        .filter(({ arte }) => (!grupo || arte.grupo === grupo) && (!tipo || arte.tipo === tipo)
+            && (!soloCumplo || cumpleRequisitos(personaje, arte))
+            && (!busqueda || normalizarTexto([arte.nombre, arte.descripcion, ...arte.etiquetas].join(" ")).includes(busqueda)));
+
+    // Agrupadas por grupo, en el orden de GRUPOS_ARTE
+    const html = Object.keys(GRUPOS_ARTE).map(clave => {
+        const delGrupo = visibles.filter(({ arte }) => arte.grupo === clave);
+        if (!delGrupo.length) return "";
+        return `<h6 class="grupo-catalogo">${GRUPOS_ARTE[clave]}</h6>`
+            + delGrupo.map(({ arte, i }) => filaArte(arte, i, { enCatalogo: true, yaLaTiene: tengo.has(arte.id) })).join("");
+    }).join("");
+    pintarLista(listaCatalogoArtesEl, html || `<p class="lista-vacia">Ningún arte coincide con los filtros.</p>`);
+}
+
+function inicializarCatalogoArtes() {
+    const ventana = crearVentanaHija(document.getElementById("modalCatalogoArtes"));
+    document.getElementById("catalogoGrupo").innerHTML = `<option value="">Todos los grupos</option>` +
+        Object.entries(GRUPOS_ARTE).filter(([clave]) => clave !== "propia")
+            .map(([clave, etiqueta]) => `<option value="${clave}">${etiqueta}</option>`).join("");
+    ["catalogoBuscar", "catalogoGrupo", "catalogoTipo", "catalogoSoloCumplo"].forEach(id => {
+        document.getElementById(id).addEventListener("input", actualizarCatalogoArtes);
+    });
+
+    document.getElementById("btnAbrirCatalogoArtes").addEventListener("click", (e) => {
+        reproducir("click");
+        actualizarCatalogoArtes();
+        ventana.abrirDesde(e.target.closest(".modal"));
+    });
+
+    listaCatalogoArtesEl.addEventListener("click", (e) => {
+        const boton = e.target.closest('button[data-accion="anadir"]');
+        const arte = catalogoArtes[Number(boton?.closest(".fila-objeto")?.dataset.index)];
+        if (!boton || boton.disabled || !arte) return;
+        reproducir("click");
+        personaje.artes.push(copiarDelCatalogo(arte));
+        actualizarTodo();
+        mostrarPopupInfo("Arte añadida", [`${escaparHtml(arte.nombre)} está en las artes sin equipar.`]);
+    });
+}
+
 /* Menú de opciones: cargar y guardar personaje, silencio ___________________ */
 function inicializarOpciones() {
     crearMenuSao({
@@ -3087,7 +3716,24 @@ function inicializarDebug() {
     if (!new URLSearchParams(window.location.search).has("debug")) return;
 
     // Acceso desde la consola del navegador: fichaDebug.personaje, fichaDebug.ejecutar()...
-    window.fichaDebug = { personaje, ejecutar: () => ejecutarDebug(personaje), crearPersonajePrueba, validarFicha };
+    window.fichaDebug = {
+        personaje, ejecutar: () => ejecutarDebug(personaje), crearPersonajePrueba, validarFicha,
+        // Artes: el catálogo cargado y los requisitos de cada una para este personaje
+        get catalogoArtes() { return catalogoArtes; },
+        // Copia un arte del catálogo a las artes sin equipar, p. ej. fichaDebug.anadirArte("golpe-horizontal")
+        anadirArte: (id) => {
+            const arte = catalogoArtes.find(a => a.id === id);
+            if (!arte) return `No existe "${id}" en el catálogo`;
+            personaje.artes.push(copiarDelCatalogo(arte));
+            actualizarTodo();
+            return `${arte.nombre} añadida a las artes sin equipar`;
+        },
+        requisitosArtes: () => catalogoArtes.map(arte => {
+            const { cumple, obligatorios, alternativos } = estadoRequisitos(personaje, arte);
+            const marcar = (lista) => lista.map(r => `${r.ok ? "✓" : "✗"} ${r.texto}`).join(", ");
+            return { id: arte.id, cumple, obligatorios: marcar(obligatorios), alternativos: marcar(alternativos) };
+        })
+    };
 
     const boton = document.createElement("button");
     boton.type = "button";
@@ -3130,7 +3776,22 @@ function mostrarInformeDebug() {
     document.body.appendChild(panel);
 }
 
+/* Catálogo de artes (data/artes.json). Si no carga, la ficha sigue funcionando sin él. */
+function cargarCatalogoArtes() {
+    descargarCatalogo()
+        .then(catalogo => {
+            catalogoArtes = catalogo;
+            estadoCatalogoArtes = "ok";
+        })
+        .catch(error => {
+            estadoCatalogoArtes = "error";
+            console.warn("No se pudo cargar el catálogo de artes:", error);
+        })
+        .finally(actualizarCatalogoArtes);
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+    cargarCatalogoArtes();
     construirManosEquipamiento();
     inicializarEquipamiento();
     inicializarBloquesElementales();
@@ -3145,6 +3806,9 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarDanno();
     inicializarZona();
     inicializarMenuInventario();
+    inicializarArtes();
+    inicializarFormularioArte();
+    inicializarCatalogoArtes();
     inicializarObjetos();
     inicializarCor();
     precargarSonidos();

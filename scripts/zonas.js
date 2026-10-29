@@ -49,7 +49,8 @@ export const MOTIVOS_ZONA = {
     baul: "Solo en la base se pueden mover objetos entre el baúl y el inventario",
     crearEnBaul: "Solo en la base se pueden crear objetos en el baúl",
     habilidades: "Los puntos de habilidad solo se reparten en zona segura o en la base",
-    danno: "En zona segura y en la base no se recibe daño"
+    danno: "En zona segura y en la base no se recibe daño",
+    artes: "Solo se pueden cambiar las artes equipadas en zona segura o en la base"
 };
 
 /**

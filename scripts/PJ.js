@@ -2,6 +2,7 @@ import Equipamiento from "./equipamiento.js";
 import Modificador, { TURNOS_PERMANENTE, cargarModificador } from "./modificador.js";
 import { TAMANO_INVENTARIO, crearInventarioVacio, cargarObjeto, cargarBaul, cargarEquipo } from "./objetos.js";
 import { ZONAS, ZONA_POR_DEFECTO } from "./zonas.js";
+import { cargarArtes, modificadorArtes } from "./artes.js";
 
 export { TAMANO_INVENTARIO };
 
@@ -111,6 +112,9 @@ export default class PJ {
 
         this.espaciosArte = 0;
         this.vMovimiento = 3;
+
+        /* Artes (formato de data/artes.schema.json; lógica en artes.js): equipadas y sin equipar */
+        this.artes = [];
 
         /* Bloques de texto */
         this.notas = ""; /* String, como todos */
@@ -299,6 +303,9 @@ export default class PJ {
 
         acumulado += this.getModificadorEstados(atributo);
 
+        // Artes pasivas equipadas que cumplen sus requisitos (los requisitos usan valores base: sin recursión)
+        acumulado += modificadorArtes(this, atributo);
+
         return acumulado;
     }
 
@@ -366,6 +373,9 @@ export default class PJ {
         /* Modificadores */
         this.modificadores = Array.isArray(jsonObject.modificadores) ? jsonObject.modificadores.map(cargarModificador) : [];
 
+        /* Artes (las fichas antiguas no tienen: lista vacía; su texto sigue en listadoArtes) */
+        this.artes = cargarArtes(jsonObject.artes);
+
         // Los valores derivados (vidaMax, defensa, aguante...) no se leen: se recalculan
         this.calcularCaracteristicas();
     }
@@ -406,7 +416,9 @@ export default class PJ {
             manoIzquierda: this.manoIzquierda,
             accesorios: this.accesorios,
 
-            modificadores: this.modificadores
+            modificadores: this.modificadores,
+
+            artes: this.artes
         });
     }
 

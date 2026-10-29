@@ -454,6 +454,24 @@
     border-top: 2px solid rgba(209, 171, 82, 0.6);
 }
 
+/* Título de cada golpe cuando un arte hace varios */
+.popup-golpe {
+    font-size: 12px;
+    font-weight: bold;
+    color: #d1ab52;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-family: 'SAOUI', sans-serif !important;
+}
+
+/* Popup de daño sin tirada (artes): descripción del arte encima del bloque de daño */
+.popup-descripcion {
+    font-size: 12px;
+    color: #e8e8e8;
+    line-height: 1.35;
+    white-space: pre-wrap;
+}
+
 .popup-danno .popup-total-wrapper {
     border-top: none;
     padding-top: 0;

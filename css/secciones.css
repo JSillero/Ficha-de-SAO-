@@ -1168,6 +1168,109 @@
     border-left-color: #c0392b;
 }
 
+/* Artes pasivas (columna derecha, bajo Modificadores): mismo aspecto que los modificadores */
+.lista-artes-pasivas {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.arte-pasiva {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 5px 8px;
+    border: 1px solid #d1ab52;
+    border-left-width: 4px;
+    border-radius: 5px;
+    background: #fffdf7;
+    font-size: 12px;
+}
+
+/* Se pulsa para ver su detalle */
+.arte-pasiva {
+    cursor: pointer;
+    transition: box-shadow 0.15s;
+}
+
+.arte-pasiva:hover,
+.arte-pasiva:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(209, 171, 82, 0.6);
+}
+
+.arte-pasiva.inactiva {
+    cursor: default;
+    box-shadow: none;
+    border-color: #bbb;
+    background: #f4f4f4;
+    color: #777;
+}
+
+.arte-pasiva-cabecera {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.arte-pasiva-icono {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+}
+
+.arte-pasiva.inactiva .arte-pasiva-icono {
+    opacity: 0.45;
+}
+
+.arte-pasiva-nombre {
+    flex: 1;
+    font-weight: bold;
+    font-size: 13px;
+}
+
+.arte-pasiva-estado {
+    padding: 0 7px;
+    border-radius: 10px;
+    background: #fbe4e1;
+    color: #c0392b;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.arte-pasiva-mods {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.chip-mod-pasiva {
+    padding: 0 7px;
+    border-radius: 10px;
+    font-weight: bold;
+}
+
+.chip-mod-pasiva.positivo { background: #e3f1e4; color: #2e7d32; }
+.chip-mod-pasiva.negativo { background: #fbe4e1; color: #c0392b; }
+
+/* Inactiva: el efecto no se aplica, los modificadores salen tachados */
+.arte-pasiva.inactiva .chip-mod-pasiva {
+    background: #e6e6e6;
+    color: #888;
+    text-decoration: line-through;
+}
+
+.arte-pasiva-descripcion {
+    color: #555;
+    font-style: italic;
+    white-space: pre-wrap;
+}
+
+.arte-pasiva-motivo {
+    color: #c0392b;
+    font-weight: bold;
+}
+
 .fila-mod-cabecera {
     display: flex;
     align-items: center;
@@ -1422,10 +1525,36 @@
         gap: 6px;
     }
 
-    .modal-sao .modal-header .btn-crear-objeto {
+    .modal-sao .modal-header .btn-crear-objeto,
+    .modal-sao .modal-header .botones-cabecera-modal {
         position: static;
         translate: none;
     }
+}
+
+/* Varios botones a la derecha de la cabecera (artes sin equipar: catálogo y crear arte),
+   con el mismo aspecto que "+ Crear objeto" */
+.modal-sao .modal-header .botones-cabecera-modal {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    translate: 0 -50%;
+    display: flex;
+    gap: 6px;
+}
+
+.btn-cabecera {
+    padding: 4px 12px;
+    background: #3478bf;
+    color: #fbfbfb;
+    border: none;
+    border-radius: 6px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.btn-cabecera:hover {
+    background: #2a62a0;
 }
 
 .contador-objetos {
@@ -1620,6 +1749,188 @@
     font-style: italic;
     color: #555;
     white-space: pre-wrap;
+}
+
+/* Artes equipadas: un hueco (fila de la rejilla) por ranura de memoria;
+   un arte de N ranuras ocupa N filas (--ranuras, puesto en filaArte) */
+.lista-ranuras-artes {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: minmax(52px, auto);
+    gap: 6px;
+}
+
+.lista-ranuras-artes .fila-arte {
+    grid-row: span var(--ranuras, 1);
+    align-content: center;
+}
+
+/* Requisitos de cada arte: verde si se cumple, rojo si no; la nota no se comprueba */
+.arte-requisitos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 3px 0;
+}
+
+.req-arte,
+.req-arte-grupo {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+}
+
+.req-arte.ok { background: #e3f1e4; color: #2e7d32; }
+.req-arte.no { background: #fbe4e1; color: #c0392b; }
+.req-arte.nota { background: #f3efe3; color: #6b5420; font-style: italic; }
+
+.req-arte-grupo {
+    padding: 1px 4px 1px 7px;
+    border: 1px dashed currentColor;
+}
+
+.req-arte-grupo.ok { color: #2e7d32; }
+.req-arte-grupo.no { color: #c0392b; }
+
+/* Arte equipada que no cumple sus requisitos: sigue equipada pero sin efecto */
+.fila-arte.inactiva {
+    background: #f4f4f4;
+}
+
+.fila-arte.inactiva .objeto-icono {
+    opacity: 0.45;
+}
+
+.arte-inactiva {
+    margin-top: 2px;
+    font-size: 12px;
+    font-weight: bold;
+    color: #c0392b;
+}
+
+/* Formulario de artes */
+.form-objeto .campo-crece {
+    flex: 1;
+    min-width: 180px;
+}
+
+.form-objeto .campo-crece input {
+    flex: 1;
+    min-width: 0;
+}
+
+.lista-requisitos-arte {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.requisito-arte {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 6px 8px;
+    border: 1px solid #e3d3a6;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.requisito-arte .req-valor {
+    width: 70px;
+}
+
+.requisito-arte .quitar-mod {
+    margin-left: auto;
+}
+
+.casillas-tipos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+}
+
+.casilla-tipo {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.etiqueta-campo {
+    font-weight: bold;
+    color: #666;
+}
+
+.pista-form {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: #666;
+}
+
+/* Catálogo de artes */
+.filtros-catalogo {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin-bottom: 10px;
+}
+
+.filtros-catalogo input[type="search"] {
+    flex: 1;
+    min-width: 180px;
+}
+
+.filtros-catalogo input[type="search"],
+.filtros-catalogo select {
+    padding: 4px 6px;
+    border: 1px solid #bbb;
+    border-radius: 4px;
+}
+
+.filtros-catalogo label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0;
+    font-size: 13px;
+}
+
+.grupo-catalogo {
+    margin: 8px 0 0;
+    font-size: 14px;
+    font-weight: bold;
+    color: #8a6d2a;
+}
+
+.grupo-catalogo:first-child {
+    margin-top: 0;
+}
+
+.notas-artes {
+    margin-top: 12px;
+}
+
+.notas-artes summary {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: #555;
+}
+
+.notas-artes .texto-modal {
+    min-height: 120px;
+    margin-top: 6px;
 }
 
 .objeto-acciones {

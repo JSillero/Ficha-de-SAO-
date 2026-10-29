@@ -166,6 +166,53 @@ function tirarDados(objetoResultado, criticoFacil) {
  * Genera y muestra el pop-up en la esquina inferior izquierda.
  * @param {ResultadoTirada} resultado
  */
+/**
+ * Bloque de daño del popup: desglose, total y daño elemental (aparte del físico, un valor por
+ * elemento con su color). Con total 0 y solo daño elemental, el total no se muestra.
+ * etiqueta: título del bloque cuando hay varios golpes (p. ej. "Golpe 2 · Espada").
+ * @param {{ total: number, desglose?: string[], notas?: string[], elemental?: { cantidad, etiqueta, color?, colorTexto? }[], etiqueta?: string }} danno
+ */
+function htmlBloqueDanno({ total, desglose = [], notas = [], elemental = [], etiqueta = "" }) {
+    const elementalHtml = elemental.length ? `
+        <div class="popup-elemental">${elemental.map(({ cantidad, etiqueta, color, colorTexto }) =>
+            `<span class="popup-elemento" style="--color:${color ?? "#9B59B6"};--color-texto:${colorTexto ?? "#FBFBFB"}">+${cantidad} ${etiqueta}</span>`).join("")}
+        </div>` : "";
+    const totalHtml = total > 0 || !elemental.length ? `
+        <div class="popup-total-wrapper">
+            <span class="popup-total-label">DAÑO</span>
+            <span class="popup-total-valor">${total}</span>
+        </div>` : "";
+    return `
+    <div class="popup-danno">
+        ${etiqueta ? `<div class="popup-golpe">${etiqueta}</div>` : ""}
+        ${desglose.length ? `<div class="popup-operacion">${desglose.join(" + ")}</div>` : ""}
+        ${totalHtml}${elementalHtml}
+        ${notas.map(nota => `<div class="popup-nota">${nota}</div>`).join("")}
+    </div>`;
+}
+
+/**
+ * Popup de daño sin tirada (p. ej. un arte, que no falla): mismo estilo que el de las tiradas,
+ * sin dados. Un bloque de daño por golpe. Los textos ya deben venir escapados.
+ * @param {{ titulo: string, subtitulo?: string, descripcion?: string, golpes: object[] }} datos
+ */
+export function mostrarPopupDanno({ titulo, subtitulo = "", descripcion = "", golpes }) {
+    const contenedor = document.getElementById('contenedor-popups-dados');
+    if (!contenedor) return;
+    const popup = document.createElement('div');
+    popup.className = "popup-dado popup-sin-dados";
+    popup.innerHTML = `
+        <div class="popup-header">
+            <strong class="popup-titulo">${titulo}</strong>
+        </div>
+        ${subtitulo ? `<div class="popup-subtitulo">${subtitulo}</div>` : ""}
+        ${descripcion ? `<div class="popup-descripcion">${descripcion}</div>` : ""}
+        ${golpes.map(htmlBloqueDanno).join("")}
+    `;
+    contenedor.appendChild(popup);
+    popup.addEventListener('click', () => popup.remove());
+}
+
 function crearPopupResultado(resultado) {
     const contenedor = document.getElementById('contenedor-popups-dados');
     if (!contenedor) return;
@@ -217,24 +264,7 @@ function crearPopupResultado(resultado) {
     if (valorBonif) sumandos.push(`${valorBonif > 0 ? "+" : "−"} ${Math.abs(valorBonif)} (${resultado.etiquetaBonificador})`);
 
     // Bloque de daño (ataques)
-    let dannoHtml = "";
-    if (resultado.danno) {
-        const { total, desglose = [], notas = [], elemental = [] } = resultado.danno;
-        // Daño elemental: aparte del físico, un valor por elemento con su color
-        const elementalHtml = elemental.length ? `
-            <div class="popup-elemental">${elemental.map(({ cantidad, etiqueta, color, colorTexto }) =>
-                `<span class="popup-elemento" style="--color:${color ?? "#9B59B6"};--color-texto:${colorTexto ?? "#FBFBFB"}">+${cantidad} ${etiqueta}</span>`).join("")}
-            </div>` : "";
-        dannoHtml = `
-        <div class="popup-danno">
-            <div class="popup-operacion">${desglose.join(" + ")}</div>
-            <div class="popup-total-wrapper">
-                <span class="popup-total-label">DAÑO</span>
-                <span class="popup-total-valor">${total}</span>
-            </div>${elementalHtml}
-            ${notas.map(nota => `<div class="popup-nota">${nota}</div>`).join("")}
-        </div>`;
-    }
+    const dannoHtml = resultado.danno ? htmlBloqueDanno(resultado.danno) : "";
 
     popup.innerHTML = `
         <div class="popup-header">

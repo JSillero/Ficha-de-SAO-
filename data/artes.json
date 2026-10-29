@@ -1,0 +1,545 @@
+{
+  "version": 1,
+  "artes": [
+    {
+      "id": "punalada-paralizadora", "nombre": "Puñalada paralizadora", "tipo": "pasiva", "grupo": "cuchillo",
+      "etiquetas": ["cuchillo", "sigilo", "paralisis"],
+      "descripcion": "Si un golpe sigiloso quita la mitad de la vida o más al objetivo, queda paralizado 3 horas o hasta que alguien le ataque o un aliado le ayude.",
+      "ranuras": 1,
+      "requisitos": [
+        { "tipo": "arma", "tipos": ["cuchillo"] },
+        { "tipo": "habilidad", "clave": "subterfugio", "valor": 20 }
+      ],
+      "notaRequisitos": "Haber hecho un golpe sigiloso con un cuchillo.",
+      "modificadores": []
+    },
+
+    {
+      "id": "lanza-punzante", "nombre": "Lanza punzante", "tipo": "activa", "grupo": "lanza",
+      "etiquetas": ["lanza", "ignora-armadura", "distancia"],
+      "descripcion": "Golpe teledirigido (no falla) que ignora toda armadura. Si el enemigo no tiene armadura, +4 de daño. Puede ser a distancia lanzando la lanza.",
+      "ranuras": 1,
+      "requisitos": [
+        { "tipo": "arma", "tipos": ["lanza"] },
+        { "tipo": "habilidad", "clave": "combate", "valor": 8 }
+      ],
+      "notaRequisitos": "",
+      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["lanza"] }, "danno": 0, "haceDanno": true
+    },
+    {
+      "id": "volver-al-remitente", "nombre": "Volver al remitente", "tipo": "pasiva", "grupo": "lanza",
+      "etiquetas": ["lanza", "arrojadiza"],
+      "descripcion": "Gastando una acción, recuperas el arma principal lanzada si está a menos de 50 m.",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "arma", "tipos": ["lanza"] }],
+      "notaRequisitos": "Matar a un boss con un objeto arrojadizo.",
+      "modificadores": []
+    },
+
+    {
+      "id": "estocada-punzante", "nombre": "Estocada punzante", "tipo": "activa", "grupo": "estoque",
+      "etiquetas": ["estoque", "combo", "ignora-armadura"],
+      "descripcion": "Golpe teledirigido (no falla) que ignora toda armadura. Sin armadura: +2 de daño. Permite combos.",
+      "ranuras": 1,
+      "requisitos": [
+        { "tipo": "arma", "tipos": ["estoque"] },
+        { "tipo": "habilidad", "clave": "combate", "valor": 8 }
+      ],
+      "notaRequisitos": "",
+      "costePA": 1, "combo": true, "uso": { "tipo": "arma", "armas": ["estoque"] }, "danno": 0, "haceDanno": true
+    },
+    {
+      "id": "estocada-relampagueante", "nombre": "Estocada relampagueante", "tipo": "activa", "grupo": "estoque",
+      "etiquetas": ["estoque", "combo", "teletransporte", "paralisis"],
+      "descripcion": "Golpe teledirigido a distancia doble de lo normal. El usuario se teletransporta al objetivo dejando un rastro de rayo. Combos permitidos. +1 de daño por cada 10 de distancia; a partir de 40 de distancia, paraliza 1 turno.",
+      "ranuras": 1,
+      "requisitos": [
+        { "tipo": "arma", "tipos": ["estoque"] },
+        { "tipo": "habilidad", "clave": "atletismo", "valor": 36 }
+      ],
+      "notaRequisitos": "Tener Estocada punzante.",
+      "costePA": 1, "combo": true, "uso": { "tipo": "arma", "armas": ["estoque"] }, "danno": 0, "haceDanno": true
+    },
+    {
+      "id": "y-tiro-porque-me-toca", "nombre": "¡Y tiro porque me toca!", "tipo": "pasiva", "grupo": "estoque",
+      "etiquetas": ["estoque", "critico"],
+      "descripcion": "Al hacer un crítico con el estoque, puedes usar otra acción con el mismo brazo.",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "habilidad", "clave": "combate", "valor": 16 }],
+      "notaRequisitos": "Haber usado Estocada punzante.",
+      "modificadores": []
+    },
+
+    {
+      "id": "golpe-horizontal-pesado", "nombre": "Golpe horizontal pesado", "tipo": "activa", "grupo": "espadon",
+      "etiquetas": ["espadon", "area"],
+      "descripcion": "No puede fallar ni bloquearse, +6 de daño, afecta hasta a 3 enemigos delante del usuario.",
+      "ranuras": 1,
+      "requisitos": [
+        { "tipo": "arma", "tipos": ["espadon"] },
+        { "tipo": "habilidad", "clave": "combate", "valor": 10 }
+      ],
+      "notaRequisitos": "",
+      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["espadon"] }, "danno": 6, "haceDanno": true
+    },
+
+    {
+      "id": "golpe-horizontal", "nombre": "Golpe horizontal", "tipo": "activa", "grupo": "espada",
+      "etiquetas": ["espada", "hemorragia"],
+      "descripcion": "No falla ni se bloquea, +4 de daño. Causa hemorragia (2 de daño por turno durante 3 turnos).",
+      "ranuras": 1,
+      "requisitos": [
+        { "tipo": "arma", "tipos": ["espada"] },
+        { "tipo": "habilidad", "clave": "combate", "valor": 7 }
+      ],
+      "notaRequisitos": "",
+      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["espada"] }, "danno": 4, "haceDanno": true
+    },
+    {
+      "id": "tajo-circular", "nombre": "Tajo circular", "tipo": "activa", "grupo": "espada",
+      "etiquetas": ["espada", "area"],
+      "descripcion": "No falla; daña a todos los enemigos alrededor (círculo) con dos golpes seguidos.",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "habilidad", "clave": "combate", "valor": 20 }],
+      "notaRequisitos": "Tener Golpe horizontal o similar.",
+      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["espada"] }, "danno": 0, "golpes": 2, "haceDanno": true
+    },
+    {
+      "id": "tajo-x", "nombre": "Tajo X", "tipo": "activa", "grupo": "espada",
+      "etiquetas": ["espada", "dual", "hemorragia"],
+      "descripcion": "Gasta las acciones de las dos manos; dos golpes que no fallan con ambas armas. Causa hemorragia (2 por turno, 3 turnos).",
+      "ranuras": 1,
+      "requisitos": [
+        { "tipo": "arma", "tipos": ["espada"], "ambasManos": true },
+        { "tipo": "habilidad", "clave": "combate", "valor": 10 }
+      ],
+      "notaRequisitos": "El manual también admite hachas de una mano dobles, pero el hacha es de dos manos.",
+      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["espada"], "ambasManos": true }, "danno": 0, "golpes": 2, "haceDanno": true
+    },
+    {
+      "id": "tajo-estilo-netheriano", "nombre": "Tajo estilo Netheriano", "tipo": "activa", "grupo": "espada",
+      "etiquetas": ["espada", "ceguera", "wither", "reliquia"],
+      "descripcion": "Nube de cenizas que ciega a los enemigos 2 turnos y bloquea la visión. Golpe que no falla; el objetivo recibe wither (2 de daño por turno hasta dejarlo a 1 PV; no puede matar).",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "arma", "tipos": ["espada"] }],
+      "notaRequisitos": "Solo con la Espada de las cenizas equipada. Requisito oculto: lo desbloquea el máster.",
+      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["espada"] }, "danno": 0, "haceDanno": true
+    },
+    {
+      "id": "duelista-dual", "nombre": "Duelista dual", "tipo": "pasiva", "grupo": "espada",
+      "etiquetas": ["espada", "dual", "ventaja"],
+      "descripcion": "Si aciertas un golpe este turno, al siguiente golpe +2 a la tirada y tiras con ventaja.",
+      "ranuras": 1,
+      "requisitos": [
+        { "tipo": "arma", "tipos": ["espada"], "ambasManos": true },
+        { "tipo": "habilidad", "clave": "combate", "valor": 20 }
+      ],
+      "notaRequisitos": "",
+      "modificadores": []
+    },
+
+    {
+      "id": "hachazo-destructor", "nombre": "Hachazo destructor", "tipo": "activa", "grupo": "hacha",
+      "etiquetas": ["hacha", "rompe-escudo"],
+      "descripcion": "No falla, rompe el escudo del objetivo; +4 de daño si no tiene escudo.",
+      "ranuras": 1,
+      "requisitos": [
+        { "tipo": "arma", "tipos": ["hacha"] },
+        { "tipo": "habilidad", "clave": "combate", "valor": 10 }
+      ],
+      "notaRequisitos": "",
+      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["hacha"] }, "danno": 0, "haceDanno": true
+    },
+    {
+      "id": "hachazo-demoledor", "nombre": "Hachazo demoledor", "tipo": "activa", "grupo": "hacha",
+      "etiquetas": ["hacha", "rompe-armadura"],
+      "descripcion": "No falla; destruye la armadura del objetivo durante todo el combate; el objetivo sigue teniendo el 50 % de la penalización de Atletismo de la armadura (salvo que sea parte de su cuerpo). Hace solo el 50 % del daño (ya aplicada la reducción de armadura).",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "habilidad", "clave": "combate", "valor": 20 }],
+      "notaRequisitos": "Tener Hachazo destructor.",
+      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["hacha"] }, "danno": 0, "haceDanno": true
+    },
+    {
+      "id": "fallo-impactante", "nombre": "Fallo impactante", "tipo": "pasiva", "grupo": "hacha",
+      "etiquetas": ["hacha", "aturdido"],
+      "descripcion": "Cuando fallas un golpe con hacha, el objetivo queda aturdido: si ataca en su siguiente turno tira con desventaja; si ya tiraba con desventaja, −2.",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "habilidad", "clave": "combate", "valor": 15 }],
+      "notaRequisitos": "Tener Hachazo destructor.",
+      "modificadores": []
+    },
+
+    {
+      "id": "golpe-conmocionador", "nombre": "Golpe conmocionador", "tipo": "activa", "grupo": "martillo",
+      "etiquetas": ["martillo_guerra", "ignora-armadura", "aturdido"],
+      "descripcion": "Golpe brutal que no falla. Ignora la mitigación de armadura del enemigo hasta que pase un turno completo. El objetivo pierde una de sus tres acciones en su siguiente turno. El usuario queda aturdido ese turno (no se puede mover).",
+      "ranuras": 1,
+      "requisitos": [
+        { "tipo": "arma", "tipos": ["martillo_guerra"] },
+        { "tipo": "habilidad", "clave": "combate", "valor": 10 }
+      ],
+      "notaRequisitos": "",
+      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["martillo_guerra"] }, "danno": 0, "haceDanno": true
+    },
+    {
+      "id": "golpe-rompedor", "nombre": "Golpe rompedor", "tipo": "activa", "grupo": "martillo",
+      "etiquetas": ["martillo_guerra", "ignora-armadura", "rompe-armadura"],
+      "descripcion": "No falla, ignora armadura. Si el enemigo no usa escudo y lleva armadura media o pesada, la abolla: protección a la mitad hasta que la repare un armero. Si no tiene armadura o es ligera u orgánica: +10 de daño.",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "habilidad", "clave": "combate", "valor": 20 }],
+      "notaRequisitos": "Tener Golpe conmocionador.",
+      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["martillo_guerra"] }, "danno": 0, "haceDanno": true
+    },
+    {
+      "id": "barrido-sismico", "nombre": "Barrido sísmico", "tipo": "activa", "grupo": "martillo",
+      "etiquetas": ["martillo_guerra", "area", "aturdido"],
+      "descripcion": "Gasta las acciones de las dos manos. Onda en cono; no falla; hasta 3 enemigos delante. Los impactados quedan aturdidos y no pueden guardar reacción ese turno. El usuario queda aturdido dos turnos.",
+      "ranuras": 1,
+      "requisitos": [
+        { "tipo": "arma", "tipos": ["martillo_guerra"] },
+        { "tipo": "habilidad", "clave": "combate", "valor": 35 }
+      ],
+      "notaRequisitos": "",
+      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["martillo_guerra"] }, "danno": 0, "haceDanno": true
+    },
+    {
+      "id": "inercia-castigadora", "nombre": "Inercia castigadora", "tipo": "pasiva", "grupo": "martillo",
+      "etiquetas": ["martillo_guerra", "ventaja"],
+      "descripcion": "Si en una tirada de ataque cualquiera de los tres dados es un 10 (aunque no sea el elegido), el siguiente ataque que reciba ese enemigo se tira con ventaja.",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "habilidad", "clave": "combate", "valor": 40 }],
+      "notaRequisitos": "Haber usado Golpe conmocionador. El manual dice \"40 o superior\" sin decir de qué; se supone Combate.",
+      "modificadores": []
+    },
+
+    {
+      "id": "bloqueo-de-arte", "nombre": "Bloqueo de arte", "tipo": "activa", "grupo": "escudo",
+      "etiquetas": ["escudo", "reaccion", "aturdido"],
+      "descripcion": "Fuera de tu turno, bloquea cualquier arte cuerpo a cuerpo con el escudo; el adversario queda aturdido un turno.",
+      "ranuras": 1,
+      "requisitos": [
+        { "tipo": "escudo", "tipos": ["escudo", "gran_escudo"] },
+        { "tipo": "armadura", "tipos": ["media", "pesada"] }
+      ],
+      "notaRequisitos": "",
+      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["escudo", "gran_escudo"] }, "danno": 0, "haceDanno": false
+    },
+    {
+      "id": "rebota-rebota", "nombre": "Rebota rebota", "tipo": "activa", "grupo": "escudo",
+      "etiquetas": ["gran_escudo", "devolver-danno"],
+      "descripcion": "Todo el daño que bloquee el escudo durante el turno en que se activa se devuelve como onda expansiva imbloqueable.",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "escudo", "tipos": ["gran_escudo"] }],
+      "notaRequisitos": "",
+      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["gran_escudo"] }, "danno": 0, "haceDanno": false
+    },
+    {
+      "id": "escudo-pegajoso", "nombre": "Escudo pegajoso", "tipo": "pasiva", "grupo": "escudo",
+      "etiquetas": ["escudo", "desarmar"],
+      "descripcion": "Cuando un enemigo golpea tu escudo, 33 % de que su arma se quede pegada. Para despegarla: prueba de fuerza (Fortaleza + dado medio) mayor que 11.",
+      "ranuras": 1,
+      "requisitos": [
+        { "tipo": "escudo", "tipos": ["escudo", "gran_escudo"] },
+        { "tipo": "habilidad", "clave": "combate", "valor": 20, "alternativo": true },
+        { "tipo": "caracteristica", "clave": "voluntad", "valor": 7, "alternativo": true }
+      ],
+      "notaRequisitos": "",
+      "modificadores": []
+    },
+
+    {
+      "id": "inspeccionar-arma", "nombre": "Inspeccionar arma", "tipo": "activa", "grupo": "profesion",
+      "etiquetas": ["herrero", "informacion"],
+      "descripcion": "Ventana visible por todos los que no sean desconocidos con: daño extra del arma, modificador a la tirada de acierto, habilidad especial y valor. No gasta PA en zona segura.",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "habilidad", "clave": "cultura", "valor": 10 }],
+      "notaRequisitos": "Profesión herrero.",
+      "costePA": 1, "combo": false, "uso": { "tipo": "parte", "parte": "cabeza" }, "danno": 0, "haceDanno": false
+    },
+    {
+      "id": "puas-toxicas", "nombre": "Púas tóxicas", "tipo": "activa", "grupo": "profesion",
+      "etiquetas": ["alquimista", "pocion", "trampa"],
+      "descripcion": "Mientras tengas una poción con efecto negativo en el inventario, sueltas púas con ese efecto; cualquier hostil que se acerque tira 1d2: con 1, 4 de daño y el efecto de la poción. Gasta la poción.",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "habilidad", "clave": "profesion", "valor": 15 }],
+      "notaRequisitos": "Profesión alquimista.",
+      "costePA": 1, "combo": false, "uso": { "tipo": "parte", "parte": "derecha" }, "danno": 0, "haceDanno": false
+    },
+    {
+      "id": "puas-imbuidas", "nombre": "Púas imbuidas", "tipo": "activa", "grupo": "profesion",
+      "etiquetas": ["alquimista", "pocion", "trampa", "area"],
+      "descripcion": "Sueltas púas en un radio de 4 casillas con el efecto de una poción (la gasta). Efecto negativo: los hostiles que se muevan en el radio tiran 1d2; con 1, 4 de daño y el efecto. Efecto positivo: los no hostiles que se muevan en el radio tiran 1d2; con 1, el efecto. Tras 3 activaciones las púas desaparecen.",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "habilidad", "clave": "profesion", "valor": 55 }],
+      "notaRequisitos": "Profesión alquimista.",
+      "costePA": 1, "combo": false, "uso": { "tipo": "parte", "parte": "derecha" }, "danno": 0, "haceDanno": false
+    },
+    {
+      "id": "inyeccion-a-distancia", "nombre": "Inyección a distancia", "tipo": "pasiva", "grupo": "profesion",
+      "etiquetas": ["alquimista", "pocion", "distancia"],
+      "descripcion": "Usar daga, dardo o similar con poción positiva sobre un miembro de grupo no falla.",
+      "ranuras": 1,
+      "requisitos": [],
+      "notaRequisitos": "Profesión alquimista y haber usado con éxito un arma a distancia con una poción positiva sobre un miembro de grupo.",
+      "modificadores": []
+    },
+
+    {
+      "id": "control-de-pecho", "nombre": "Control de pecho", "tipo": "pasiva", "grupo": "atletismo",
+      "etiquetas": ["proteger", "reaccion"],
+      "descripcion": "Cuando un aliado cercano va a recibir un golpe (con el daño ya decidido), puedes recibirlo tú. No afecta a artes.",
+      "ranuras": 1,
+      "requisitos": [
+        { "tipo": "caracteristica", "clave": "aguante", "valor": 9 },
+        { "tipo": "habilidad", "clave": "atletismo", "valor": 15 }
+      ],
+      "notaRequisitos": "",
+      "modificadores": []
+    },
+    {
+      "id": "regeneracion-1", "nombre": "Regeneración nivel 1", "tipo": "pasiva", "grupo": "atletismo",
+      "etiquetas": ["regeneracion"],
+      "descripcion": "+1 PV por turno.",
+      "ranuras": 1,
+      "requisitos": [
+        { "tipo": "caracteristica", "clave": "fortaleza", "valor": 7, "alternativo": true },
+        { "tipo": "habilidad", "clave": "atletismo", "valor": 16, "alternativo": true }
+      ],
+      "notaRequisitos": "",
+      "modificadores": [{ "modificado": "regeneracion", "numero": 1 }]
+    },
+    {
+      "id": "regeneracion-2", "nombre": "Regeneración nivel 2", "tipo": "pasiva", "grupo": "atletismo",
+      "etiquetas": ["regeneracion"],
+      "descripcion": "+4 PV por turno.",
+      "ranuras": 1,
+      "requisitos": [
+        { "tipo": "nivel", "valor": 31 },
+        { "tipo": "caracteristica", "clave": "fortaleza", "valor": 8, "alternativo": true },
+        { "tipo": "habilidad", "clave": "atletismo", "valor": 26, "alternativo": true }
+      ],
+      "notaRequisitos": "Supuesto: el nivel 31 se exige por las dos vías.",
+      "modificadores": [{ "modificado": "regeneracion", "numero": 4 }]
+    },
+    {
+      "id": "regeneracion-3", "nombre": "Regeneración nivel 3", "tipo": "pasiva", "grupo": "atletismo",
+      "etiquetas": ["regeneracion"],
+      "descripcion": "+8 PV por turno.",
+      "ranuras": 1,
+      "requisitos": [
+        { "tipo": "nivel", "valor": 46 },
+        { "tipo": "caracteristica", "clave": "fortaleza", "valor": 9, "alternativo": true },
+        { "tipo": "habilidad", "clave": "atletismo", "valor": 36, "alternativo": true }
+      ],
+      "notaRequisitos": "Supuesto: el nivel 46 se exige por las dos vías.",
+      "modificadores": [{ "modificado": "regeneracion", "numero": 8 }]
+    },
+
+    {
+      "id": "modo-detective", "nombre": "Modo detective", "tipo": "activa", "grupo": "percepcion",
+      "etiquetas": ["rastreo", "informacion"],
+      "descripcion": "Resalta huellas y rastros de jugadores o enemigos; los objetos importantes o fuera de sitio brillan en amarillo. El uso prolongado da un gran dolor de ojos.",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "habilidad", "clave": "percepcion", "valor": 11 }],
+      "notaRequisitos": "",
+      "costePA": 1, "combo": false, "uso": { "tipo": "parte", "parte": "cabeza" }, "danno": 0, "haceDanno": false
+    },
+    {
+      "id": "ojo-identificador", "nombre": "Ojo identificador", "tipo": "activa", "grupo": "percepcion",
+      "etiquetas": ["informacion"],
+      "descripcion": "Durante 10 minutos ves las estadísticas de habilidades de jugadores, NPC o mobs en los que te concentres.",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "habilidad", "clave": "percepcion", "valor": 20 }],
+      "notaRequisitos": "",
+      "costePA": 1, "combo": false, "uso": { "tipo": "parte", "parte": "cabeza" }, "danno": 0, "haceDanno": false
+    },
+    {
+      "id": "vision-de-futuro", "nombre": "Visión de futuro", "tipo": "pasiva", "grupo": "percepcion",
+      "etiquetas": ["movimiento", "informacion"],
+      "descripcion": "Ves como una sombra amarilla hasta dónde se pueden mover los enemigos.",
+      "ranuras": 1,
+      "requisitos": [
+        { "tipo": "habilidad", "clave": "cultura", "valor": 15 },
+        { "tipo": "caracteristica", "clave": "inteligencia", "valor": 5 }
+      ],
+      "notaRequisitos": "",
+      "modificadores": []
+    },
+
+    {
+      "id": "invisibilidad-basica", "nombre": "Invisibilidad básica", "tipo": "activa", "grupo": "sigilo",
+      "etiquetas": ["sigilo", "invisible"],
+      "descripcion": "Invisible hasta hacer un ruido fuerte o atacar.",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "habilidad", "clave": "subterfugio", "valor": 12 }],
+      "notaRequisitos": "",
+      "costePA": 1, "combo": false, "uso": { "tipo": "parte", "parte": "pies" }, "danno": 0, "haceDanno": false
+    },
+    {
+      "id": "loot-plus", "nombre": "Loot +", "tipo": "pasiva", "grupo": "sigilo",
+      "etiquetas": ["botin"],
+      "descripcion": "Encuentras más objetos en cofres y mobs.",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "habilidad", "clave": "subterfugio", "valor": 15 }],
+      "notaRequisitos": "",
+      "modificadores": []
+    },
+    {
+      "id": "ninja-run", "nombre": "Ninja run", "tipo": "pasiva", "grupo": "sigilo",
+      "etiquetas": ["sigilo", "movimiento"],
+      "descripcion": "Corriendo sin armas equipadas, +5 a la distancia. Correr sin armas ya no penaliza el sigilo (permite correr en sigilo sin armas).",
+      "ranuras": 1,
+      "requisitos": [
+        { "tipo": "habilidad", "clave": "atletismo", "valor": 25 },
+        { "tipo": "habilidad", "clave": "subterfugio", "valor": 15 }
+      ],
+      "notaRequisitos": "",
+      "modificadores": []
+    },
+
+    {
+      "id": "discurso-motivador", "nombre": "Discurso motivador", "tipo": "activa", "grupo": "carisma",
+      "etiquetas": ["apoyo", "grupo"],
+      "descripcion": "A los que lo oyen en zona no PvP o a tu grupo o gremio: +3 a Combate y Defensa hasta el final del día y +1 PA (solo una vez).",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "habilidad", "clave": "comunicacion", "valor": 15 }],
+      "notaRequisitos": "",
+      "costePA": 1, "combo": false, "uso": { "tipo": "parte", "parte": "cabeza" }, "danno": 0, "haceDanno": false
+    },
+    {
+      "id": "ha-sido-el", "nombre": "¡Ha sido él!", "tipo": "activa", "grupo": "carisma",
+      "etiquetas": ["reaccion", "redirigir"],
+      "descripcion": "Cambia el objetivo de una acción dirigida a ti; el nuevo objetivo debe estar al alcance del atacante.",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "habilidad", "clave": "comunicacion", "valor": 25 }],
+      "notaRequisitos": "",
+      "costePA": 1, "combo": false, "uso": { "tipo": "parte", "parte": "cabeza" }, "danno": 0, "haceDanno": false
+    },
+    {
+      "id": "aura-motivadora", "nombre": "Aura motivadora", "tipo": "pasiva", "grupo": "carisma",
+      "etiquetas": ["apoyo", "grupo", "aura"],
+      "descripcion": "Todos a 20 pies del usuario obtienen +5 a Combate y Atletismo (no afecta al usuario).",
+      "ranuras": 1,
+      "requisitos": [
+        { "tipo": "habilidad", "clave": "comunicacion", "valor": 15 },
+        { "tipo": "nivel", "valor": 46 }
+      ],
+      "notaRequisitos": "",
+      "modificadores": []
+    },
+
+    {
+      "id": "analisis-de-debilidades", "nombre": "Análisis de debilidades", "tipo": "activa", "grupo": "cultura",
+      "etiquetas": ["informacion"],
+      "descripcion": "Aparece una lista de debilidades del mob que miras fijamente. Dura 10 minutos.",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "habilidad", "clave": "cultura", "valor": 20 }],
+      "notaRequisitos": "",
+      "costePA": 1, "combo": false, "uso": { "tipo": "parte", "parte": "cabeza" }, "danno": 0, "haceDanno": false
+    },
+    {
+      "id": "lore-dumping", "nombre": "Lore dumping", "tipo": "pasiva", "grupo": "cultura",
+      "etiquetas": ["dormido", "social"],
+      "descripcion": "Si hablas a un enemigo que pueda responder ese turno, puedes soltarle la chapa. Ambos tiráis 3d10 (tú con ventaja o desventaja según lo que sepas del tema; él según su interés). Quien saque menos se queda dormido 5 turnos (hasta que le despierten).",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "habilidad", "clave": "cultura", "valor": 20 }],
+      "notaRequisitos": "Que otro usuario se haya dormido mientras hablabas.",
+      "modificadores": []
+    },
+
+    {
+      "id": "fo-krah-dinn", "nombre": "Fo Krah Dinn", "tipo": "activa", "grupo": "gritos",
+      "etiquetas": ["grito", "hielo", "area"],
+      "descripcion": "Aliento gélido: 15 de daño elemental de hielo (atraviesa armaduras) a todo lo que haya delante (30 de distancia). Afectados: Atletismo a la mitad durante 2 turnos.",
+      "ranuras": 1,
+      "requisitos": [],
+      "notaRequisitos": "Arte aleatoria de las rocas dragón del piso 3.",
+      "costePA": 1, "combo": false, "uso": { "tipo": "parte", "parte": "cabeza" }, "danno": 0,
+      "dannoElemental": { "hielo": 15 }, "haceDanno": true
+    },
+    {
+      "id": "yol-toor-shul", "nombre": "Yol Toor Shul", "tipo": "activa", "grupo": "gritos",
+      "etiquetas": ["grito", "fuego", "area"],
+      "descripcion": "Aliento de fuego: 20 de daño elemental de fuego (atraviesa armaduras) a todo lo de delante (30 de distancia). Afectados: quemaduras 3 turnos.",
+      "ranuras": 1,
+      "requisitos": [],
+      "notaRequisitos": "Arte aleatoria de las rocas dragón del piso 5.",
+      "costePA": 1, "combo": false, "uso": { "tipo": "parte", "parte": "cabeza" }, "danno": 0,
+      "dannoElemental": { "fuego": 20 }, "haceDanno": true
+    },
+
+    {
+      "id": "piedra-papel-tijeras", "nombre": "¡Piedra, papel, tijeras!", "tipo": "activa", "grupo": "underworld",
+      "etiquetas": ["underworld", "aleatorio"],
+      "descripcion": "Tira 1d4. 1: hacha láser: no falla, rompe escudo; +6 de daño si no hay escudo; suma dos veces el bono CaC. 2: lanza láser: sin armadura, +4 de daño; suma dos veces el bono CaC. 3: espada láser: +4 de daño; suma dos veces el bono CaC; puedes volver a atacar con esa arma este turno. 4: vuelve a tirar el dado y ganas 1 PA.",
+      "ranuras": 1,
+      "requisitos": [],
+      "notaRequisitos": "Derrotar al guardián del collar de Ramuh.",
+      "costePA": 1, "combo": false, "uso": { "tipo": "parte", "parte": "derecha" }, "danno": 0, "haceDanno": false
+    },
+    {
+      "id": "hellfire", "nombre": "¡Hellfire!", "tipo": "activa", "grupo": "underworld",
+      "etiquetas": ["underworld", "fuego", "area"],
+      "descripcion": "Todos (incluidos aliados) en 10 m tiran 1d2; con 1 reciben X de daño elemental de fuego, con X = bonificador a distancia × 3.",
+      "ranuras": 1,
+      "requisitos": [],
+      "notaRequisitos": "Derrotar al guardián de la máscara de Ifrit.",
+      "costePA": 1, "combo": false, "uso": { "tipo": "parte", "parte": "cabeza" }, "danno": 0, "haceDanno": false
+    },
+    {
+      "id": "rayo-laputiense", "nombre": "Rayo Laputiense", "tipo": "activa", "grupo": "underworld",
+      "etiquetas": ["underworld", "distancia", "area"],
+      "descripcion": "Rayo hasta 100 m donde mires; X de daño en un radio de 2 m, con X = bonificador a distancia × 4.",
+      "ranuras": 1,
+      "requisitos": [],
+      "notaRequisitos": "Derrotar al guardián de las castañuelas de Titán.",
+      "costePA": 1, "combo": false, "uso": { "tipo": "parte", "parte": "cabeza" }, "danno": 0, "haceDanno": false
+    },
+    {
+      "id": "cambio-atmosferico", "nombre": "Cambio atmosférico", "tipo": "activa", "grupo": "underworld",
+      "etiquetas": ["underworld", "clima", "area"],
+      "descripcion": "Cambia el tiempo de la zona a elección. Sol sagrado (Solussia): +1 PV por turno a todos los jugadores e inmunidad a estados alterados. Luna demoníaca (Lunaria): −1 PV por turno a todos los jugadores e impide curarse; +1 PV por turno a los NPC e inmunidad a estados. Tormenta: inunda la zona; movimiento a la mitad en una dirección y ×2 en la contraria. Granizo: 3 de daño por turno a toda entidad no cubierta.",
+      "ranuras": 2,
+      "requisitos": [],
+      "notaRequisitos": "Derrotar a Leviathan, dios del agua, el viento y el tiempo.",
+      "costePA": 4, "combo": false, "uso": { "tipo": "parte", "parte": "cabeza" }, "danno": 0, "haceDanno": false
+    },
+
+    {
+      "id": "escudo-sagrado", "nombre": "Escudo sagrado", "tipo": "pasiva", "grupo": "ocultas",
+      "etiquetas": ["escudo", "unica"],
+      "descripcion": "Usar un escudo sin usar ninguna mano; los escudos grandes usan una mano en vez de dos.",
+      "ranuras": 1,
+      "requisitos": [],
+      "notaRequisitos": "A partir del piso 30, el jugador con más Inteligencia la obtiene.",
+      "modificadores": []
+    },
+    {
+      "id": "espada-sacra", "nombre": "Espada sacra", "tipo": "pasiva", "grupo": "ocultas",
+      "etiquetas": ["dos-manos", "unica"],
+      "descripcion": "Usar un arma de dos manos como si fuera de una mano.",
+      "ranuras": 1,
+      "requisitos": [],
+      "notaRequisitos": "A partir del piso 30, el jugador con más Fortaleza la obtiene.",
+      "modificadores": []
+    },
+    {
+      "id": "doble-empunadura", "nombre": "Doble empuñadura", "tipo": "pasiva", "grupo": "ocultas",
+      "etiquetas": ["espada", "dual", "unica"],
+      "descripcion": "Usar dos artes a la vez con dos espadas (iguales o distintas). No confundir con las artes de espadas duales (que son una sola arte). Cada espada puede usarse por separado (puedes no atacar con una y usar un objeto como si tuvieras la mano libre). Solo se pierde 1 PA por turno.",
+      "ranuras": 1,
+      "requisitos": [],
+      "notaRequisitos": "A partir del piso 30, el jugador con más Reflejos la obtiene.",
+      "modificadores": []
+    },
+    {
+      "id": "tozudo", "nombre": "Tozudo", "tipo": "pasiva", "grupo": "ocultas",
+      "etiquetas": ["social", "control-mental"],
+      "descripcion": "+4 a la tirada de resistencia a la convicción e inmunidad al control mental.",
+      "ranuras": 1,
+      "requisitos": [{ "tipo": "caracteristica", "clave": "voluntad", "valor": 6 }],
+      "notaRequisitos": "",
+      "modificadores": []
+    }
+  ]
+}

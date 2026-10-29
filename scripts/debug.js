@@ -6,6 +6,7 @@ import PJ, { ESTADOS_LISTA } from "./PJ.js";
 import Equipamiento from "./equipamiento.js";
 import Modificador, { TURNOS_PERMANENTE } from "./modificador.js";
 import { cargarObjeto } from "./objetos.js";
+import { cargarArte, artesEquipadas, ranurasUsadas, motivoRequisitos } from "./artes.js";
 
 /* Ids de la interfaz que no coinciden con el nombre del campo en PJ */
 const ALIAS_INTERFAZ = { arte: "puntosArte" };
@@ -113,6 +114,27 @@ export function crearPersonajePrueba() {
         Object.assign(new Modificador("hasta descansar", "combate", 1, TURNOS_PERMANENTE), { descansoCorto: true }),
         deComida
     ];
+    // Artes: una activa con todos los campos (requisitos de cada tipo) y una pasiva con modificadores
+    pj.artes = [
+        cargarArte({
+            id: "prueba-activa", idCatalogo: "golpe-horizontal", equipada: true, nombre: "activa", tipo: "activa",
+            grupo: "espada", etiquetas: ["espada"], descripcion: "golpe", ranuras: 2, notaRequisitos: "nota",
+            requisitos: [
+                { tipo: "nivel", valor: 16 },
+                { tipo: "caracteristica", clave: "aguante", valor: 4.5 },
+                { tipo: "habilidad", clave: "combate", valor: 3, alternativo: true },
+                { tipo: "armadura", tipos: ["ligera", "media"], alternativo: true },
+                { tipo: "arma", tipos: ["espada"], ambasManos: true },
+                { tipo: "escudo", tipos: ["escudo"] }
+            ],
+            costePA: 2, combo: true, uso: { tipo: "arma", armas: ["espada"], ambasManos: false },
+            danno: 4, dannoElemental: { fuego: 1, electricidad: 0, hielo: 0, luz: 0, oscuridad: 2 }, golpes: 2, haceDanno: true
+        }),
+        cargarArte({
+            id: "prueba-pasiva", idCatalogo: null, equipada: false, nombre: "pasiva", tipo: "pasiva", grupo: "propia",
+            descripcion: "regenera", requisitos: [], modificadores: [{ modificado: "regeneracion", numero: 2 }]
+        })
+    ];
     pj.calcularCaracteristicas();
     return pj;
 }
@@ -212,6 +234,17 @@ export function validarFicha(pj) {
     if (pj.enSigilo && pj.equipoArmadura?.tipo === "pesada") {
         avisos.push("En sigilo con armadura pesada: no debería ser posible.");
     }
+
+    if (pj.cor < 0) avisos.push(`Cor negativo (${pj.cor}).`);
+
+    // Artes: memoria y requisitos (un arte que deja de cumplirlos queda inactiva, no se desequipa)
+    if (ranurasUsadas(pj) > pj.espaciosArte) {
+        avisos.push(`Artes equipadas ocupan ${ranurasUsadas(pj)} de memoria y solo hay ${pj.espaciosArte}.`);
+    }
+    artesEquipadas(pj).forEach(arte => {
+        const motivo = motivoRequisitos(pj, arte);
+        if (motivo) avisos.push(`Arte inactiva "${arte.nombre}": ${motivo}.`);
+    });
 
     return avisos;
 }

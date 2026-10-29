@@ -137,17 +137,19 @@
                             <img class="icono-on" src="./imgs/inventario_on.svg" alt="">
                         </button>
                         <div id="menuInventario" class="menu-sao" role="menu" aria-label="Inventario y baúl" hidden></div>
-                        <!-- Amigos y Artes abren su ventana (el sonido de menú sale solo al abrir un modal) -->
+                        <!-- Amigos abre su ventana (el sonido de menú sale solo al abrir un modal) -->
                         <button type="button" id="btnAmigos" class="btn-icono-sao btn-menu-amigos" title="Amigos" aria-label="Amigos"
                             data-bs-toggle="modal" data-bs-target="#modalAmigos">
                             <img class="icono-off" src="./imgs/amigos.svg" alt="">
                             <img class="icono-on" src="./imgs/amigos_on.svg" alt="">
                         </button>
+                        <!-- Artes: abre un menú (equipadas o sin equipar; inicializarArtes en interfaz.js) -->
                         <button type="button" id="btnArtes" class="btn-icono-sao btn-menu-artes" title="Artes" aria-label="Artes"
-                            data-bs-toggle="modal" data-bs-target="#modalArtes">
+                            aria-controls="menuArtes">
                             <img class="icono-off" src="./imgs/artes.svg" alt="">
                             <img class="icono-on" src="./imgs/artes_on.svg" alt="">
                         </button>
+                        <div id="menuArtes" class="menu-sao" role="menu" aria-label="Artes" hidden></div>
                         <!-- Zona actual: abre el menú de zonas (inicializarZona en interfaz.js cambia el icono) -->
                         <button type="button" id="btnZona" class="btn-icono-sao btn-menu-zona" title="Zona no segura" aria-label="Cambiar de zona"
                             aria-controls="menuZona">
@@ -460,6 +462,10 @@
                 <h2 class="h2-con-boton">Modificadores <button type="button" id="anadirMod" class="btn-h2" title="Añadir modificador" aria-label="Añadir modificador">+</button></h2>
                 <div id="listadoModificadores" class="lista-modificadores"></div>
 
+                <!-- Solo si hay artes pasivas equipadas (actualizarArtesPasivas en interfaz.js) -->
+                <h2 id="tituloArtesPasivas" style="display: none;">Artes pasivas</h2>
+                <div id="listaArtesPasivas" class="lista-artes-pasivas" style="display: none;"></div>
+
                 <h2>Valores de combate </h2>
                 <!-- Generado desde VALORES_COMBATE (interfaz.js) -->
                 <div id="valoresCombateDiv" class="valores-combate"></div>
@@ -724,14 +730,158 @@
         </div>
     </div>
 
-    <div class="modal fade modal-sao" id="modalArtes" tabindex="-1" aria-labelledby="modalArtesLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
+    <!-- Artes equipadas: un hueco por cada ranura de memoria; un arte de N ranuras ocupa N huecos
+         (generado desde personaje.artes en actualizarArtes, interfaz.js) -->
+    <div class="modal fade modal-sao" id="modalArtesEquipadas" tabindex="-1" aria-labelledby="modalArtesEquipadasLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="modalArtesLabel">Artes</h5>
+                    <h5 class="modal-title" id="modalArtesEquipadasLabel">Artes equipadas <span id="memoriaArtes" class="contador-objetos" title="Memoria de artes usada / total"></span></h5>
                 </div>
                 <div class="modal-body">
-                    <textarea id="listadoArtes" class="texto-modal" placeholder="Artes equipadas"></textarea>
+                    <p id="avisoArtesEquipadas" class="aviso-zona" hidden></p>
+                    <div id="listaArtesEquipadas" class="lista-objetos lista-ranuras-artes"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Artes sin equipar: sin límite -->
+    <div class="modal fade modal-sao" id="modalArtesSinEquipar" tabindex="-1" aria-labelledby="modalArtesSinEquiparLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalArtesSinEquiparLabel">Artes sin equipar <span id="contadorArtesSinEquipar" class="contador-objetos"></span></h5>
+                    <div class="botones-cabecera-modal">
+                        <button type="button" id="btnAbrirCatalogoArtes" class="btn-cabecera">+ Catálogo</button>
+                        <button type="button" id="btnAbrirCrearArte" class="btn-cabecera">+ Crear arte</button>
+                    </div>
+                </div>
+                <div class="modal-body">
+                    <p id="avisoArtesSinEquipar" class="aviso-zona" hidden></p>
+                    <div id="listaArtesSinEquipar" class="lista-objetos"></div>
+                    <!-- Texto libre de las fichas antiguas (antes las artes se apuntaban aquí) -->
+                    <details class="notas-artes">
+                        <summary>Notas</summary>
+                        <textarea id="listadoArtes" class="texto-modal" placeholder="Notas sobre artes"></textarea>
+                    </details>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Crear o editar un arte (se abre desde las artes sin equipar o equipadas y vuelve a ellas al cerrarse).
+         Campos de requisitos y modificadores generados en inicializarFormularioArte (interfaz.js) -->
+    <div class="modal fade modal-sao" id="modalCrearArte" tabindex="-1" aria-labelledby="modalCrearArteLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalCrearArteLabel">Crear arte</h5>
+                </div>
+                <div class="modal-body">
+                    <form id="formCrearArte" class="form-objeto" novalidate>
+                        <div class="fila-campos">
+                            <label class="campo-crece">Nombre <input type="text" id="arteNombre" required></label>
+                            <label>Tipo
+                                <select id="arteTipo">
+                                    <option value="activa">Activa</option>
+                                    <option value="pasiva">Pasiva</option>
+                                </select>
+                            </label>
+                            <label title="Memoria de artes que ocupa">Ranuras <input type="number" id="arteRanuras" min="1" value="1"></label>
+                        </div>
+                        <div class="campo-objeto">
+                            <label for="arteDescripcion">Descripción (sale en la notificación al usarla)</label>
+                            <textarea id="arteDescripcion" rows="3"></textarea>
+                        </div>
+
+                        <!-- Requisitos: obligatorios y alternativos (basta con cumplir uno de los alternativos) -->
+                        <div class="campo-objeto">
+                            <div class="equipamiento-mods-header">
+                                <span>Requisitos:</span>
+                                <button type="button" id="btnAnadirRequisitoArte" class="btn-anadir-mod-objeto" title="Añadir requisito" aria-label="Añadir requisito">+</button>
+                            </div>
+                            <ul id="listaRequisitosArte" class="lista-requisitos-arte"></ul>
+                            <p class="pista-form">Hay que cumplir todos los requisitos obligatorios y, si hay alternativos, al menos uno de ellos. Habilidades y características se comparan con su valor base.</p>
+                        </div>
+                        <div class="campo-objeto">
+                            <label for="arteNotaRequisitos">Otros requisitos (no se comprueban: hazañas, artes previas, profesión…)</label>
+                            <input type="text" id="arteNotaRequisitos">
+                        </div>
+
+                        <!-- Pasiva: modificadores (también regeneración y resistencias) -->
+                        <div class="campo-objeto" data-tipo-arte="pasiva">
+                            <div class="equipamiento-mods-header">
+                                <span>Modificadores (mientras esté equipada y activa):</span>
+                                <button type="button" id="btnAnadirModArte" class="btn-anadir-mod-objeto" title="Añadir modificador" aria-label="Añadir modificador">+</button>
+                            </div>
+                            <ul id="listaModsArte" class="mods-equipo"></ul>
+                        </div>
+
+                        <!-- Activa: coste, qué usa y daño -->
+                        <div class="fila-campos" data-tipo-arte="activa">
+                            <label>Coste PA <input type="number" id="arteCostePA" min="0" value="1"></label>
+                            <label title="No gasta acción"><input type="checkbox" id="arteCombo"> Combo</label>
+                            <label>Usa
+                                <select id="arteUsoTipo">
+                                    <option value="parte">Una parte del cuerpo</option>
+                                    <option value="arma">Un arma</option>
+                                </select>
+                            </label>
+                            <label data-uso="parte">Parte <select id="arteUsoParte"></select></label>
+                        </div>
+                        <div class="campo-objeto" data-tipo-arte="activa" data-uso="arma">
+                            <span class="etiqueta-campo">Armas con las que se usa (gasta la acción de la mano que la lleve)</span>
+                            <div id="arteUsoArmas" class="casillas-tipos"></div>
+                            <label><input type="checkbox" id="arteUsoAmbasManos"> Con las dos manos (armas duales)</label>
+                        </div>
+                        <div class="fila-campos" data-tipo-arte="activa">
+                            <label title="Si no hace daño, al usarla solo sale la descripción"><input type="checkbox" id="arteHaceDanno" checked> Hace daño</label>
+                            <label data-danno title="Con arma se suma al daño del arma y al bonificador CaC">Daño extra <input type="number" id="arteDanno" min="0" value="0"></label>
+                            <label data-danno title="Ataques separados al usarla, cada uno con su daño. Con las dos manos, cada golpe usa un arma">Golpes <input type="number" id="arteGolpes" min="1" value="1"></label>
+                        </div>
+                        <div data-tipo-arte="activa" data-danno>
+                            <details id="detallesDannoElementalArte" class="acordeon-elemental">
+                                <summary>Daño elemental del arte</summary>
+                                <div id="arteDannoElemental" class="valores-elementales"></div>
+                            </details>
+                        </div>
+                        <p id="avisoCrearArte" class="aviso-objeto" role="alert"></p>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao aceptar" id="btnGuardarArte" title="Crear" aria-label="Crear"></button>
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cancelar" aria-label="Cancelar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Catálogo de artes (data/artes.json): añadir copias a las artes sin equipar -->
+    <div class="modal fade modal-sao" id="modalCatalogoArtes" tabindex="-1" aria-labelledby="modalCatalogoArtesLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalCatalogoArtesLabel">Catálogo de artes</h5>
+                </div>
+                <div class="modal-body">
+                    <div class="filtros-catalogo">
+                        <input type="search" id="catalogoBuscar" placeholder="Buscar por nombre o descripción" aria-label="Buscar">
+                        <select id="catalogoGrupo" aria-label="Grupo"></select>
+                        <select id="catalogoTipo" aria-label="Tipo">
+                            <option value="">Activas y pasivas</option>
+                            <option value="activa">Solo activas</option>
+                            <option value="pasiva">Solo pasivas</option>
+                        </select>
+                        <label><input type="checkbox" id="catalogoSoloCumplo"> Solo las que cumplo</label>
+                    </div>
+                    <div id="listaCatalogoArtes" class="lista-objetos"></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
