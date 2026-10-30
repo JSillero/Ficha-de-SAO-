@@ -86,7 +86,7 @@ export function avanzarEnfriamientos(pj) {
     return resumen;
 }
 
-/** Descanso largo: todas las habilidades listas. Devuelve las líneas del resumen. */
+/** Descanso corto (y por tanto también el largo): todas las habilidades listas. Devuelve las líneas del resumen. */
 export function reiniciarEnfriamientos(pj) {
     let reiniciadas = 0;
     for (const { equipo } of reliquiasEquipadas(pj)) {

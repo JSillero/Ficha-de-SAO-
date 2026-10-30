@@ -1,4 +1,5 @@
 // scripts/dados.js
+import { mostrarPopup } from "./popups.js";
 
 // Estado global para ventaja/desventaja (o puedes pasarlo por parámetro)
 
@@ -209,8 +210,7 @@ export function mostrarPopupDanno({ titulo, subtitulo = "", descripcion = "", go
         ${descripcion ? `<div class="popup-descripcion">${descripcion}</div>` : ""}
         ${golpes.map(htmlBloqueDanno).join("")}
     `;
-    contenedor.appendChild(popup);
-    popup.addEventListener('click', () => popup.remove());
+    mostrarPopup(popup, { titulo, tipo: "tirada" });
 }
 
 function crearPopupResultado(resultado) {
@@ -287,15 +287,6 @@ function crearPopupResultado(resultado) {
         ${dannoHtml}
     `;
 
-    // Añadir al contenedor
-    contenedor.appendChild(popup);
-
-    // Auto-eliminar a los 4.5 segundos con animación de salida
-    /*setTimeout(() => {
-        popup.classList.add('fade-out');
-        popup.addEventListener('animationend', () => popup.remove());
-    }, 4500);*/
-
-    // Cerrar de inmediato al hacer click
-    popup.addEventListener('click', () => popup.remove());
+    // Cierre automático, clic para cerrar e historial: popups.js
+    mostrarPopup(popup, { titulo: resultado.titulo, tipo: "tirada" });
 }

@@ -354,6 +354,10 @@ const GLIFOS = {
         <path class="f" d="M50 40L62 52H54V69H46V52H38Z"/>`,
     guardar: `
         <path class="p" d="M69 67.77v7.23h-7.23l7.23-7.23zm0-42.77v35.699l-14.302 14.301h-23.698v-50h38zm-19 25.25h-14v1.5h14v-1.5zm14-5.5h-28v1.5h28v-1.5zm0-5.5h-28v1.5h28v-1.5zm0-5.5h-28v1.5h28v-1.5zm-10.376 47.451l-2.917 1.326 1.326-2.917 1.591 1.591zm25.014-24.483l-2.121-2.121-24.042 24.041 2.121 2.121 24.042-24.041z"/>`,
+    /* Historial de avisos: reloj */
+    historial: `
+        <circle class="t" cx="50" cy="50" r="28" style="stroke-width:8"/>
+        <path class="t" d="M50 33V50L62 58" style="stroke-width:7"/>`,
 
     /* Zonas y descansos */
     mapa: `

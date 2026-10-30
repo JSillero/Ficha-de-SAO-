@@ -899,6 +899,26 @@
         </div>
     </div>
 
+    <!-- Historial de pop-ups de esta sesión (solo en memoria, popups.js; se abre desde el menú de opciones) -->
+    <div class="modal fade modal-sao" id="modalHistorialPopups" tabindex="-1" aria-labelledby="modalHistorialPopupsLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalHistorialPopupsLabel">Historial de avisos</h5>
+                    <div class="botones-cabecera-modal">
+                        <button type="button" id="btnVaciarHistorialPopups" class="btn-cabecera">Vaciar</button>
+                    </div>
+                </div>
+                <div class="modal-body">
+                    <div id="listaHistorialPopups" class="lista-historial-popups"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Contenedor de Notificaciones/Popups de Tiradas SAO -->
     <div id="contenedor-popups-dados"></div>
 

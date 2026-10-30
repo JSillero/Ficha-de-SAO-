@@ -85,7 +85,8 @@ const estadoActivo = (estado) => (Number(estado?.valor) || 0) > 0;
  * Descanso corto (zona segura). Termina:
  * - el efecto de la comida;
  * - los estados con duración en turnos (no permanentes) y los marcados "Descanso corto";
- * - los modificadores con duración en turnos y los marcados "Descanso corto" (personaje y equipo).
+ * - los modificadores con duración en turnos y los marcados "Descanso corto" (personaje y equipo);
+ * - el enfriamiento de las habilidades de reliquia (quedan listas).
  * No recarga los PA.
  * @returns {string[]} resumen legible
  */
@@ -110,6 +111,7 @@ export function descansoCorto(pj) {
         }
     }
 
+    resumen.push(...reiniciarEnfriamientos(pj));
     pj.calcularCaracteristicas();
     if (!resumen.length) resumen.push("Sin cambios");
     return resumen;
@@ -117,8 +119,7 @@ export function descansoCorto(pj) {
 
 /**
  * Descanso largo (base): todo lo del descanso corto y además cura todos los estados negativos
- * (también la oscuridad y los permanentes), recarga los PA, llena los PV y deja listas las
- * habilidades de reliquia.
+ * (también la oscuridad y los permanentes), recarga los PA y llena los PV.
  * @returns {string[]} resumen legible
  */
 export function descansoLargo(pj) {
@@ -139,7 +140,6 @@ export function descansoLargo(pj) {
         resumen.push(`PV: ${pj.vida} → ${pj.vidaMax}`);
         pj.vida = pj.vidaMax;
     }
-    resumen.push(...reiniciarEnfriamientos(pj));
     restablecerAcciones(pj);
 
     if (!resumen.length) resumen.push("Sin cambios");

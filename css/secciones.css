@@ -2097,7 +2097,7 @@
 body.modo-master .tipoEquipoTexto,
 body:not(.modo-master) .equipamiento .tipoEquipo,
 body:not(.modo-master) .btn-anadir-mod-equipo,
-body:not(.modo-master) .mods-equipo .quitar-mod {
+body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
     display: none;
 }
 

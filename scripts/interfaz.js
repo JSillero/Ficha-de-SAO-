@@ -19,6 +19,7 @@ import {
 } from "./turno.js";
 import { ESTADOS_INFO, TIPOS_DANNO, aplicarDanno, activarEstado, quitarEstado, estaActivo, estiloColor } from "./estados.js";
 import { iconoSao, tieneIconoSao } from "./iconos.js";
+import { mostrarPopup, getHistorialPopups, vaciarHistorialPopups } from "./popups.js";
 import {
     ZONAS, MOTIVOS_ZONA, cambiarZona, esZonaSegura, baulAccesible, puedeRepartirHabilidades, puedeRecibirDanno,
     descansoCorto, descansoLargo
@@ -309,7 +310,38 @@ function actualizarTodo() {
     actualizarAcciones();
     actualizarEstados();
     actualizarZona();
+    comprobarCambios();
 }
+
+/* Cambios sin guardar ______________________________________________________
+   hayCambiosSinGuardar pasa a true en cuanto la ficha difiere de la última
+   guardada o cargada (se compara el JSON, así sirve para cualquier campo, también
+   los nuevos). Vuelve a false al guardar o cargar. Si está a true, el navegador
+   pide confirmación antes de recargar o cerrar la página. */
+let hayCambiosSinGuardar = false;
+let fichaGuardada = null; // JSON de la ficha tal y como se guardó o cargó por última vez
+
+function marcarGuardado() {
+    fichaGuardada = personaje.toJSONString();
+    hayCambiosSinGuardar = false;
+}
+
+function comprobarCambios() {
+    if (fichaGuardada === null) return; // aún arrancando
+    hayCambiosSinGuardar = personaje.toJSONString() !== fichaGuardada;
+}
+
+// Los campos de texto actualizan el personaje sin pasar siempre por actualizarTodo
+document.addEventListener("input", comprobarCambios);
+document.addEventListener("change", comprobarCambios);
+
+window.addEventListener("beforeunload", (e) => {
+    comprobarCambios();
+    if (!hayCambiosSinGuardar) return;
+    // El navegador muestra su propio aviso ("¿Salir del sitio? Es posible que no se guarden los cambios")
+    e.preventDefault();
+    e.returnValue = "";
+});
 
 function actualizarInformacion() {
     inputNombre.value = personaje.nombre;
@@ -593,6 +625,7 @@ document.getElementById('fileInput').addEventListener('change', function (event)
                 personaje.cargarJSON(jsonData);
                 desbloqueosNaturalesVistos = null; // ficha nueva: no avisar de los desbloqueos que ya tenía
                 actualizarTodo();
+                marcarGuardado(); // recién cargada: no hay cambios que perder
                 reproducir("linkStart");
 
             } catch (error) {
@@ -1465,18 +1498,20 @@ function inicializarModsEquipo() {
 
 /* Habilidades de reliquia (reglas en reliquias.js) _________________________ */
 // Cada .reliquia-habilidades está dentro de la tarjeta de su ranura (mano o reliquia).
-// Se editan aquí mismo; las filas solo se regeneran si cambia cuántas hay.
+// Solo se editan aquí en modo master; si no, solo se usan (se crean en el formulario de objetos).
+// Las filas solo se regeneran si cambia cuántas hay.
 
-function filaHabilidadReliquia(indice, conUsar = true) {
+function filaHabilidadReliquia(indice, conUsar = true, editable = true) {
+    const soloLectura = editable ? "" : "readonly";
     return `<li class="habilidad-reliquia" data-index="${indice}">
         <div class="habilidad-fila">
-            <input type="text" class="nombreHabilidad" placeholder="Nombre de la habilidad" aria-label="Nombre de la habilidad">
+            <input type="text" class="nombreHabilidad" placeholder="Nombre de la habilidad" aria-label="Nombre de la habilidad" ${soloLectura}>
             <label class="habilidad-enfriamiento" title="Turnos de enfriamiento tras usarla">Enfr.
-                <input type="number" min="0" class="enfriamientoHabilidad" aria-label="Enfriamiento en turnos"></label>
+                <input type="number" min="0" class="enfriamientoHabilidad" aria-label="Enfriamiento en turnos" ${soloLectura}></label>
             ${conUsar ? `<button type="button" class="btn-usar-habilidad"></button>` : ""}
-            <button type="button" class="quitar-habilidad" title="Eliminar habilidad" aria-label="Eliminar habilidad">×</button>
+            ${editable ? `<button type="button" class="quitar-habilidad" title="Eliminar habilidad" aria-label="Eliminar habilidad">×</button>` : ""}
         </div>
-        <textarea class="descripcionHabilidad" rows="2" placeholder="Qué hace (sale como notificación al usarla)" aria-label="Descripción de la habilidad"></textarea>
+        <textarea class="descripcionHabilidad" rows="2" placeholder="Qué hace (sale como notificación al usarla)" aria-label="Descripción de la habilidad" ${soloLectura}></textarea>
     </li>`;
 }
 
@@ -1515,14 +1550,14 @@ function pintarHabilidadesReliquia() {
             caja.innerHTML = `
                 <div class="equipamiento-mods-header">
                     <span>Habilidades de reliquia:</span>
-                    <button type="button" class="btn-anadir-habilidad" title="Añadir habilidad" aria-label="Añadir habilidad">+</button>
+                    ${MODO_MASTER ? `<button type="button" class="btn-anadir-habilidad" title="Añadir habilidad" aria-label="Añadir habilidad">+</button>` : ""}
                 </div>
-                <ul class="lista-habilidades-reliquia" data-vacia="Sin habilidades: añade una con +"></ul>`;
+                <ul class="lista-habilidades-reliquia" data-vacia="${MODO_MASTER ? "Sin habilidades: añade una con +" : "Sin habilidades"}"></ul>`;
         }
         const ul = caja.querySelector(".lista-habilidades-reliquia");
         const habilidades = equipo.reliquia.habilidades;
         if (ul.children.length !== habilidades.length) {
-            ul.innerHTML = habilidades.map((_, i) => filaHabilidadReliquia(i)).join("");
+            ul.innerHTML = habilidades.map((_, i) => filaHabilidadReliquia(i, true, MODO_MASTER)).join("");
         }
         rellenarFilasHabilidades(ul, habilidades);
 
@@ -1566,7 +1601,7 @@ function inicializarHabilidadesReliquia() {
     };
 
     contenedor.addEventListener("click", (e) => {
-        const anadir = e.target.closest(".btn-anadir-habilidad");
+        const anadir = MODO_MASTER && e.target.closest(".btn-anadir-habilidad");
         if (anadir) {
             const habilidades = equipoDeRanura(personaje, ranuraDeTarjeta(anadir))?.reliquia?.habilidades;
             if (!habilidades) return;
@@ -1576,7 +1611,7 @@ function inicializarHabilidadesReliquia() {
             anadir.closest(".reliquia-habilidades").querySelector(".habilidad-reliquia:last-child .nombreHabilidad")?.focus();
             return;
         }
-        const quitar = e.target.closest(".reliquia-habilidades .quitar-habilidad");
+        const quitar = MODO_MASTER && e.target.closest(".reliquia-habilidades .quitar-habilidad");
         if (quitar) {
             const { ranura, indice, habilidad } = datosFila(quitar);
             if (!habilidad) return;
@@ -1593,7 +1628,8 @@ function inicializarHabilidadesReliquia() {
         }
     });
 
-    // Texto: se guarda al escribir, sin repintar (no se pierde el foco)
+    // Edición (solo en modo master). Texto: se guarda al escribir, sin repintar (no se pierde el foco)
+    if (!MODO_MASTER) return;
     contenedor.addEventListener("input", (e) => {
         if (!e.target.closest(".reliquia-habilidades")) return;
         const { habilidad } = datosFila(e.target);
@@ -1784,15 +1820,13 @@ const PARTES_SILUETA = {
 
 /* Popup informativo con el mismo estilo que los de dados */
 function mostrarPopupInfo(titulo, lineas) {
-    const contenedor = document.getElementById("contenedor-popups-dados");
-    if (!contenedor) return;
     const popup = document.createElement("div");
     popup.className = "popup-dado";
     popup.innerHTML = `
         <div class="popup-header"><strong class="popup-titulo">${titulo}</strong></div>
         <ul class="popup-lista">${lineas.map(l => `<li>${l}</li>`).join("")}</ul>`;
-    popup.addEventListener("click", () => popup.remove());
-    contenedor.appendChild(popup);
+    // Se cierra solo a los 8 s (popups.js)
+    mostrarPopup(popup, { titulo, tipo: "info" });
 }
 
 /* Botón de turno en cada zona: icono (imgs/), texto y lo que hace */
@@ -3059,6 +3093,7 @@ function inicializarOpciones() {
         opciones: () => [
             { clave: "cargar", etiqueta: "Cargar personaje", icono: "cargar" },
             { clave: "guardar", etiqueta: "Guardar personaje", icono: "guardar" },
+            { clave: "historial", etiqueta: "Historial de avisos", icono: "historial" },
             estaSilenciado()
                 ? { clave: "sonido", etiqueta: "Activar audio", icono: "silencio" }
                 : { clave: "sonido", etiqueta: "Silenciar audio", icono: "sonido" }
@@ -3075,7 +3110,16 @@ function inicializarOpciones() {
                     reproducir("click");
                     menu.cerrar({ sonido: false });
                     personaje.guardarJSON();
+                    marcarGuardado();
                     break;
+                case "historial": {
+                    reproducir("click");
+                    menu.cerrar({ sonido: false });
+                    const ventana = document.getElementById("modalHistorialPopups");
+                    ventana.dataset.sinSonidoAbrir = "1";
+                    bootstrap.Modal.getOrCreateInstance(ventana).show();
+                    break;
+                }
                 case "sonido":
                     // El menú sigue abierto para ver el cambio; al activar suena el click
                     setSilenciado(!estaSilenciado());
@@ -3084,6 +3128,32 @@ function inicializarOpciones() {
                     break;
             }
         }
+    });
+}
+
+/* Historial de pop-ups de la sesión (solo en memoria, popups.js) ____________ */
+function inicializarHistorialPopups() {
+    const ventana = document.getElementById("modalHistorialPopups");
+    const lista = document.getElementById("listaHistorialPopups");
+    const formatoHora = new Intl.DateTimeFormat("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+    const pintar = () => {
+        const entradas = getHistorialPopups().reverse();
+        lista.innerHTML = entradas.length
+            ? entradas.map(({ hora, html, clases }) => `
+                <div class="entrada-historial-popup">
+                    <span class="hora-historial-popup">${formatoHora.format(hora)}</span>
+                    <div class="${clases} popup-historial">${html}</div>
+                </div>`).join("")
+            : `<p class="historial-vacio">Sin avisos en esta sesión</p>`;
+    };
+
+    ventana.addEventListener("show.bs.modal", pintar);
+    // Si llega un aviso con la ventana abierta, se añade al momento
+    document.addEventListener("historialpopups", () => { if (ventana.classList.contains("show")) pintar(); });
+    document.getElementById("btnVaciarHistorialPopups").addEventListener("click", () => {
+        reproducir("click");
+        vaciarHistorialPopups();
     });
 }
 
@@ -3872,7 +3942,9 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarCor();
     precargarSonidos();
     inicializarOpciones();
+    inicializarHistorialPopups();
     inicializarBotonesModales();
     inicializarDebug();
     actualizarTodo();
+    marcarGuardado(); // ficha vacía de inicio: cerrar sin tocar nada no avisa
 });
