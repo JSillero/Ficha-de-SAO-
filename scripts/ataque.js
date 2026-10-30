@@ -76,8 +76,23 @@ export function calcularDannoAtaque(pj, item, critico) {
             `${conMult(bono, multBono)} (Bonif. CaC)`
         ],
         elemental: dannoElementalArma(item),
+        efecto: efectoDeObjeto(item?.pocionAplicada),
         notas
     };
+}
+
+/**
+ * Efecto que un golpe lleva al objetivo (poción aplicada al arma o efecto de una arrojadiza):
+ * { nombre, pv, estado, elemental }, o null si no hace nada. Va en el golpe para que quien lo
+ * reciba se lo aplique (aplicarEfectoEnObjetivo en objetos.js).
+ */
+export function efectoDeObjeto(objeto) {
+    if (!objeto) return null;
+    const pv = Number(objeto.pv) || 0;
+    const estado = objeto.estado?.clave ? { ...objeto.estado } : null;
+    const elemental = objeto.elemental?.tipo && Number(objeto.elemental.cantidad) > 0 ? { ...objeto.elemental } : null;
+    if (!pv && !estado && !elemental) return null;
+    return { nombre: objeto.nombre || "Poción", pv, estado, elemental };
 }
 
 /**
@@ -157,6 +172,7 @@ export function calcularDannoLanzamiento(pj, objeto, critico) {
             `${dannoObjeto} (Objeto)`,
             `${conMult(bono, multBono)} (Bonif. distancia)`
         ],
+        efecto: efectoDeObjeto(objeto),
         notas
     };
 }

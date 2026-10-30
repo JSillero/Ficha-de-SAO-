@@ -4,7 +4,7 @@
 
 import Modificador, { cargarModificador, TURNOS_PERMANENTE } from "./modificador.js";
 import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, cargarEquipamiento } from "./equipamiento.js";
-import { activarEstado, quitarEstado, ESTADOS_INFO, TIPOS_DANNO } from "./estados.js";
+import { activarEstado, quitarEstado, aplicarDanno, ESTADOS_INFO, TIPOS_DANNO } from "./estados.js";
 import { MANOS, gastarVarias, gastarTodas, partesDeMano, parteDeMano, manoVacia, puedeGastar } from "./turno.js";
 import { esZonaSegura } from "./zonas.js";
 
@@ -248,6 +248,44 @@ export function quitarComida(pj) {
 export function comer(pj, indice) {
     const objeto = pj.inventario[indice];
     if (objeto?.tipo !== "comida") return fallo("No es comida.");
+    const resumen = efectoComida(pj, objeto);
+    consumir(pj, indice);
+    return exito(...resumen);
+}
+
+/* Ofrecer comida o pociones a otro jugador ____________________________________
+   Ofrecer gasta la acción de una mano libre y una unidad del inventario; quien la recibe la consume
+   gastando la acción de la boca (consumirOfrecido). Si no la consume, se pierde. */
+
+export const TIPOS_OFRECIBLES = ["comida", "pocion"];
+
+/** Saca una unidad del inventario para ofrecerla. Devuelve { ok, resumen, objeto } (objeto = la unidad) */
+export function ofrecerObjeto(pj, indice, gastar = gastarEstricto(pj), nombreDestino = "otro jugador") {
+    const objeto = pj.inventario[indice];
+    if (!TIPOS_OFRECIBLES.includes(objeto?.tipo)) return fallo("Solo se puede ofrecer comida o pociones.");
+    const mano = manoParaUsar(pj);
+    if (!mano) return fallo("Necesitas una mano libre para ofrecerlo.");
+    if (!gastar([parteDeMano(mano)], `Ofrecer ${objeto.nombre} a ${nombreDestino}`)) return fallo("Sin acción en la mano libre.");
+    const unidad = { ...copiar(objeto), cantidad: 1 };
+    consumir(pj, indice);
+    return { ok: true, resumen: [`Ofreces ${objeto.nombre} a ${nombreDestino}`], objeto: unidad };
+}
+
+/** Consume comida o una poción que te han ofrecido (datos de otro jugador: se normalizan). Gasta la boca. */
+export function consumirOfrecido(pj, datos, gastar = gastarEstricto(pj)) {
+    const objeto = cargarObjeto(datos);
+    if (!TIPOS_OFRECIBLES.includes(objeto?.tipo)) return fallo("Solo se puede consumir comida o pociones.");
+    if (objeto.tipo === "pocion") {
+        const motivo = motivoNoBeber(pj, objeto);
+        if (motivo) return fallo(motivo);
+    }
+    if (!gastar(["cabeza"], `${objeto.tipo === "comida" ? "Comer" : "Beber"} ${objeto.nombre}`)) return fallo("Sin acción de boca.");
+    const resumen = objeto.tipo === "comida" ? efectoComida(pj, objeto) : aplicarEfectoPocion(pj, objeto);
+    return { ok: true, resumen, objeto };
+}
+
+/* Efecto de comer: sustituye a la comida anterior (sus modificadores y estado llevan origen "comida") */
+function efectoComida(pj, objeto) {
     const anterior = quitarComida(pj);
     objeto.modificadores.forEach(mod => {
         const nuevo = new Modificador(objeto.nombre || "Comida", mod.modificado, Number(mod.numero) || 0, TURNOS_PERMANENTE);
@@ -256,12 +294,11 @@ export function comer(pj, indice) {
     });
     pj.comidaActiva = objeto.nombre || "Comida";
     const lineasEstado = aplicarEstadoObjeto(pj, objeto.estado, "comida");
-    consumir(pj, indice);
     pj.calcularCaracteristicas();
     const resumen = [`Comes ${pj.comidaActiva}`, ...lineasEstado];
     if (anterior) resumen.push(`Pierdes el efecto de ${anterior}`);
     resumen.push("Dura hasta el siguiente descanso corto");
-    return exito(...resumen);
+    return resumen;
 }
 
 /* Estado que provoca o cura un objeto (poción o comida). origen: marca el estado (p. ej. "comida"). */
@@ -301,6 +338,40 @@ function aplicarEfectoPocion(pj, pocion) {
         resumen.push(`PA: ${antes} → ${pj.puntosArte}`);
     }
     resumen.push(...aplicarEstadoObjeto(pj, pocion.estado));
+    pj.calcularCaracteristicas();
+    if (!resumen.length) resumen.push("Sin efecto");
+    return resumen;
+}
+
+/**
+ * Efecto de una poción aplicada a un arma (o de una arrojadiza) sobre quien recibe el golpe
+ * (efectoDeObjeto en ataque.js): PV, estado (p. ej. veneno) y daño elemental, que resta su resistencia.
+ * No da PA. Puede venir de otro jugador, así que se valida todo.
+ * @returns {string[]} resumen
+ */
+export function aplicarEfectoEnObjetivo(pj, efecto) {
+    if (!efecto || typeof efecto !== "object") return [];
+    const resumen = [];
+    const pv = Math.trunc(Number(efecto.pv) || 0);
+    if (pv !== 0) {
+        const antes = pj.vida;
+        pj.vida = pv > 0 ? Math.min(pj.vidaMax, pj.vida + pv) : Math.max(0, pj.vida + pv);
+        resumen.push(`${pv > 0 ? `Cura ${pv}` : `${-pv} de daño`} (PV: ${antes} → ${pj.vida})`);
+    }
+    const estado = efecto.estado;
+    if (ESTADOS_INFO[estado?.clave]) {
+        const turnos = Number(estado.turnos);
+        resumen.push(...aplicarEstadoObjeto(pj, {
+            clave: estado.clave,
+            quitar: Boolean(estado.quitar),
+            valor: Math.max(0, Math.trunc(Number(estado.valor) || 0)),
+            turnos: Number.isFinite(turnos) ? Math.trunc(turnos) : (ESTADOS_INFO[estado.clave].turnos ?? TURNOS_PERMANENTE)
+        }));
+    }
+    const elemental = efecto.elemental;
+    if (TIPOS_DANNO[elemental?.tipo] && Number(elemental.cantidad) > 0) {
+        resumen.push(...aplicarDanno(pj, elemental.cantidad, elemental.tipo));
+    }
     pj.calcularCaracteristicas();
     if (!resumen.length) resumen.push("Sin efecto");
     return resumen;

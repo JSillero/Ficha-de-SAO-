@@ -1,5 +1,6 @@
 // scripts/dados.js
-import { mostrarPopup } from "./popups.js";
+import { emitirEvento, registrarPintor } from "./eventos.js";
+import { escaparHtml, colorSeguro } from "./html.js";
 
 // Estado global para ventaja/desventaja (o puedes pasarlo por parámetro)
 
@@ -69,8 +70,8 @@ export function ejecutarTirada({ nombreAccion, valorHabilidad, valorCaracteristi
     resultado.total = dado + (Number(valorHabilidad) || 0) + (Number(valorCaracteristica) || 0) + (Number(bonificador) || 0);
     if (calcularDanno) resultado.danno = calcularDanno(resultado);
 
-    // Lanzar el popup visual
-    crearPopupResultado(resultado);
+    // El popup es un evento: se pinta aquí y se comparte en la sala (eventos.js)
+    emitirEvento("tirada", structuredClone(resultado));
     return resultado;
 }
 
@@ -163,59 +164,73 @@ function tirarDados(objetoResultado, criticoFacil) {
 
 }
 
-/**
- * Genera y muestra el pop-up en la esquina inferior izquierda.
- * @param {ResultadoTirada} resultado
- */
+/* Pintores de los eventos "tirada" y "danno". Los datos pueden venir de otro jugador: todo texto se
+ * escapa, los números pasan por Number() y los colores por colorSeguro. */
+
+const numero = (valor) => Number(valor) || 0;
+const lista = (valor) => Array.isArray(valor) ? valor : [];
+
 /**
  * Bloque de daño del popup: desglose, total y daño elemental (aparte del físico, un valor por
  * elemento con su color). Con total 0 y solo daño elemental, el total no se muestra.
  * etiqueta: título del bloque cuando hay varios golpes (p. ej. "Golpe 2 · Espada").
  * @param {{ total: number, desglose?: string[], notas?: string[], elemental?: { cantidad, etiqueta, color?, colorTexto? }[], etiqueta?: string }} danno
  */
-function htmlBloqueDanno({ total, desglose = [], notas = [], elemental = [], etiqueta = "" }) {
+function htmlBloqueDanno({ total, desglose, notas, elemental, etiqueta = "" }, indice = 0) {
+    desglose = lista(desglose);
+    notas = lista(notas);
+    elemental = lista(elemental);
     const elementalHtml = elemental.length ? `
         <div class="popup-elemental">${elemental.map(({ cantidad, etiqueta, color, colorTexto }) =>
-            `<span class="popup-elemento" style="--color:${color ?? "#9B59B6"};--color-texto:${colorTexto ?? "#FBFBFB"}">+${cantidad} ${etiqueta}</span>`).join("")}
+            `<span class="popup-elemento" style="--color:${colorSeguro(color, "#9B59B6")};--color-texto:${colorSeguro(colorTexto, "#FBFBFB")}">+${numero(cantidad)} ${escaparHtml(etiqueta)}</span>`).join("")}
         </div>` : "";
-    const totalHtml = total > 0 || !elemental.length ? `
+    const totalHtml = numero(total) > 0 || !elemental.length ? `
         <div class="popup-total-wrapper">
             <span class="popup-total-label">DAÑO</span>
-            <span class="popup-total-valor">${total}</span>
+            <span class="popup-total-valor">${numero(total)}</span>
         </div>` : "";
     return `
-    <div class="popup-danno">
-        ${etiqueta ? `<div class="popup-golpe">${etiqueta}</div>` : ""}
-        ${desglose.length ? `<div class="popup-operacion">${desglose.join(" + ")}</div>` : ""}
+    <div class="popup-danno" data-golpe="${Number(indice) || 0}">
+        ${etiqueta ? `<div class="popup-golpe">${escaparHtml(etiqueta)}</div>` : ""}
+        ${desglose.length ? `<div class="popup-operacion">${desglose.map(escaparHtml).join(" + ")}</div>` : ""}
         ${totalHtml}${elementalHtml}
-        ${notas.map(nota => `<div class="popup-nota">${nota}</div>`).join("")}
+        ${notas.map(nota => `<div class="popup-nota">${escaparHtml(nota)}</div>`).join("")}
     </div>`;
 }
 
 /**
  * Popup de daño sin tirada (p. ej. un arte, que no falla): mismo estilo que el de las tiradas,
- * sin dados. Un bloque de daño por golpe. Los textos ya deben venir escapados.
+ * sin dados. Un bloque de daño por golpe. Textos sin escapar (los escapa el pintor).
  * @param {{ titulo: string, subtitulo?: string, descripcion?: string, golpes: object[] }} datos
  */
-export function mostrarPopupDanno({ titulo, subtitulo = "", descripcion = "", golpes }) {
-    const contenedor = document.getElementById('contenedor-popups-dados');
-    if (!contenedor) return;
+export function mostrarPopupDanno(datos) {
+    emitirEvento("danno", datos);
+}
+
+registrarPintor("danno", ({ titulo = "", subtitulo = "", descripcion = "", golpes }) => {
     const popup = document.createElement('div');
     popup.className = "popup-dado popup-sin-dados";
     popup.innerHTML = `
         <div class="popup-header">
-            <strong class="popup-titulo">${titulo}</strong>
+            <strong class="popup-titulo">${escaparHtml(titulo)}</strong>
         </div>
-        ${subtitulo ? `<div class="popup-subtitulo">${subtitulo}</div>` : ""}
-        ${descripcion ? `<div class="popup-descripcion">${descripcion}</div>` : ""}
-        ${golpes.map(htmlBloqueDanno).join("")}
+        ${subtitulo ? `<div class="popup-subtitulo">${escaparHtml(subtitulo)}</div>` : ""}
+        ${descripcion ? `<div class="popup-descripcion">${escaparHtml(descripcion)}</div>` : ""}
+        ${lista(golpes).map((golpe, i) => htmlBloqueDanno(golpe, i)).join("")}
     `;
-    mostrarPopup(popup, { titulo, tipo: "tirada" });
-}
+    return { popup, titulo: String(titulo), tipoPopup: "tirada" };
+});
 
-function crearPopupResultado(resultado) {
-    const contenedor = document.getElementById('contenedor-popups-dados');
-    if (!contenedor) return;
+registrarPintor("tirada", pintarPopupTirada);
+
+/**
+ * Pop-up de una tirada (evento "tirada").
+ * @param {ResultadoTirada} resultado
+ */
+function pintarPopupTirada(resultado) {
+    const modo = [0, 1, 2].includes(resultado.ventajaTirada) ? resultado.ventajaTirada : 1;
+    resultado = { ...resultado, ventajaTirada: modo, critico: numero(resultado.critico), pifia: numero(resultado.pifia),
+        dados: lista(resultado.dados).map(numero), resultadoDados: numero(resultado.resultadoDados) };
 
     // Crear el elemento del pop-up
     const popup = document.createElement('div');
@@ -259,19 +274,19 @@ function crearPopupResultado(resultado) {
 
     // Sumandos de la operación; una etiqueta null oculta ese sumando
     const sumandos = [`${valorDado} (Dado)`];
-    if (resultado.etiquetaHabilidad !== null) sumandos.push(`+ ${valorHab} (${resultado.etiquetaHabilidad ?? "Hab."})`);
-    if (resultado.etiquetaCaracteristica !== null) sumandos.push(`+ ${valorCaract} (${resultado.etiquetaCaracteristica ?? "Caract."})`);
-    if (valorBonif) sumandos.push(`${valorBonif > 0 ? "+" : "−"} ${Math.abs(valorBonif)} (${resultado.etiquetaBonificador})`);
+    if (resultado.etiquetaHabilidad !== null) sumandos.push(`+ ${valorHab} (${escaparHtml(resultado.etiquetaHabilidad ?? "Hab.")})`);
+    if (resultado.etiquetaCaracteristica !== null) sumandos.push(`+ ${valorCaract} (${escaparHtml(resultado.etiquetaCaracteristica ?? "Caract.")})`);
+    if (valorBonif) sumandos.push(`${valorBonif > 0 ? "+" : "−"} ${Math.abs(valorBonif)} (${escaparHtml(resultado.etiquetaBonificador)})`);
 
     // Bloque de daño (ataques)
-    const dannoHtml = resultado.danno ? htmlBloqueDanno(resultado.danno) : "";
+    const dannoHtml = resultado.danno ? htmlBloqueDanno(resultado.danno, 0) : "";
 
     popup.innerHTML = `
         <div class="popup-header">
-            <strong class="popup-titulo">${resultado.titulo}</strong>
+            <strong class="popup-titulo">${escaparHtml(resultado.titulo)}</strong>
             <span class="popup-modo modo-${resultado.ventajaTirada}">${nombreModo}</span>
         </div>
-        ${resultado.subtitulo ? `<div class="popup-subtitulo">${resultado.subtitulo}</div>` : ""}
+        ${resultado.subtitulo ? `<div class="popup-subtitulo">${escaparHtml(resultado.subtitulo)}</div>` : ""}
         ${badgeEspecialHtml}
         <div class="popup-dados-contenedor">
             <span class="popup-dados-label">Dados:</span>
@@ -281,12 +296,12 @@ function crearPopupResultado(resultado) {
             ${sumandos.join(" ")}
         </div>
         <div class="popup-total-wrapper">
-            <span class="popup-total-label">${resultado.etiquetaTotal ?? "TOTAL"}</span>
+            <span class="popup-total-label">${escaparHtml(resultado.etiquetaTotal ?? "TOTAL")}</span>
             <span class="popup-total-valor">${totalFinal}</span>
         </div>
         ${dannoHtml}
     `;
 
-    // Cierre automático, clic para cerrar e historial: popups.js
-    mostrarPopup(popup, { titulo: resultado.titulo, tipo: "tirada" });
+    // Cierre automático, clic para cerrar e historial: popups.js (vía eventos.js)
+    return { popup, titulo: String(resultado.titulo ?? ""), tipoPopup: "tirada" };
 }

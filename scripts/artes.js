@@ -455,7 +455,9 @@ export function calcularDannoArte(pj, arte, mano = manoDeArte(pj, arte)) {
             total: ataque.total + arte.danno,
             desglose: arte.danno > 0 ? [...ataque.desglose, `${arte.danno} (Arte)`] : ataque.desglose,
             notas: ataque.notas,
-            elemental: sumarElementales(ataque.elemental, elementalArte)
+            elemental: sumarElementales(ataque.elemental, elementalArte),
+            // Poción del arma (solo en el primer golpe de esa arma): se aplica a quien lo reciba
+            efecto: ataque.efecto
         };
     });
 

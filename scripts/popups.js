@@ -16,9 +16,10 @@ const conCuenta = new WeakSet();
 /**
  * Muestra un pop-up ya montado y lo apunta en el historial.
  * @param {HTMLElement} popup
- * @param {{ titulo?: string, tipo?: "tirada" | "info" }} opciones
+ * @param {{ titulo?: string, tipo?: "tirada" | "info", evento?: object }} opciones
+ *   evento: el JSON del pop-up si es compartible (eventos.js); se guarda en el historial
  */
-export function mostrarPopup(popup, { titulo = "", tipo = "info" } = {}) {
+export function mostrarPopup(popup, { titulo = "", tipo = "info", evento = null } = {}) {
     const contenedor = document.getElementById("contenedor-popups-dados");
     if (!contenedor) return;
     popup.dataset.tipo = tipo;
@@ -27,7 +28,7 @@ export function mostrarPopup(popup, { titulo = "", tipo = "info" } = {}) {
     popup.addEventListener("mouseleave", () => { if (conCuenta.has(popup)) iniciarCuenta(popup); });
     contenedor.appendChild(popup);
 
-    historial.push({ hora: new Date(), tipo, titulo, html: popup.innerHTML, clases: popup.className });
+    historial.push({ hora: new Date(), tipo, titulo, html: popup.innerHTML, clases: popup.className, evento });
     if (historial.length > MAX_HISTORIAL) historial.splice(0, historial.length - MAX_HISTORIAL);
     document.dispatchEvent(new CustomEvent("historialpopups"));
 

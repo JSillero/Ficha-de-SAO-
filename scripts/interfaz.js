@@ -9,7 +9,7 @@ import {
     transferirABaul, transferirAInventario, descartar, comer, beberPocion, aplicarPocionAArma, manosConArma,
     usarCristal, lanzarArrojadiza, manoParaUsar, categoriaEquipo, manosParaEquipar, motivoNoEquipar, equipar,
     motivoNoGuardar, motivoNoBeber, guardarEquipado, ranuraTieneEquipo, getCantidadAccesoriosPorArmadura, cabenEnInventario,
-    anadirCor, gastarCor
+    anadirCor, gastarCor, aplicarEfectoEnObjetivo, ofrecerObjeto, consumirOfrecido
 } from "./objetos.js";
 import {
     puedeGastarVarias, gastarVarias, gastarTodas, partesDeMano, estaIncapacitado,
@@ -20,6 +20,12 @@ import {
 import { ESTADOS_INFO, TIPOS_DANNO, aplicarDanno, activarEstado, quitarEstado, estaActivo, estiloColor } from "./estados.js";
 import { iconoSao, tieneIconoSao } from "./iconos.js";
 import { mostrarPopup, getHistorialPopups, vaciarHistorialPopups } from "./popups.js";
+import { emitirEvento, configurarOrigen, setAplicadorDanno, setConsumidorOferta } from "./eventos.js";
+import { escaparHtml } from "./html.js";
+import {
+    inicializarOnline, getEstadoOnline, getMiembrosSala, setIdPersonajeNube, abrirCuenta, abrirSala, abrirPersonajesNube,
+    guardarEnNube, compartirArte, quitarArteDeSala
+} from "./interfazOnline.js";
 import {
     ZONAS, MOTIVOS_ZONA, cambiarZona, esZonaSegura, baulAccesible, puedeRepartirHabilidades, puedeRecibirDanno,
     descansoCorto, descansoLargo
@@ -35,6 +41,8 @@ import {
 } from "./artes.js";
 
 let personaje = new PJ(); //objeto que almaacena y define el comportamiento y limites de toda la informacion relevante
+// Los pop-ups compartidos llevan el nombre del personaje (eventos.js)
+configurarOrigen({ personaje: () => personaje.nombre });
 
 /* Modo master (?master en la URL): las tarjetas de equipo se editan libremente, como antes.
    Sin él, el equipo solo se cambia desde el inventario. */
@@ -613,6 +621,15 @@ function actualizarCaracteristicas() {
     });
 }
 
+/* Carga una ficha ya parseada (de un fichero o de la nube) */
+function cargarFicha(jsonData) {
+    personaje.cargarJSON(jsonData);
+    desbloqueosNaturalesVistos = null; // ficha nueva: no avisar de los desbloqueos que ya tenía
+    actualizarTodo();
+    marcarGuardado(); // recién cargada: no hay cambios que perder
+    reproducir("linkStart");
+}
+
 /* Funcion de carga */
 document.getElementById('fileInput').addEventListener('change', function (event) {
     const file = event.target.files[0]; // Get the selected file
@@ -621,13 +638,8 @@ document.getElementById('fileInput').addEventListener('change', function (event)
 
         reader.onload = function (e) {
             try {
-                const jsonData = JSON.parse(e.target.result);  // Parse the JSON string into an object
-                personaje.cargarJSON(jsonData);
-                desbloqueosNaturalesVistos = null; // ficha nueva: no avisar de los desbloqueos que ya tenía
-                actualizarTodo();
-                marcarGuardado(); // recién cargada: no hay cambios que perder
-                reproducir("linkStart");
-
+                cargarFicha(JSON.parse(e.target.result));
+                setIdPersonajeNube(null); // viene de un fichero, no de la nube
             } catch (error) {
                 console.error('Error parsing JSON:', error);
             }
@@ -1028,7 +1040,22 @@ function inicializarEquipamiento() {
     });
 }
 
+/* Aviso en la tarjeta del arma cuando tiene una poción aplicada (se gasta en el siguiente golpe) */
+function actualizarPocionesArmas() {
+    CONFIG_MANOS.forEach(({ prop }) => {
+        const aviso = document.querySelector(`.${prop}.equipamiento .equipamiento-pocion`);
+        if (!aviso) return;
+        const pocion = personaje[prop]?.pocionAplicada;
+        aviso.hidden = !pocion;
+        if (!pocion) return;
+        const texto = `Poción activa: ${describirEfecto(pocion)}`;
+        if (aviso.textContent !== texto) aviso.textContent = texto;
+        aviso.title = "Se aplica al objetivo en el siguiente golpe con esta arma";
+    });
+}
+
 function actualizarEquipamiento() {
+    actualizarPocionesArmas();
     const manosGrid = document.querySelector(".equipamiento-manos-grid");
     const elIzq = document.querySelector(".manoIzquierda.equipamiento");
     const elDer = document.querySelector(".manoDerecha.equipamiento");
@@ -1588,7 +1615,11 @@ function usarHabilidad(ranura, indice) {
     const nombre = habilidad.nombre.trim() || "Habilidad";
     reproducir(resultado.ok ? "mensaje" : "click");
     const titulo = resultado.ok ? `${nombre} · ${equipo.nombre?.trim() || "Reliquia"}` : `No se puede: ${nombre}`;
-    // La descripción es texto libre: se escapa y se respetan los saltos de línea
+    // Usada: se comparte en la sala (texto plano; el pintor respeta los saltos de línea). Si falla, solo aquí
+    if (resultado.ok) {
+        emitirEvento("reliquia", { titulo, subtitulo: "Reliquia", lineas: resultado.resumen });
+        return;
+    }
     mostrarPopupInfo(escaparHtml(titulo), resultado.resumen.map(linea => escaparHtml(linea).replace(/\n/g, "<br>")));
 }
 
@@ -2092,6 +2123,78 @@ function actualizarEstados() {
 const ORDEN_DANNO = ["fisico", "fuego", "electricidad", "hielo", "luz", "oscuridad", "hemorragia"];
 const ELEMENTOS_DANNO = ["fuego", "electricidad", "hielo", "luz", "oscuridad"];
 
+/* Golpe de otro jugador recibido al pulsar su pop-up (eventos.js). Cada golpe va por separado: el físico
+   resta la armadura y cada elemento su resistencia, igual que con el botón Daño. Devuelve si se aplicó. */
+function recibirGolpe(golpe, { autor, titulo, tirada = null }) {
+    if (!puedeRecibirDanno(personaje)) {
+        mostrarPopupInfo("No puedes recibir daño", [escaparHtml(MOTIVOS_ZONA.danno)]);
+        return false;
+    }
+    // Para dar, el ataque tiene que igualar o superar la Defensa (con escudos en uso)
+    const defensa = Number(personaje.defensa) || 0;
+    if (tirada !== null && tirada < defensa
+        && !confirm(`La tirada de ${autor} (${tirada}) no llega a tu Defensa (${defensa}): este golpe no debería darte.\n\n¿Recibirlo igualmente?`)) {
+        return false;
+    }
+    const cantidad = (valor) => Math.max(0, Math.floor(Number(valor) || 0));
+    const dannos = [];
+    if (cantidad(golpe.total) > 0) dannos.push({ tipo: "fisico", cantidad: cantidad(golpe.total) });
+    (Array.isArray(golpe.elemental) ? golpe.elemental : []).forEach(({ tipo, cantidad: valor }) => {
+        if (ELEMENTOS_DANNO.includes(tipo) && cantidad(valor) > 0) dannos.push({ tipo, cantidad: cantidad(valor) });
+    });
+    // Poción aplicada al arma o efecto de la arrojadiza: veneno, daño elemental, PV...
+    const efecto = golpe.efecto && typeof golpe.efecto === "object" ? golpe.efecto : null;
+    if (!dannos.length && !efecto) {
+        mostrarPopupInfo("Sin daño", ["Este golpe no hace daño."]);
+        return false;
+    }
+    const vidaAntes = personaje.vida;
+    const conCabeceras = dannos.length + (efecto ? 1 : 0) > 1;
+    const lineas = dannos.flatMap(({ tipo, cantidad: valor }) => {
+        const resumen = aplicarDanno(personaje, valor, tipo);
+        return conCabeceras ? [`${TIPOS_DANNO[tipo].etiqueta} ${valor}:`, ...resumen] : resumen;
+    });
+    if (efecto) {
+        const resumen = aplicarEfectoEnObjetivo(personaje, efecto);
+        lineas.push(...(conCabeceras ? [`${String(efecto.nombre || "Poción")}:`, ...resumen] : resumen));
+    }
+    actualizarTodo();
+    const golpeTexto = golpe.etiqueta ? ` (${golpe.etiqueta})` : "";
+    emitirDannoRecibido(vidaAntes, `${titulo}${golpeTexto} · de ${autor}`, lineas);
+    return true;
+}
+setAplicadorDanno(recibirGolpe);
+
+/* Comida o poción que te ofrece otro jugador (pop-up "oferta"): gasta la boca y avisa a toda la sala */
+function consumirOferta(datosObjeto, { autor }) {
+    const resultado = consumirOfrecido(personaje, datosObjeto, gastarAccionesOConfirmar);
+    actualizarTodo();
+    if (!resultado.ok) {
+        mostrarPopupInfo("No puedes consumirlo", resultado.resumen.map(escaparHtml));
+        return false;
+    }
+    reproducir("click");
+    const nombre = String(personaje.nombre ?? "").trim() || "Alguien";
+    emitirEvento("consumido", {
+        titulo: `${nombre} consume ${resultado.objeto.nombre}`,
+        subtitulo: `Ofrecida por ${autor}`,
+        lineas: resultado.resumen
+    });
+    return true;
+}
+setConsumidorOferta(consumirOferta);
+
+/* Aviso de daño recibido, compartido en la sala: "Kirito recibe 4 de daño" (PV perdidos) */
+function emitirDannoRecibido(vidaAntes, subtitulo, lineas) {
+    const nombre = String(personaje.nombre ?? "").trim() || "Tu personaje";
+    const perdidos = vidaAntes - personaje.vida;
+    emitirEvento("recibido", {
+        titulo: perdidos > 0 ? `${nombre} recibe ${perdidos} de daño` : `${nombre} recibe el golpe`,
+        subtitulo,
+        lineas
+    });
+}
+
 function inicializarDanno() {
     const modalEl = document.getElementById("modalDanno");
     const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
@@ -2167,11 +2270,13 @@ function inicializarDanno() {
     const aplicar = () => {
         const dannos = leerDannos();
         if (!dannos.length || !puedeRecibirDanno(personaje)) return;
-        const resumen = aplicarTodos(personaje, dannos);
+        const vidaAntes = personaje.vida;
+        // Se comparte en la sala: texto plano (las cabeceras <b>Tipo n</b> pasan a "Tipo n:")
+        const resumen = aplicarTodos(personaje, dannos).map(linea => linea.replace(/^<b>(.*)<\/b>$/, "$1:"));
         modal.hide();
         actualizarTodo();
-        const titulo = dannos.length === 1 ? `Daño: ${TIPOS_DANNO[dannos[0].tipo].etiqueta}` : "Daño recibido";
-        mostrarPopupInfo(titulo, resumen);
+        const subtitulo = dannos.map(({ tipo, cantidad }) => `${TIPOS_DANNO[tipo].etiqueta} ${cantidad}`).join(" · ");
+        emitirDannoRecibido(vidaAntes, subtitulo, resumen);
     };
 
     modalEl.addEventListener("change", (e) => {
@@ -2494,24 +2599,19 @@ function mostrarPopupArte(arte, resultado) {
         mostrarPopupInfo(`No se puede usar ${escaparHtml(arte.nombre)}`, resultado.resumen.map(escaparHtml));
         return;
     }
-    // resumen = [descripción, PA gastados, combo...]
-    const [descripcion, ...extras] = resultado.resumen.map(escaparHtml);
+    // resumen = [descripción, PA gastados, combo...]. Se comparte en la sala: texto plano (lo escapa el pintor)
+    const [descripcion, ...extras] = resultado.resumen;
     const golpes = resultado.danno;
     if (!golpes) {
-        mostrarPopupInfo(escaparHtml(arte.nombre), [descripcion, ...extras]);
+        emitirEvento("arte", { titulo: arte.nombre, lineas: [descripcion, ...extras] });
         return;
     }
     // Hace daño: popup como el de las tiradas, sin dados (el arte no falla); un bloque por golpe
     mostrarPopupDanno({
-        titulo: escaparHtml(arte.nombre),
+        titulo: arte.nombre,
         subtitulo: ["Arte", ...(golpes.length > 1 ? [`${golpes.length} golpes`] : []), ...extras].join(" · "),
         descripcion,
-        golpes: golpes.map(golpe => ({
-            ...golpe,
-            etiqueta: escaparHtml(golpe.etiqueta),
-            desglose: golpe.desglose.map(escaparHtml),
-            notas: golpe.notas.map(escaparHtml)
-        }))
+        golpes: structuredClone(golpes)
     });
 }
 
@@ -2551,14 +2651,15 @@ function requisitosArteHtml(arte) {
  * Fila de un arte. En el catálogo (enCatalogo) solo tiene el botón Añadir; motivoAnadir lo bloquea
  * (ya la tiene o no quedan desbloqueos).
  */
-function filaArte(arte, indice, { enCatalogo = false, motivoAnadir = null } = {}) {
+function filaArte(arte, indice, { enCatalogo = false, motivoAnadir = null, autor = null, quitable = false } = {}) {
     const activa = arte.tipo === "activa";
     const inactiva = arte.equipada && motivoRequisitos(personaje, arte);
     const coste = [activa ? `${arte.costePA} PA` : "Pasiva", `${arte.ranuras} ranura${arte.ranuras === 1 ? "" : "s"}`].join(" · ");
 
     let botones;
     if (enCatalogo) {
-        botones = botonObjeto("anadir", "artesSinEquipar", motivoAnadir || "Añadir a las artes sin equipar (gasta 1 desbloqueo de arte)", Boolean(motivoAnadir));
+        botones = (quitable ? botonObjeto("quitarSala", "descartar", "Quitar del catálogo de la sala") : "")
+            + botonObjeto("anadir", "artesSinEquipar", motivoAnadir || "Añadir a las artes sin equipar (gasta 1 desbloqueo de arte)", Boolean(motivoAnadir));
     } else if (arte.equipada) {
         const motivoUsar = activa ? motivoNoUsarArte(personaje, arte) : null;
         const motivoGuardar = motivoNoDesequiparArte(personaje, arte);
@@ -2582,6 +2683,7 @@ function filaArte(arte, indice, { enCatalogo = false, motivoAnadir = null } = {}
                 <span class="objeto-cantidad">${coste}</span>
             </div>
             <div class="objeto-detalle">${escaparHtml(detalleArte(arte))}</div>
+            ${autor ? `<div class="arte-autor">Compartida por ${escaparHtml(autor)}</div>` : ""}
             ${requisitosArteHtml(arte)}
             ${arte.descripcion ? `<div class="objeto-descripcion">${escaparHtml(arte.descripcion)}</div>` : ""}
             ${inactiva ? `<div class="arte-inactiva">Inactiva: ${escaparHtml(inactiva.replace(/^Requisitos no cumplidos: /, "falta "))}</div>` : ""}
@@ -2657,13 +2759,13 @@ function comprobarDesbloqueosNaturales() {
     desbloqueosNaturalesVistos = naturales;
 }
 
-/* Notificación de un arte pasiva: solo sus modificadores (si tiene) y su descripción */
+/* Notificación de un arte pasiva: solo sus modificadores (si tiene) y su descripción. Se comparte en la sala */
 function mostrarDetalleArte(arte) {
     const lineas = [];
     const modificadores = textoModificadores(arte.modificadores);
-    if (modificadores) lineas.push(escaparHtml(modificadores));
-    if (arte.descripcion) lineas.push(escaparHtml(arte.descripcion));
-    mostrarPopupInfo(escaparHtml(arte.nombre), lineas);
+    if (modificadores) lineas.push(modificadores);
+    if (arte.descripcion) lineas.push(arte.descripcion);
+    emitirEvento("pasiva", { titulo: arte.nombre, lineas });
 }
 
 /* Si se pierde memoria de artes (baja Cultura, nivel...), se desequipan las últimas equipadas y se avisa */
@@ -2929,6 +3031,9 @@ function inicializarFormularioArte() {
         ELEMENTOS.forEach(e => { campo(`arteElem_${e}`).value = elemental?.[e] || 0; });
         campo("detallesDannoElementalArte").open = ELEMENTOS.some(e => elemental?.[e] > 0);
         marcarElementalesActivos(campo("arteDannoElemental"));
+        // Compartir en el catálogo de la sala: solo dentro de una sala
+        campo("filaCompartirArte").hidden = !getEstadoOnline().sala;
+        campo("arteCompartir").checked = false;
         aviso.textContent = "";
         pintarRequisitos();
         pintarMods();
@@ -2993,6 +3098,14 @@ function inicializarFormularioArte() {
         reproducir("click");
         actualizarTodo();
         ventana.cerrar();
+        if (campo("arteCompartir").checked && getEstadoOnline().sala) {
+            // La copia de la ficha pasa a apuntar al arte compartida ("Ya la tienes" en el catálogo)
+            compartirArte(arte, artesSala).then(id => {
+                if (!id) return;
+                arte.idCatalogo = id;
+                actualizarTodo();
+            });
+        }
     };
 
     campo("btnGuardarArte").addEventListener("click", guardar);
@@ -3015,8 +3128,25 @@ function inicializarFormularioArte() {
 /* Catálogo de artes ___________________________________________________________ */
 
 const listaCatalogoArtesEl = document.getElementById("listaCatalogoArtes");
-/* Catálogo (data/artes.json), cargado al iniciar (cargarCatalogoArtes). Si no carga, la ficha sigue sin él. */
+/* Catálogo (data/artes.json), cargado al iniciar (cargarCatalogoArtes). Si no carga, la ficha sigue sin él.
+   catalogoArtes = el de data/artes.json + las artes compartidas en la sala (ids "sala-…") */
 let catalogoArtes = [];
+let catalogoBase = [];
+/* Artes compartidas de la sala tal y como llegan (con autor): [{ id, autor, nombreAutor, arte }] */
+let artesSala = [];
+const esArteDeSala = (arte) => arte.id.startsWith("sala-");
+
+function rehacerCatalogo() {
+    const deSala = artesSala.map(({ id, arte }) => cargarArte({ ...arte, id, idCatalogo: null, equipada: false }))
+        .sort((x, y) => x.nombre.localeCompare(y.nombre));
+    catalogoArtes = [...catalogoBase, ...deSala];
+}
+
+function alCambiarArtesSala(lista) {
+    artesSala = lista;
+    rehacerCatalogo();
+    actualizarCatalogoArtes();
+}
 /* "cargando", "ok" o "error" */
 let estadoCatalogoArtes = "cargando";
 
@@ -3045,15 +3175,28 @@ function actualizarCatalogoArtes() {
             && (!soloCumplo || cumpleRequisitos(personaje, arte))
             && (!busqueda || normalizarTexto([arte.nombre, arte.descripcion, ...arte.etiquetas].join(" ")).includes(busqueda)));
 
-    // Agrupadas por grupo, en el orden de GRUPOS_ARTE
-    const html = Object.keys(GRUPOS_ARTE).map(clave => {
-        const delGrupo = visibles.filter(({ arte }) => arte.grupo === clave);
+    const opcionesFila = (arte) => {
+        const deSala = artesSala.find(a => a.id === arte.id);
+        return {
+            enCatalogo: true,
+            motivoAnadir: tengo.has(arte.id) ? "Ya la tienes" : sinDesbloqueos,
+            autor: deSala?.nombreAutor ?? null,
+            // Quitarla de la sala: su autor o el máster (lo comprueban también las reglas de Firestore)
+            quitable: Boolean(deSala) && [deSala.autor, salaActual?.master].includes(usuarioActual?.uid)
+        };
+    };
+    const { usuario: usuarioActual, sala: salaActual } = getEstadoOnline();
+
+    // Primero las compartidas en la sala; después las del catálogo, agrupadas en el orden de GRUPOS_ARTE
+    const compartidas = visibles.filter(({ arte }) => esArteDeSala(arte));
+    const htmlSala = compartidas.length
+        ? `<h6 class="grupo-catalogo">Compartidas en la sala</h6>` + compartidas.map(({ arte, i }) => filaArte(arte, i, opcionesFila(arte))).join("")
+        : "";
+    const html = htmlSala + Object.keys(GRUPOS_ARTE).map(clave => {
+        const delGrupo = visibles.filter(({ arte }) => arte.grupo === clave && !esArteDeSala(arte));
         if (!delGrupo.length) return "";
         return `<h6 class="grupo-catalogo">${GRUPOS_ARTE[clave]}</h6>`
-            + delGrupo.map(({ arte, i }) => filaArte(arte, i, {
-                enCatalogo: true,
-                motivoAnadir: tengo.has(arte.id) ? "Ya la tienes" : sinDesbloqueos
-            })).join("");
+            + delGrupo.map(({ arte, i }) => filaArte(arte, i, opcionesFila(arte))).join("");
     }).join("");
     pintarLista(listaCatalogoArtesEl, html || `<p class="lista-vacia">Ningún arte coincide con los filtros.</p>`);
 }
@@ -3074,10 +3217,14 @@ function inicializarCatalogoArtes() {
     });
 
     listaCatalogoArtesEl.addEventListener("click", (e) => {
-        const boton = e.target.closest('button[data-accion="anadir"]');
+        const boton = e.target.closest('button[data-accion="anadir"], button[data-accion="quitarSala"]');
         const arte = catalogoArtes[Number(boton?.closest(".fila-objeto")?.dataset.index)];
         if (!boton || boton.disabled || !arte) return;
         reproducir("click");
+        if (boton.dataset.accion === "quitarSala") {
+            if (confirm(`¿Quitar ${arte.nombre} del catálogo de la sala? Quien ya la tenga la conserva.`)) quitarArteDeSala(arte.id, arte.nombre);
+            return;
+        }
         // Gasta un desbloqueo de arte
         const resultado = conseguirArte(personaje, copiarDelCatalogo(arte));
         actualizarTodo();
@@ -3085,14 +3232,30 @@ function inicializarCatalogoArtes() {
     });
 }
 
-/* Menú de opciones: cargar y guardar personaje, silencio ___________________ */
+/* Menú de opciones: cargar y guardar personaje, online, silencio ___________ */
+/* Opciones online según haya sesión y sala (interfazOnline.js) */
+function opcionesOnline() {
+    const { usuario, sala } = getEstadoOnline();
+    if (!usuario) return [{ clave: "cuenta", etiqueta: "Iniciar sesión (online)", icono: "amigos" }];
+    return [
+        { clave: "cuenta", etiqueta: `Cuenta: ${usuario.nombre}`, icono: "amigos" },
+        { clave: "sala", etiqueta: sala ? `Sala: ${sala.nombre}` : "Entrar en una sala", icono: "pueblo", activa: Boolean(sala) },
+        { clave: "guardarNube", etiqueta: "Guardar en la nube", icono: "guardar" },
+        { clave: "cargarNube", etiqueta: "Cargar de la nube", icono: "cargar" }
+    ];
+}
+
+/* Menú de opciones: se guarda para repintarlo si cambia la sesión con el menú abierto */
+let menuOpciones = null;
+
 function inicializarOpciones() {
-    crearMenuSao({
+    menuOpciones = crearMenuSao({
         boton: document.getElementById("btnOpciones"),
         menu: document.getElementById("menuOpciones"),
         opciones: () => [
             { clave: "cargar", etiqueta: "Cargar personaje", icono: "cargar" },
             { clave: "guardar", etiqueta: "Guardar personaje", icono: "guardar" },
+            ...opcionesOnline(),
             { clave: "historial", etiqueta: "Historial de avisos", icono: "historial" },
             estaSilenciado()
                 ? { clave: "sonido", etiqueta: "Activar audio", icono: "silencio" }
@@ -3100,6 +3263,18 @@ function inicializarOpciones() {
         ],
         alElegir: (clave, menu) => {
             switch (clave) {
+                case "cuenta":
+                case "sala":
+                case "cargarNube":
+                    reproducir("click");
+                    menu.cerrar({ sonido: false });
+                    ({ cuenta: abrirCuenta, sala: abrirSala, cargarNube: abrirPersonajesNube })[clave]();
+                    break;
+                case "guardarNube":
+                    reproducir("click");
+                    menu.cerrar({ sonido: false });
+                    guardarEnNube();
+                    break;
                 case "cargar":
                     // El selector de fichero tiene que abrirse dentro del clic; al cargar suena "linkStart"
                     reproducir("click");
@@ -3165,10 +3340,6 @@ let eleccionUso = null;
 
 const ETIQUETAS_ATRIBUTO = Object.fromEntries(GRUPOS_ATRIBUTOS.flatMap(([, atributos]) => atributos));
 const ETIQUETAS_ARMADURA = { pesada: "Armadura pesada", media: "Armadura media", ligera: "Armadura ligera", ropa: "Ropa", real: "Armadura real" };
-
-function escaparHtml(texto) {
-    return String(texto ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-}
 
 const conSigno = (numero) => `${numero > 0 ? "+" : ""}${numero}`;
 
@@ -3244,13 +3415,24 @@ function nombreEnMano(mano) {
 /* Formas de usar un objeto del inventario: { accion, etiqueta, mano?, motivo? } (motivo = no se puede) */
 function opcionesUso(objeto) {
     const sinManoLibre = manoParaUsar(personaje) ? null : "Necesitas una mano libre";
+    // En una sala, la comida y las pociones se pueden ofrecer a los demás jugadores (gasta una mano libre)
+    const ofrecer = () => {
+        const { usuario, sala } = getEstadoOnline();
+        if (!usuario || !sala) return [];
+        return getMiembrosSala().filter(miembro => miembro.uid !== usuario.uid)
+            .map(destino => ({ accion: "ofrecer", destino, etiqueta: `Ofrecer a ${destino.nombre} (mano libre)`, motivo: sinManoLibre }));
+    };
     switch (objeto.tipo) {
         case "comida":
-            return [{ accion: "comer", etiqueta: "Comer" + (personaje.comidaActiva ? ` (sustituye a ${personaje.comidaActiva})` : "") }];
+            return [
+                { accion: "comer", etiqueta: "Comer" + (personaje.comidaActiva ? ` (sustituye a ${personaje.comidaActiva})` : "") },
+                ...ofrecer()
+            ];
         case "pocion":
             return [
                 { accion: "beber", etiqueta: "Beber (acción de cabeza)", motivo: motivoNoBeber(personaje, objeto) },
-                ...manosConArma(personaje).map(mano => ({ accion: "aplicar", mano, etiqueta: `Aplicar a ${nombreEnMano(mano)}` }))
+                ...manosConArma(personaje).map(mano => ({ accion: "aplicar", mano, etiqueta: `Aplicar a ${nombreEnMano(mano)}` })),
+                ...ofrecer()
             ];
         case "cristal":
             return [{ accion: "cristal", etiqueta: "Usar cristal (mano libre)", motivo: sinManoLibre }];
@@ -3289,14 +3471,16 @@ function filaObjeto(objeto, indice, enInventario) {
         const opciones = opcionesUso(objeto);
         const disponibles = opciones.filter(opcion => !opcion.motivo);
         const motivo = !opciones.length ? "Sin uso" : !disponibles.length ? opciones[0].motivo : "";
-        const tituloUsar = motivo || (disponibles.length === 1 ? disponibles[0].etiqueta : "Usar…");
+        const tituloUsar = motivo || (opciones.length === 1 ? opciones[0].etiqueta : "Usar…");
         botones = botonObjeto("editar", "editar", "Editar")
             + botonObjeto("baul", "baul", baulAccesible(personaje) ? "Transferir al baúl" : MOTIVOS_ZONA.baul, !baulAccesible(personaje))
             + botonObjeto("descartar", "descartar", "Descartar 1")
             + botonObjeto("usar", "usar", tituloUsar, Boolean(motivo));
-        if (eleccionUso === indice && disponibles.length > 1) {
+        // Con varias formas de usarlo se elige; las que no se pueden ahora (p. ej. sin mano libre) salen desactivadas
+        if (eleccionUso === indice && opciones.length > 1) {
             eleccion = `<div class="objeto-eleccion">
-                ${disponibles.map((opcion, k) => `<button type="button" class="btn-eleccion" data-accion="elegir" data-opcion="${k}">${escaparHtml(opcion.etiqueta)}</button>`).join("")}
+                ${opciones.map((opcion, k) => `<button type="button" class="btn-eleccion" data-accion="elegir" data-opcion="${k}"
+                    ${opcion.motivo ? `disabled title="${escaparHtml(opcion.motivo)}"` : ""}>${escaparHtml(opcion.etiqueta)}</button>`).join("")}
                 <button type="button" class="btn-eleccion cancelar" data-accion="cancelar">Cancelar</button>
             </div>`;
         }
@@ -3403,14 +3587,41 @@ function ejecutarUso(indice, opcion) {
             resultado = lanzarArrojadiza(personaje, indice, gastar);
             if (resultado.ok) lanzar(resultado.objeto, resultado.mano);
             break;
+        case "ofrecer":
+            resultado = ofrecerObjeto(personaje, indice, gastar, opcion.destino.nombre);
+            break;
         default: return;
     }
 
     eleccionUso = null;
     actualizarTodo();
+    if (opcion.accion === "ofrecer" && resultado.ok) {
+        // Lo ven todos; solo el destinatario puede consumirlo desde el pop-up
+        const nombre = String(personaje.nombre ?? "").trim() || "Alguien";
+        emitirEvento("oferta", {
+            titulo: `${nombre} ofrece ${resultado.objeto.nombre} a ${opcion.destino.nombre}`,
+            subtitulo: TIPOS_OBJETO[resultado.objeto.tipo].etiqueta,
+            lineas: [detalleObjeto(resultado.objeto)],
+            para: opcion.destino.uid,
+            objeto: resultado.objeto
+        });
+        return;
+    }
     if (!resultado.ok) titulo = `No se puede: ${objeto.nombre}`;
-    if (resultado.resumen.length) mostrarPopupInfo(titulo, resultado.resumen.map(escaparHtml));
+    if (!resultado.resumen.length) return;
+    // Comida, pociones y cristales usados se comparten en la sala; lo demás (equipar, fallos) solo se ve aquí
+    const subtitulo = resultado.ok ? SUBTITULOS_USO_COMPARTIDO[opcion.accion] : null;
+    if (subtitulo) emitirEvento("objeto", { titulo, subtitulo, lineas: resultado.resumen });
+    else mostrarPopupInfo(escaparHtml(titulo), resultado.resumen.map(escaparHtml));
 }
+
+/* Usos de objetos que se ven en la sala, con el subtítulo de su pop-up */
+const SUBTITULOS_USO_COMPARTIDO = {
+    comer: "Comida",
+    beber: "Poción",
+    aplicar: "Poción aplicada al arma",
+    cristal: "Cristal"
+};
 
 /* Tirada de un arma arrojadiza: dado medio + Reflejos + Combate (o Sigilo) */
 function lanzar(objeto, mano) {
@@ -3452,14 +3663,14 @@ function inicializarObjetos() {
                 descartar(personaje.inventario, indice, true);
                 break;
             case "usar": {
-                const disponibles = opcionesUso(objeto).filter(opcion => !opcion.motivo);
-                if (disponibles.length === 1) return ejecutarUso(indice, disponibles[0]);
+                const opciones = opcionesUso(objeto);
+                if (opciones.length === 1 && !opciones[0].motivo) return ejecutarUso(indice, opciones[0]);
                 eleccionUso = eleccionUso === indice ? null : indice;
                 break;
             }
             case "elegir": {
-                const opcion = opcionesUso(objeto).filter(o => !o.motivo)[Number(boton.dataset.opcion)];
-                if (opcion) return ejecutarUso(indice, opcion);
+                const opcion = opcionesUso(objeto)[Number(boton.dataset.opcion)];
+                if (opcion && !opcion.motivo) return ejecutarUso(indice, opcion);
                 break;
             }
             case "cancelar": eleccionUso = null; break;
@@ -3909,7 +4120,8 @@ function mostrarInformeDebug() {
 function cargarCatalogoArtes() {
     descargarCatalogo()
         .then(catalogo => {
-            catalogoArtes = catalogo;
+            catalogoBase = catalogo;
+            rehacerCatalogo();
             estadoCatalogoArtes = "ok";
         })
         .catch(error => {
@@ -3947,4 +4159,19 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarDebug();
     actualizarTodo();
     marcarGuardado(); // ficha vacía de inicio: cerrar sin tocar nada no avisa
+    // Online (Firebase): si la última vez se dejó la sesión abierta, se recupera con su sala
+    inicializarOnline({
+        personaje: () => personaje,
+        cargarFicha,
+        marcarGuardado,
+        hayCambiosSinGuardar: () => { comprobarCambios(); return hayCambiosSinGuardar; },
+        aviso: (titulo, lineas) => mostrarPopupInfo(escaparHtml(titulo), lineas.map(escaparHtml)),
+        alCambiarEstado: () => {
+            menuOpciones?.actualizar();
+            actualizarCatalogoArtes();
+        },
+        alCambiarArtesSala,
+        // Las opciones "Ofrecer a…" del inventario dependen de quién hay en la sala
+        alCambiarMiembros: () => actualizarObjetos()
+    });
 });

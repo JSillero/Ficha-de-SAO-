@@ -1,0 +1,90 @@
+rules_version = '2';
+
+// Reglas de Firestore de la ficha online (scripts/online/servicio.js).
+// Se pegan en la consola de Firebase: Firestore Database → Reglas → Publicar.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function conSesion() {
+      return request.auth != null;
+    }
+    function sala(codigo) {
+      return get(/databases/$(database)/documents/salas/$(codigo)).data;
+    }
+    function esMiembro(codigo) {
+      return conSesion() && request.auth.uid in sala(codigo).miembros;
+    }
+    function esMaster(codigo) {
+      return conSesion() && sala(codigo).master == request.auth.uid;
+    }
+
+    // Personajes: solo los ve y los toca su propietario
+    match /personajes/{id} {
+      allow read, delete: if conSesion() && resource.data.propietario == request.auth.uid;
+      allow create: if conSesion()
+        && request.resource.data.propietario == request.auth.uid
+        && request.resource.data.json is string
+        && request.resource.data.json.size() < 900000;
+      allow update: if conSesion()
+        && resource.data.propietario == request.auth.uid
+        && request.resource.data.propietario == request.auth.uid
+        && request.resource.data.json is string
+        && request.resource.data.json.size() < 900000;
+    }
+
+    // Nombre público de cada jugador (para elegir a quién ofrecer algo)
+    match /usuarios/{uid} {
+      allow read: if conSesion();
+      allow write: if conSesion() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['nombre'])
+        && request.resource.data.nombre is string
+        && request.resource.data.nombre.size() <= 40;
+    }
+
+    // Salas: se entra conociendo el código
+    match /salas/{codigo} {
+      allow get: if conSesion();
+      allow list: if conSesion() && request.auth.uid in resource.data.miembros;
+      allow create: if conSesion()
+        && request.resource.data.master == request.auth.uid
+        && request.resource.data.miembros == [request.auth.uid]
+        && request.resource.data.nombre is string
+        && request.resource.data.nombre.size() <= 60;
+      // Entrar en la sala: solo se puede añadir uno mismo a los miembros
+      allow update: if conSesion()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['miembros'])
+        && request.resource.data.miembros.hasAll(resource.data.miembros)
+        && request.resource.data.miembros.removeAll(resource.data.miembros).hasOnly([request.auth.uid]);
+      allow delete: if conSesion() && resource.data.master == request.auth.uid;
+
+      // Pop-ups compartidos (eventos.js). Cualquiera de la sala borra los de más de 24 h
+      // (la ficha lo hace sola al entrar); el máster puede borrar cualquiera
+      match /eventos/{evento} {
+        allow read: if esMiembro(codigo);
+        allow create: if esMiembro(codigo)
+          && request.resource.data.jugador == request.auth.uid
+          && request.resource.data.evento is string
+          && request.resource.data.evento.size() < 20000
+          && request.resource.data.creado == request.time;
+        allow delete: if esMiembro(codigo)
+          && (esMaster(codigo) || resource.data.creado < request.time - duration.value(24, 'h'));
+      }
+
+      // Catálogo de artes compartido: lo añade cualquiera de la sala; lo edita su autor y lo borra su autor o el máster
+      match /artes/{arte} {
+        allow read: if esMiembro(codigo);
+        allow create: if esMiembro(codigo)
+          && request.resource.data.autor == request.auth.uid
+          && request.resource.data.arte is string
+          && request.resource.data.arte.size() < 50000;
+        allow update: if esMiembro(codigo)
+          && resource.data.autor == request.auth.uid
+          && request.resource.data.autor == request.auth.uid
+          && request.resource.data.arte is string
+          && request.resource.data.arte.size() < 50000;
+        allow delete: if esMiembro(codigo)
+          && (resource.data.autor == request.auth.uid || esMaster(codigo));
+      }
+    }
+  }
+}

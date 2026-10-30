@@ -476,6 +476,16 @@
 }
 
 
+/* Pop-up de otro jugador de la sala (eventos.js): quién lo ha lanzado, encima del título */
+.popup-jugador {
+    font-size: 11px;
+    color: #d1ab52;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 4px;
+    font-family: 'SAOUI', sans-serif !important;
+}
+
 /* Popup de ataque: arma usada, daño y notas */
 .popup-subtitulo {
     font-size: 12px;
@@ -554,4 +564,59 @@
     background: #c0392b;
     border-radius: 4px;
     font-family: 'SAOUI', sans-serif !important;
+}
+
+/* Pop-up de otro jugador con daño (eventos.js): cada golpe se puede recibir con un clic */
+.popup-danno.aplicable {
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background-color 0.15s;
+}
+
+.popup-danno.aplicable:hover,
+.popup-danno.aplicable:focus-visible {
+    background-color: rgba(209, 171, 82, 0.18);
+    outline: none;
+}
+
+.popup-aplicar {
+    margin-top: 4px;
+    font-size: 11px;
+    color: #d1ab52;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-family: 'SAOUI', sans-serif !important;
+}
+
+.popup-danno.aplicado {
+    opacity: 0.6;
+}
+
+.popup-danno.aplicado .popup-aplicar {
+    color: #7fd17f;
+}
+
+/* Comida o poción ofrecida a ti (eventos.js): botón para consumirla con la boca */
+.btn-consumir-oferta {
+    display: block;
+    width: 100%;
+    margin-top: 8px;
+    padding: 5px 10px;
+    border: none;
+    border-radius: 6px;
+    background: #d1ab52;
+    color: #1d1d1d;
+    font-weight: bold;
+    cursor: pointer;
+    font-family: 'SAOUI', sans-serif !important;
+}
+
+.btn-consumir-oferta:hover:not(:disabled) {
+    background: #e4c172;
+}
+
+.btn-consumir-oferta:disabled {
+    background: transparent;
+    color: #7fd17f;
+    cursor: default;
 }

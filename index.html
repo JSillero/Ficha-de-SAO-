@@ -288,6 +288,8 @@
                                         <span class="subtitulo-elemental">Daño elemental:</span>
                                         <div class="valores-elementales"></div>
                                     </div>
+                                    <!-- Poción aplicada al arma: se aplica en el siguiente golpe (actualizarPocionesArmas) -->
+                                    <p class="equipamiento-pocion" hidden></p>
                                     <p class="equipamiento-descripcion"></p>
                                     <div class="equipamiento-mods-header">
                                         <span>Modificadores:</span>
@@ -861,6 +863,7 @@
                                 <div id="arteDannoElemental" class="valores-elementales"></div>
                             </details>
                         </div>
+                        <label id="filaCompartirArte" hidden title="Los demás jugadores de la sala la verán en su catálogo"><input type="checkbox" id="arteCompartir"> Compartir en el catálogo de la sala</label>
                         <p id="avisoCrearArte" class="aviso-objeto" role="alert"></p>
                     </form>
                 </div>
@@ -911,6 +914,95 @@
                 </div>
                 <div class="modal-body">
                     <div id="listaHistorialPopups" class="lista-historial-popups"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Online (interfazOnline.js): cuenta, sala y personajes guardados en la nube -->
+    <div class="modal fade modal-sao" id="modalCuenta" tabindex="-1" aria-labelledby="modalCuentaLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalCuentaLabel">Iniciar sesión</h5>
+                </div>
+                <div class="modal-body">
+                    <form id="formSesion" class="form-objeto form-online" novalidate>
+                        <label data-solo-registro hidden>Nombre de jugador (sale en tus tiradas)
+                            <input type="text" id="sesionNombre" maxlength="40" autocomplete="nickname">
+                        </label>
+                        <label>Correo <input type="email" id="sesionEmail" autocomplete="email"></label>
+                        <label>Contraseña <input type="password" id="sesionContrasena" autocomplete="current-password"></label>
+                        <div class="enlaces-online">
+                            <button type="button" class="btn-enlace" id="btnCambiarModoSesion">Crear una cuenta</button>
+                            <button type="button" class="btn-enlace" id="btnRecuperarContrasena">He olvidado la contraseña</button>
+                        </div>
+                    </form>
+                    <div id="panelCuenta" class="form-objeto form-online" hidden>
+                        <p>Conectado como <b id="cuentaNombre"></b> <span id="cuentaEmail" class="texto-online-secundario"></span></p>
+                        <div class="fila-online">
+                            <input type="text" id="cuentaNuevoNombre" maxlength="40" aria-label="Nombre de jugador" placeholder="Nombre de jugador">
+                            <button type="button" class="btn-cabecera" id="btnCambiarNombre">Cambiar nombre</button>
+                        </div>
+                        <button type="button" class="btn-cabecera btn-online-peligro" id="btnCerrarSesion">Cerrar sesión</button>
+                    </div>
+                    <p id="avisoSesion" class="aviso-objeto" role="alert"></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" form="formSesion" class="btn-modal-sao aceptar" id="btnAceptarSesion" title="Entrar" aria-label="Entrar"></button>
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade modal-sao" id="modalSala" tabindex="-1" aria-labelledby="modalSalaLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalSalaLabel">Sala</h5>
+                </div>
+                <div class="modal-body form-online">
+                    <div id="salaActual" class="sala-actual" hidden>
+                        <p>Estás en <b id="salaActualNombre"></b>. Código para invitar: <code id="salaActualCodigo"></code></p>
+                        <div class="fila-online">
+                            <button type="button" class="btn-cabecera" id="btnCopiarCodigoSala">Copiar código</button>
+                            <button type="button" class="btn-cabecera btn-online-peligro" id="btnSalirSala">Salir de la sala</button>
+                        </div>
+                    </div>
+                    <h6 class="titulo-online">Entrar con un código</h6>
+                    <form class="fila-online" id="formEntrarSala">
+                        <input type="text" id="salaCodigo" maxlength="6" placeholder="ABC123" aria-label="Código de la sala" autocomplete="off">
+                        <button type="submit" class="btn-cabecera">Entrar</button>
+                    </form>
+                    <h6 class="titulo-online">Crear una sala</h6>
+                    <form class="fila-online" id="formCrearSala">
+                        <input type="text" id="salaNombreNueva" maxlength="60" placeholder="Nombre de la sala" aria-label="Nombre de la sala">
+                        <button type="submit" class="btn-cabecera">Crear</button>
+                    </form>
+                    <h6 class="titulo-online">Tus salas</h6>
+                    <div id="listaMisSalas" class="lista-online"></div>
+                    <p id="avisoSala" class="aviso-objeto" role="alert"></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade modal-sao" id="modalPersonajesNube" tabindex="-1" aria-labelledby="modalPersonajesNubeLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalPersonajesNubeLabel">Personajes en la nube</h5>
+                </div>
+                <div class="modal-body form-online">
+                    <div id="listaPersonajesNube" class="lista-online"></div>
+                    <p id="avisoPersonajesNube" class="aviso-objeto" role="alert"></p>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
