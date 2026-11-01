@@ -66,6 +66,15 @@
                 </div>
             </div>
 
+            <!-- Barras del grupo (interfazOnline.js, actualizarHudGrupo): a la derecha del HUD si caben;
+                 si no (.plegado), una pestaña que las despliega encima del contenido -->
+            <div id="hudGrupo" class="hud-grupo" hidden>
+                <button type="button" class="hud-grupo-pestana" aria-expanded="false" aria-controls="hudGrupoLista">
+                    Grupo (<span class="hud-grupo-numero">0</span>) <span class="hud-grupo-flecha" aria-hidden="true">▾</span>
+                </button>
+                <div id="hudGrupoLista" class="hud-grupo-lista"></div>
+            </div>
+
             <!-- Cargar, guardar y silencio están en el menú de opciones (engranaje de la silueta) -->
             <input type="file" id="fileInput" accept=".json" hidden>
         </div>
@@ -137,12 +146,13 @@
                             <img class="icono-on" src="./imgs/inventario_on.svg" alt="">
                         </button>
                         <div id="menuInventario" class="menu-sao" role="menu" aria-label="Inventario y baúl" hidden></div>
-                        <!-- Amigos abre su ventana (el sonido de menú sale solo al abrir un modal) -->
-                        <button type="button" id="btnAmigos" class="btn-icono-sao btn-menu-amigos" title="Amigos" aria-label="Amigos"
-                            data-bs-toggle="modal" data-bs-target="#modalAmigos">
+                        <!-- Social: abre un menú (amigos y grupo, con submenús; inicializarSocial en interfazOnline.js) -->
+                        <button type="button" id="btnSocial" class="btn-icono-sao btn-menu-amigos" title="Social" aria-label="Social"
+                            aria-controls="menuSocial">
                             <img class="icono-off" src="./imgs/amigos.svg" alt="">
                             <img class="icono-on" src="./imgs/amigos_on.svg" alt="">
                         </button>
+                        <div id="menuSocial" class="menu-sao" role="menu" aria-label="Social" hidden></div>
                         <!-- Artes: abre un menú (equipadas o sin equipar; inicializarArtes en interfaz.js) -->
                         <button type="button" id="btnArtes" class="btn-icono-sao btn-menu-artes" title="Artes" aria-label="Artes"
                             aria-controls="menuArtes">
@@ -715,18 +725,76 @@
         </div>
     </div>
 
-    <!-- Amigos y Artes: de momento, texto libre -->
+    <!-- Social (interfazOnline.js): amigos guardados en la ficha, añadir amigo, grupo y solicitudes recibidas -->
     <div class="modal fade modal-sao" id="modalAmigos" tabindex="-1" aria-labelledby="modalAmigosLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="modalAmigosLabel">Amigos</h5>
                 </div>
-                <div class="modal-body">
-                    <textarea id="listaDeAmigos" class="texto-modal" placeholder="Lista de amigos"></textarea>
+                <div class="modal-body form-online">
+                    <div id="listaAmigos" class="lista-online"></div>
+                    <p id="avisoAmigos" class="aviso-objeto" role="alert"></p>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade modal-sao" id="modalAnadirAmigo" tabindex="-1" aria-labelledby="modalAnadirAmigoLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalAnadirAmigoLabel">Añadir amigo</h5>
+                </div>
+                <div class="modal-body form-online">
+                    <p class="texto-online-secundario">Personajes de la sala. Les llegará una solicitud que pueden aceptar o rechazar.</p>
+                    <div id="listaAnadirAmigo" class="lista-online"></div>
+                    <p id="avisoAnadirAmigo" class="aviso-objeto" role="alert"></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade modal-sao" id="modalGrupo" tabindex="-1" aria-labelledby="modalGrupoLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalGrupoLabel">Grupo</h5>
+                </div>
+                <div class="modal-body form-online">
+                    <div id="listaGrupo" class="lista-online"></div>
+                    <h6 class="titulo-online" id="tituloInvitarGrupo">Invitar</h6>
+                    <div id="listaInvitarGrupo" class="lista-online"></div>
+                    <p id="avisoGrupo" class="aviso-objeto" role="alert"></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Solicitud recibida (amistad o invitación a un grupo): aceptar o rechazar -->
+    <div class="modal fade modal-sao" id="modalSolicitud" tabindex="-1" aria-labelledby="modalSolicitudLabel" aria-hidden="true"
+        data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalSolicitudLabel">Solicitud</h5>
+                </div>
+                <div class="modal-body">
+                    <p id="textoSolicitud" class="texto-solicitud"></p>
+                    <p id="avisoSolicitud" class="aviso-objeto" role="alert"></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao aceptar" id="btnAceptarSolicitud" title="Aceptar" aria-label="Aceptar"></button>
+                    <button type="button" class="btn-modal-sao cancelar" id="btnRechazarSolicitud" title="Rechazar" aria-label="Rechazar"></button>
                 </div>
             </div>
         </div>

@@ -367,6 +367,21 @@ const GLIFOS = {
         <circle class="p" cx="50" cy="62" r="8"/>
         <path class="t" style="stroke-width:8;stroke-linecap:round" d="M36 49A20 20 0 0 1 64 49"/>
         <path class="t o" style="stroke-width:8;stroke-linecap:round" d="M24 37A37 37 0 0 1 76 37"/>`,
+    /* Social: añadir amigo (persona con "+"), grupo (tres personas) y salir (flecha saliendo de una puerta) */
+    anadirAmigo: `
+        <circle class="p" cx="42" cy="34" r="13"/>
+        <path class="p" d="M18 76C18 60 29 52 42 52C55 52 66 60 66 76Z"/>
+        ${insigniaSigno("M70 61V79M61 70H79")}`,
+    grupo: `
+        <circle class="s" cx="27" cy="38" r="9"/>
+        <path class="s" d="M12 72C12 60 19 54 27 54C35 54 42 60 42 72Z"/>
+        <circle class="s" cx="73" cy="38" r="9"/>
+        <path class="s" d="M58 72C58 60 65 54 73 54C81 54 88 60 88 72Z"/>
+        <circle class="p" cx="50" cy="35" r="12"/>
+        <path class="p" d="M30 78C30 62 39 54 50 54C61 54 70 62 70 78Z"/>`,
+    salir: `
+        <path class="s" d="M24 20H56V36H48V28H32V72H48V64H56V80H24Z"/>
+        <path class="p" d="M44 46H66V36L82 50L66 64V54H44Z"/>`,
     /* Historial de avisos: reloj */
     historial: `
         <circle class="t" cx="50" cy="50" r="28" style="stroke-width:8"/>

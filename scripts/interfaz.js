@@ -24,7 +24,8 @@ import { emitirEvento, configurarOrigen, setAplicadorDanno, setConsumidorOferta 
 import { escaparHtml } from "./html.js";
 import { inicializarVentanas, abrirCapa, cerrarCapa } from "./ventanas.js";
 import {
-    inicializarOnline, getEstadoOnline, getPersonajesSala, avisarNombrePersonaje, setIdPersonajeNube, abrirCuenta, abrirSala, abrirPersonajesNube,
+    inicializarOnline, getEstadoOnline, getPersonajesSala, avisarNombrePersonaje, setIdPersonajeNube,
+    abrirAmigos, abrirAnadirAmigo, abrirGrupo, crearGrupo, salirGrupo, getGrupoSala, avisarEstadoGrupo, abrirCuenta, abrirSala, abrirPersonajesNube,
     guardarEnNube, compartirArte, quitarArteDeSala
 } from "./interfazOnline.js";
 import {
@@ -322,6 +323,13 @@ function actualizarTodo() {
     comprobarCambios();
     // En una sala, la lista de personajes conectados lleva el nombre (solo se envía si cambia)
     avisarNombrePersonaje(personaje.nombre);
+    // En un grupo, tus compañeros ven tu vida, PA (sin números), nivel y estados (solo se envía si cambia)
+    avisarEstadoGrupo({
+        vida: personaje.vidaMax > 0 ? personaje.vida / personaje.vidaMax : 0,
+        pa: personaje.puntosArteMax > 0 ? personaje.puntosArte / personaje.puntosArteMax : 0,
+        nivel: personaje.nivel,
+        estados: Object.keys(ESTADOS_INFO).filter(clave => estaActivo(personaje, clave))
+    });
 }
 
 /* Cambios sin guardar ______________________________________________________
@@ -3530,6 +3538,47 @@ function inicializarOpciones() {
     });
 }
 
+/* Menú Social: Amigos y Grupo, cada uno con su submenú (ventanas en interfazOnline.js) _ */
+let menuSocial = null;
+
+const opcionesGrupo = () => {
+    const grupo = getGrupoSala();
+    if (!grupo) return [{ clave: "crearGrupo", etiqueta: "Crear grupo", icono: "anadirAmigo" }];
+    return [
+        { clave: "verGrupo", etiqueta: `Ver grupo (${grupo.miembros.length}/6)`, icono: "grupo" },
+        ...(grupo.soyLider ? [{ clave: "invitarGrupo", etiqueta: "Invitar", icono: "anadirAmigo" }] : []),
+        { clave: "salirGrupo", etiqueta: "Salir del grupo", icono: "salir" }
+    ];
+};
+
+function inicializarSocial() {
+    menuSocial = crearMenuSao({
+        boton: document.getElementById("btnSocial"),
+        menu: document.getElementById("menuSocial"),
+        opciones: () => [
+            { clave: "amigos", etiqueta: "Amigos", icono: "amigos", submenu: () => [
+                { clave: "verAmigos", etiqueta: `Ver amigos (${personaje.amigos.length})`, icono: "amigos" },
+                { clave: "anadirAmigo", etiqueta: "Añadir amigo", icono: "anadirAmigo" }
+            ] },
+            { clave: "grupo", etiqueta: "Grupo", icono: "grupo", submenu: opcionesGrupo }
+        ],
+        alElegir: (clave, menu) => {
+            const acciones = {
+                verAmigos: abrirAmigos,
+                anadirAmigo: abrirAnadirAmigo,
+                crearGrupo,
+                verGrupo: () => abrirGrupo(),
+                invitarGrupo: () => abrirGrupo(),
+                salirGrupo
+            };
+            if (!acciones[clave]) return;
+            reproducir("click");
+            menu.cerrar({ sonido: false });
+            acciones[clave]();
+        }
+    });
+}
+
 /* Historial de pop-ups de la sesión (solo en memoria, popups.js) ____________ */
 function inicializarHistorialPopups() {
     const ventana = document.getElementById("modalHistorialPopups");
@@ -4379,6 +4428,7 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarCor();
     precargarSonidos();
     inicializarOpciones();
+    inicializarSocial();
     inicializarHistorialPopups();
     inicializarBotonesModales();
     inicializarVentanas();
@@ -4400,6 +4450,9 @@ document.addEventListener("DOMContentLoaded", () => {
         },
         alCambiarArtesSala,
         // Las opciones "Ofrecer a…" del inventario dependen de qué personajes hay en la sala
-        alCambiarPersonajes: () => actualizarObjetos()
+        alCambiarPersonajes: () => actualizarObjetos(),
+        actualizar: actualizarTodo,
+        // El submenú Grupo cambia según estés en un grupo o seas el líder
+        alCambiarGrupo: () => menuSocial?.actualizar()
     });
 });

@@ -2678,6 +2678,22 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
     padding-left: 12px;
 }
 
+/* Social: integrante señalado al abrir el grupo desde su barra, y texto de una solicitud recibida */
+.lista-online .fila-online.senalada {
+    box-shadow: inset 4px 0 0 #EBA601;
+    background: #fff6dc;
+}
+
+.fila-online.desconectado .nombre-online {
+    opacity: 0.55;
+}
+
+.texto-solicitud {
+    margin: 0;
+    font-size: 17px;
+    text-align: center;
+}
+
 .personaje-sala.oculto .nombre-online {
     opacity: 0.55;
     font-style: italic;

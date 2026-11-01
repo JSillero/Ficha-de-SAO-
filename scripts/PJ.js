@@ -123,8 +123,11 @@ export default class PJ {
         /* Bloques de texto */
         this.notas = ""; /* String, como todos */
         this.listadoArtes = "";
-        this.listaDeAmigos = "";
+        this.listaDeAmigos = ""; // notas antiguas de amigos: ya no se muestran, se conservan
         this.recetasProfesion = "";
+
+        /* Amigos (sistema social online): [{ jugador (uid), nombre (del personaje) }], mutuos */
+        this.amigos = [];
 
         /* Modificadores */
         this.modificadores = [new Modificador("nombre", "atletismo", 0, TURNOS_PERMANENTE)];
@@ -382,6 +385,16 @@ export default class PJ {
         /* Artes (las fichas antiguas no tienen: lista vacía; su texto sigue en listadoArtes) */
         this.artes = cargarArtes(jsonObject.artes);
 
+        /* Amigos: solo las entradas válidas, sin repetir */
+        this.amigos = [];
+        (Array.isArray(jsonObject.amigos) ? jsonObject.amigos : []).forEach(amigo => {
+            const jugador = String(amigo?.jugador ?? "");
+            const nombre = String(amigo?.nombre ?? "").trim().slice(0, 60);
+            if (jugador && nombre && !this.amigos.some(a => a.jugador === jugador && a.nombre === nombre)) {
+                this.amigos.push({ jugador, nombre });
+            }
+        });
+
         // Los valores derivados (vidaMax, defensa, aguante...) no se leen: se recalculan
         this.calcularCaracteristicas();
     }
@@ -424,7 +437,9 @@ export default class PJ {
 
             modificadores: this.modificadores,
 
-            artes: this.artes
+            artes: this.artes,
+
+            amigos: this.amigos
         });
     }
 

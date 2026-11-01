@@ -81,6 +81,36 @@ service cloud.firestore {
         && !(request.auth.uid in expulsadosDe(despues));
     }
 
+    // Grupo, líder: invita, echa, pasa el liderazgo (a un integrante, con su uid) y actualiza su propia entrada
+    function cambioDeLider() {
+      let despues = request.resource.data;
+      return resource.data.liderJugador == request.auth.uid
+        && despues.diff(resource.data).affectedKeys().hasOnly(['invitados', 'miembros', 'lider', 'liderJugador', 'ultimo'])
+        && despues.lider in despues.miembros
+        && despues.miembros[despues.lider].jugador == despues.liderJugador;
+    }
+
+    // Grupo, integrante: solo su propia entrada de miembros (clave = "ultimo"): entrar si está invitado
+    // (y se quita la invitación), actualizar su estado o salir
+    function cambioDeIntegrante() {
+      let antes = resource.data;
+      let despues = request.resource.data;
+      let clave = despues.ultimo;
+      let invitados = despues.get('invitados', {}).diff(antes.get('invitados', {}));
+      return despues.diff(antes).affectedKeys().hasOnly(['miembros', 'invitados', 'ultimo'])
+        && clave is string
+        && despues.miembros.diff(antes.miembros).affectedKeys().hasOnly([clave])
+        && (clave in despues.miembros
+          ? despues.miembros[clave].jugador == request.auth.uid
+            && (clave in antes.miembros
+              ? antes.miembros[clave].jugador == request.auth.uid
+              : clave in antes.get('invitados', {}))
+          : antes.miembros[clave].jugador == request.auth.uid)
+        && invitados.addedKeys().size() == 0
+        && invitados.changedKeys().size() == 0
+        && invitados.removedKeys().hasOnly([clave]);
+    }
+
     // Salas: se entra conociendo el código. Sin get() en estas reglas: todo sale de resource.data (gratis).
     match /salas/{codigo} {
       allow get: if conSesion();
@@ -107,6 +137,24 @@ service cloud.firestore {
           && request.resource.data.creado == request.time;
         allow delete: if esMiembro(codigo)
           && (esMaster(codigo) || resource.data.creado < request.time - duration.value(24, 'h'));
+      }
+
+      // Grupos (hasta 6 personajes). Las claves de "miembros" son instancias (pestañas); cada entrada lleva el
+      // uid de su jugador. Para ahorrar lecturas, solo crear hace get() de la sala: leer y escribir se basa en
+      // el propio documento (el id del grupo es aleatorio y solo lo conocen sus integrantes e invitados).
+      match /grupos/{grupo} {
+        allow read: if conSesion();
+        allow create: if esMiembro(codigo)
+          && request.resource.data.liderJugador == request.auth.uid
+          && request.resource.data.miembros.size() == 1
+          && request.resource.data.lider in request.resource.data.miembros
+          && request.resource.data.miembros[request.resource.data.lider].jugador == request.auth.uid
+          && request.resource.data.get('invitados', {}).size() == 0;
+        allow update: if conSesion()
+          && request.resource.data.miembros.size() <= 6
+          && (cambioDeLider() || cambioDeIntegrante());
+        // Lo borra el líder (el último que queda siempre es el líder: el liderazgo pasa al salir)
+        allow delete: if conSesion() && resource.data.liderJugador == request.auth.uid;
       }
 
       // Catálogo de artes compartido: lo añade cualquiera de la sala; lo edita su autor y lo borra su autor o el máster

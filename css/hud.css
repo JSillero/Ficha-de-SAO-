@@ -290,6 +290,196 @@
     align-items: center;
     gap: 3px;
 }
+/* Barras del grupo (interfazOnline.js, actualizarHudGrupo) ___________________
+   A la derecha del HUD, una fila por compañero como tu barra en pequeño: nombre, vida (verde/naranja/roja)
+   con PA debajo, nivel y estados, sin números. Si no caben, .plegado: una pestaña colgando bajo la
+   cabecera que despliega la lista encima del contenido (la cabecera no crece). */
+.hud-grupo {
+    flex: 0 1 420px;
+    min-width: 260px;
+    align-self: flex-start;
+}
+
+/* Con más de 3 compañeros, dos columnas para no hacer la cabecera más alta */
+.hud-grupo.dos-columnas {
+    flex-basis: 760px;
+}
+
+.hud-grupo.dos-columnas:not(.plegado) .hud-grupo-lista {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px 10px;
+}
+
+.hud-grupo[hidden] {
+    display: none;
+}
+
+.hud-grupo-pestana {
+    display: none;
+}
+
+.hud-grupo-lista {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.hud-grupo-fila {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 28px;
+    padding: 0 18px 0 10px;
+    border: 0;
+    background: #4a4a4a;
+    clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+    color: white;
+    font-family: 'SAOUI', sans-serif;
+    font-size: 16px;
+    text-align: left;
+    cursor: pointer;
+    filter: drop-shadow(0px 2px 2px rgba(0, 0, 0, 0.3));
+    transition: background 0.15s, opacity 0.2s;
+}
+
+.hud-grupo-fila:hover,
+.hud-grupo-fila:focus-visible {
+    background: #5c5c5c;
+    outline: none;
+}
+
+.hud-grupo-nombre {
+    flex: 0 1 100px;
+    min-width: 50px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-shadow: 1px 1px 2px black;
+}
+
+.hud-grupo-barras {
+    flex: 1 1 auto;
+    min-width: 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+/* Las barras son <span>: hacen falta display: block para que el relleno tenga tamaño */
+.hud-grupo-vida,
+.hud-grupo-pa,
+.hud-grupo-vida .sao-track-fill,
+.hud-grupo-vida .sao-track-glass,
+.hud-grupo-pa .sao-arte-fill {
+    display: block;
+}
+
+.hud-grupo-vida {
+    position: relative;
+    height: 12px;
+    background: #222;
+    border: 2px solid #ddd;
+    clip-path: polygon(0 0, 100% 0, 97% 100%, 0 100%);
+}
+
+.hud-grupo-pa {
+    position: relative;
+    width: 70%;
+    height: 5px;
+    background: #222;
+    border: 1px solid #ddd;
+    clip-path: polygon(0 0, 100% 0, 97% 100%, 0 100%);
+}
+
+.hud-grupo-vida .sao-track-fill,
+.hud-grupo-pa .sao-arte-fill {
+    transition: width 0.3s linear, background 0.3s ease;
+}
+
+.hud-grupo-nivel {
+    flex: none;
+    font-size: 14px;
+}
+
+.hud-grupo-estados {
+    flex: none;
+    display: flex;
+    gap: 2px;
+}
+
+.hud-grupo-estados:empty {
+    display: none;
+}
+
+.hud-grupo-estado {
+    display: block;
+    width: 17px;
+    height: 17px;
+}
+
+.hud-grupo-estado .icono-sao {
+    filter: none;
+}
+
+/* Desconectado: sigue en el grupo con sus últimos valores */
+.hud-grupo-fila.desconectado {
+    opacity: 0.5;
+    filter: grayscale(1);
+}
+
+.hud-grupo-fila.lider .hud-grupo-nombre::before {
+    content: "★ ";
+    color: #EBA601;
+}
+
+.hud-grupo.plegado {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 5;
+    flex: none;
+    min-width: 0;
+    width: min(320px, 100%);
+}
+
+.hud-grupo.plegado .hud-grupo-pestana {
+    display: block;
+    margin-left: auto;
+    padding: 2px 12px 3px;
+    border: 0;
+    border-radius: 0 0 6px 6px;
+    background: #4a4a4a;
+    color: white;
+    font-family: 'SAOUI', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.hud-grupo.plegado .hud-grupo-flecha {
+    display: inline-block;
+    transition: transform 0.15s;
+}
+
+.hud-grupo.plegado.abierto .hud-grupo-flecha {
+    transform: rotate(180deg);
+}
+
+.hud-grupo.plegado .hud-grupo-lista {
+    display: none;
+    margin-top: 4px;
+    padding: 6px;
+    border-radius: 6px;
+    background: rgba(251, 251, 251, 0.97);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.hud-grupo.plegado.abierto .hud-grupo-lista {
+    display: flex;
+}
+
 /* Cabecera en móvil */
 @media (max-width: 600px) {
     .sao-input-nombre {

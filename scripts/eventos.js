@@ -7,7 +7,11 @@
  * - jugador: id del usuario; instancia: la pestaña que lo emite (instancia.js). Un usuario puede tener varios
  *   personajes en pestañas distintas: se descartan solo los de la misma pestaña.
  * - personaje: nombre del personaje; es lo único que se muestra (el nombre de usuario solo sale en la gestión de sala).
- * - oculto: el máster ha ocultado este personaje; los demás (menos el máster) ven el resultado sin el cálculo.
+ * - oculto: el máster ha ocultado este personaje (no se le puede ofrecer nada).
+ * - Detalle de tiradas y daño: solo lo ven completo el máster y los integrantes del grupo de quien lo emite;
+ *   el resto ve el resultado sin el cálculo (resumirEvento).
+ * - Eventos privados (solicitudes de amistad, invitaciones de grupo y sus respuestas): emitirPrivado los envía
+ *   sin pintarlos y solo los atiende el destinatario (datos.para = su instancia) con su manejador.
  * - datos: solo texto plano y números; el pintor lo escapa todo, porque puede venir de otro jugador.
  *
  * Sin conexión no hay publicador: emitirEvento solo pinta. La capa online llama a configurarOrigen y
@@ -21,9 +25,13 @@ export const VERSION_EVENTO = 2;
 /* tipo → pintar(datos) que devuelve { popup: HTMLElement, titulo: string, tipoPopup: "tirada" | "info" } */
 const pintores = {};
 
+/* tipo → manejar(evento) de los eventos privados (solo se llama en el destinatario) */
+const manejadores = {};
+
 /* Quién emite: jugador (id de usuario) y nombre del personaje. personaje, oculto y esMaster pueden ser
-   funciones (cambian con el tiempo). esMaster: si esta ficha es la del máster de la sala (ve los ocultos completos) */
-const origen = { jugador: null, personaje: "", oculto: false, esMaster: false };
+   funciones (cambian con el tiempo). esMaster: si esta ficha es la del máster de la sala (lo ve todo completo).
+   enMiGrupo(instancia): si ese personaje está en tu grupo (ves completas sus tiradas). */
+const origen = { jugador: null, personaje: "", oculto: false, esMaster: false, enMiGrupo: () => false };
 let publicador = null;
 
 const valor = (v) => typeof v === "function" ? v() : v;
@@ -32,11 +40,34 @@ export function registrarPintor(tipo, pintar) {
     pintores[tipo] = pintar;
 }
 
-export function configurarOrigen({ jugador, personaje, oculto, esMaster } = {}) {
+/** Evento privado: manejar(evento) solo se llama en la pestaña destinataria (evento.datos.para) */
+export function registrarManejador(tipo, manejar) {
+    manejadores[tipo] = manejar;
+}
+
+export function configurarOrigen({ jugador, personaje, oculto, esMaster, enMiGrupo } = {}) {
     if (jugador !== undefined) origen.jugador = jugador;
     if (personaje !== undefined) origen.personaje = personaje;
     if (oculto !== undefined) origen.oculto = oculto;
     if (esMaster !== undefined) origen.esMaster = esMaster;
+    if (enMiGrupo !== undefined) origen.enMiGrupo = enMiGrupo;
+}
+
+const crearEvento = (tipo, datos) => ({
+    version: VERSION_EVENTO,
+    tipo,
+    jugador: origen.jugador,
+    instancia: getInstancia(),
+    personaje: String(valor(origen.personaje) ?? ""),
+    oculto: Boolean(valor(origen.oculto)),
+    hora: new Date().toISOString(),
+    datos
+});
+
+/** Envía un evento privado (sin pintarlo aquí). Devuelve la promesa del envío (falla sin conexión). */
+export async function emitirPrivado(tipo, datos) {
+    if (!publicador) throw new Error("Entra en una sala primero");
+    await publicador(crearEvento(tipo, datos));
 }
 
 /* publicar(evento): lo manda a la sala. null = sin conexión */
@@ -46,16 +77,7 @@ export function setPublicador(publicar) {
 
 /** Crea el evento, lo pinta aquí y lo manda a la sala si hay conexión. */
 export function emitirEvento(tipo, datos) {
-    const evento = {
-        version: VERSION_EVENTO,
-        tipo,
-        jugador: origen.jugador,
-        instancia: getInstancia(),
-        personaje: String(valor(origen.personaje) ?? ""),
-        oculto: Boolean(valor(origen.oculto)),
-        hora: new Date().toISOString(),
-        datos
-    };
+    const evento = crearEvento(tipo, datos);
     pintarEvento(evento, true);
     if (publicador) {
         try {
@@ -72,8 +94,16 @@ export function emitirEvento(tipo, datos) {
 export function recibirEvento(evento) {
     if (!evento || typeof evento !== "object" || evento.version !== VERSION_EVENTO) return;
     if (evento.instancia === getInstancia()) return;
-    // Personaje oculto: quien no es el máster ve el resultado, pero no cómo se ha calculado
-    if (evento.oculto && !valor(origen.esMaster)) evento = resumirEvento(evento);
+    // Privados: solo los atiende su destinatario y no se pintan como pop-up
+    if (manejadores[evento.tipo]) {
+        if (evento.datos?.para === getInstancia()) {
+            try { manejadores[evento.tipo](evento); } catch (error) { console.warn("Evento privado mal formado", evento, error); }
+        }
+        return;
+    }
+    // Fuera de tu grupo ves el resultado, pero no cómo se ha calculado (el máster lo ve todo)
+    const completo = valor(origen.esMaster) || Boolean(origen.enMiGrupo?.(evento.instancia));
+    if (!completo) evento = resumirEvento(evento);
     pintarEvento(evento, false);
 }
 
