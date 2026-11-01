@@ -1,37 +1,91 @@
 /* Capa online (Firebase Auth + Firestore). Es lo único que conoce Firebase: si algún día se cambia de
  * backend (p. ej. Spring Boot), solo hay que reescribir este fichero manteniendo las mismas funciones.
  *
- * Firestore (reglas en firestore.rules):
+ * Firestore (reglas en firestore.rules; explicación completa en .claude/11-online.md):
  * - personajes/{id}: { propietario, nombre, json, actualizado }    json = personaje.toJSONString()
- * - salas/{codigo}: { nombre, master, miembros: [uid], creada }    se entra con el código
+ * - usuarios/{uid}: { nombre }                                     nombre de usuario (solo en la gestión de sala)
+ * - salas/{codigo}: { nombre, master, miembros: [uid], creada,
+ *       personajes: { uid: { instancia: { nombre, visto } } },     personajes conectados (una entrada por pestaña)
+ *       ocultos: ["uid:nombre"],                                   personajes que el máster oculta
+ *       expulsados: { uid: true } }                                echados por el máster (pueden volver a entrar)
  * - salas/{codigo}/eventos/{auto}: { jugador, evento, creado }     evento = JSON de eventos.js
  * - salas/{codigo}/artes/{id}: { autor, nombreAutor, nombre, arte, actualizado }   arte = JSON del arte
+ *
+ * Plan gratuito de Firebase: peticiones al mínimo. Personajes, ocultos y expulsados van en el documento de
+ * la sala, que ya se escucha (sin listeners ni colecciones extra); nada es periódico; los nombres de usuario
+ * solo se leen al abrir la gestión de sala; la inactividad (24 h) se comprueba en local.
  *
  * El SDK solo se descarga al iniciar sesión, o al arrancar si la última vez se dejó la sesión abierta. */
 import { firebaseConfig, VERSION_SDK_FIREBASE } from "./config.js";
 
 const URL_SDK = `https://www.gstatic.com/firebasejs/${VERSION_SDK_FIREBASE}/`;
-/* localStorage: hay sesión abierta (para cargar el SDK al arrancar) y última sala */
+/* localStorage: hay sesión abierta (para cargar el SDK al arrancar) y última sala { codigo, nombre, master, actividad }.
+   La sala se guarda también en sessionStorage (propia de cada pestaña), que tiene preferencia al recargar. */
 const CLAVE_SESION = "fichaSesionOnline";
 const CLAVE_SALA = "fichaSalaOnline";
 const LETRAS_CODIGO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
+/** Sin hacer nada en la sala durante este tiempo, se sale sola (salvo el máster). Se puede volver a entrar. */
+export const HORAS_INACTIVIDAD_SALA = 24;
+/* Una entrada de personaje con "visto" más antiguo se considera de una pestaña cerrada (no se pudo borrar) */
+const HORAS_PERSONAJE_CADUCADO = 25;
+/* "visto" se refresca como mucho cada tanto, aprovechando un evento (solo importa en pestañas abiertas días) */
+const HORAS_REFRESCAR_VISTO = 12;
+const HORA_MS = 3600 * 1000;
+
 let promesaSdk = null;
 let sdk = null; // { auth, db, a (módulo auth), f (módulo firestore) }
 
-/** Estado público: usuario { uid, nombre, email } y sala { codigo, nombre, master } */
+/** Estado público: usuario { uid, nombre, email } y sala { codigo, nombre, master, ocultos } */
 const estado = { usuario: null, sala: null };
 let dejarDeEscuchar = [];
-const oyentes = { estado: new Set(), evento: new Set(), artesSala: new Set(), miembros: new Set() };
-/* Jugadores de la sala actual: [{ uid, nombre }] (nombres de usuarios/{uid}) */
-let miembros = [];
+const oyentes = { estado: new Set(), evento: new Set(), artesSala: new Set(), personajes: new Set(), salida: new Set() };
+/* Personajes conectados a la sala actual: [{ jugador, instancia, nombre, oculto }] (también los tuyos) */
+let personajesSala = [];
 const nombresCache = new Map();
 
-/* Comodidad: si localStorage falla (modo privado...) la ficha sigue igual */
-const leerLocal = (clave) => { try { return localStorage.getItem(clave); } catch { return null; } };
-const escribirLocal = (clave, valor) => {
-    try { valor === null ? localStorage.removeItem(clave) : localStorage.setItem(clave, valor); } catch { /* sin almacenamiento */ }
+/* Personaje de esta pestaña: instancia (instancia.js) y nombre, para la lista de conectados */
+const personajeLocal = { instancia: null, nombre: "" };
+let ultimaActividad = 0;   // última acción en la sala desde esta pestaña (ms)
+let ultimoVisto = 0;       // última vez que se escribió "visto" de este personaje (ms)
+
+/* Comodidad: si el almacenamiento falla (modo privado...) la ficha sigue igual */
+const leerLocal = (clave, almacen = localStorage) => { try { return almacen.getItem(clave); } catch { return null; } };
+const escribirLocal = (clave, valor, almacen = localStorage) => {
+    try { valor === null ? almacen.removeItem(clave) : almacen.setItem(clave, valor); } catch { /* sin almacenamiento */ }
 };
+
+/* Última sala: { codigo, nombre, master, actividad } o null. Acepta el formato antiguo (solo el código). */
+function leerSalaLocal() {
+    const leer = (almacen) => {
+        const texto = leerLocal(CLAVE_SALA, almacen);
+        if (!texto) return null;
+        try {
+            const datos = JSON.parse(texto);
+            if (datos && typeof datos.codigo === "string") return datos;
+        } catch { /* formato antiguo */ }
+        return { codigo: texto, actividad: Date.now() };
+    };
+    const deSesion = leer(sessionStorage);
+    const deLocal = leer(localStorage);
+    if (!deSesion) return deLocal;
+    // La actividad de otras pestañas en la misma sala también cuenta
+    if (deLocal?.codigo === deSesion.codigo) deSesion.actividad = Math.max(deSesion.actividad || 0, deLocal.actividad || 0);
+    return deSesion;
+}
+
+function escribirSalaLocal(datos) {
+    const texto = datos ? JSON.stringify(datos) : null;
+    escribirLocal(CLAVE_SALA, texto, sessionStorage);
+    escribirLocal(CLAVE_SALA, texto, localStorage);
+}
+
+function marcarActividad() {
+    ultimaActividad = Date.now();
+    if (!estado.sala) return;
+    const { codigo, nombre, master } = estado.sala;
+    escribirSalaLocal({ codigo, nombre, master, actividad: ultimaActividad });
+}
 
 function cargarSdk() {
     promesaSdk ??= Promise.all([
@@ -53,22 +107,47 @@ function avisar(tipo, valor) {
     oyentes[tipo].forEach(cb => { try { cb(valor); } catch (error) { console.error(error); } });
 }
 
-const copiaEstado = () => ({ usuario: estado.usuario && { ...estado.usuario }, sala: estado.sala && { ...estado.sala } });
+const copiaEstado = () => ({
+    usuario: estado.usuario && { ...estado.usuario },
+    sala: estado.sala && { ...estado.sala, ocultos: [...(estado.sala.ocultos ?? [])] }
+});
 
 /** cb(estado) al iniciar/cerrar sesión o entrar/salir de sala. Devuelve la función para quitarlo. */
 export function alCambiarEstado(cb) { oyentes.estado.add(cb); return () => oyentes.estado.delete(cb); }
-/** cb(evento) por cada evento de la sala (también los propios; eventos.js los descarta) */
+/** cb(evento) por cada evento de la sala (también los propios; eventos.js descarta los de esta pestaña) */
 export function alRecibirEvento(cb) { oyentes.evento.add(cb); return () => oyentes.evento.delete(cb); }
 /** cb(lista) con las artes compartidas de la sala: [{ id, autor, nombreAutor, arte }] */
 export function alCambiarArtesSala(cb) { oyentes.artesSala.add(cb); return () => oyentes.artesSala.delete(cb); }
-
-/** cb(lista) con los jugadores de la sala: [{ uid, nombre }] (también tú) */
-export function alCambiarMiembros(cb) { oyentes.miembros.add(cb); return () => oyentes.miembros.delete(cb); }
+/** cb(lista) con los personajes conectados: [{ jugador, instancia, nombre, oculto }] (también los tuyos) */
+export function alCambiarPersonajes(cb) { oyentes.personajes.add(cb); return () => oyentes.personajes.delete(cb); }
+/** cb({ motivo: "expulsado" | "inactividad", nombre }) cuando la sala te saca sin pulsar "Salir" */
+export function alSalirSala(cb) { oyentes.salida.add(cb); return () => oyentes.salida.delete(cb); }
 
 export function getEstado() { return copiaEstado(); }
-export function getMiembros() { return miembros.map(m => ({ ...m })); }
+export function getPersonajesSala() { return personajesSala.map(p => ({ ...p })); }
 
-/* Nombre público del jugador (usuarios/{uid}): lo ven los demás al elegir a quién ofrecer algo */
+/** Clave de un personaje para ocultarlo: "uid:nombre" (si cambia de nombre deja de estar oculto) */
+export const claveOculto = (jugador, nombre) => `${jugador}:${String(nombre ?? "").trim()}`;
+
+/** Instancia (pestaña) y nombre del personaje de esta ficha. Si cambia el nombre estando en una sala, se publica. */
+export function configurarPersonaje({ instancia, nombre } = {}) {
+    if (instancia !== undefined) personajeLocal.instancia = instancia;
+    if (nombre === undefined) return;
+    nombre = String(nombre ?? "").trim().slice(0, 60);
+    if (nombre === personajeLocal.nombre) return;
+    personajeLocal.nombre = nombre;
+    if (estado.sala) publicarPersonaje().catch(error => console.warn("No se pudo actualizar el personaje en la sala:", error));
+}
+
+/** ¿El personaje de esta pestaña está oculto por el máster? */
+export function personajeLocalOculto() {
+    if (!estado.sala || !estado.usuario) return false;
+    return (estado.sala.ocultos ?? []).includes(claveOculto(estado.usuario.uid, personajeLocal.nombre));
+}
+
+export const soyMasterSala = () => Boolean(estado.sala && estado.usuario && estado.sala.master === estado.usuario.uid);
+
+/* Nombre público del jugador (usuarios/{uid}): solo se ve en la gestión de sala */
 function publicarNombre(uid, nombre) {
     if (!sdk || !uid || !nombre) return;
     const { db, f } = sdk;
@@ -99,17 +178,44 @@ async function prepararAuth() {
     return prepararAuth.listo;
 }
 
-/** Al arrancar: si la última vez se dejó la sesión abierta, la recupera y vuelve a la última sala. */
+/* ¿La última sala lleva más de 24 h sin actividad? El máster no sale nunca por inactividad. */
+function salaInactiva(salaLocal) {
+    if (!salaLocal || !estado.usuario || salaLocal.master === estado.usuario.uid) return false;
+    const actividad = Math.max(Number(salaLocal.actividad) || 0, salaLocal.codigo === estado.sala?.codigo ? ultimaActividad : 0);
+    return Date.now() - actividad > HORAS_INACTIVIDAD_SALA * HORA_MS;
+}
+
+/** Al arrancar: si la última vez se dejó la sesión abierta, la recupera y vuelve a la última sala
+ *  (si no lleva 24 h sin actividad: entonces no reentra y no gasta ninguna petición). */
 export async function iniciar() {
     if (!leerLocal(CLAVE_SESION)) return copiaEstado();
     try {
         await prepararAuth();
-        const sala = leerLocal(CLAVE_SALA);
-        if (estado.usuario && sala) await entrarSala(sala).catch(() => escribirLocal(CLAVE_SALA, null));
+        const sala = leerSalaLocal();
+        if (estado.usuario && sala) {
+            if (salaInactiva(sala)) {
+                escribirSalaLocal(null);
+                avisar("salida", { motivo: "inactividad", nombre: sala.nombre ?? sala.codigo });
+            } else {
+                await entrarSala(sala.codigo, { actividad: sala.actividad }).catch(() => escribirSalaLocal(null));
+            }
+        }
     } catch (error) {
         console.warn("No se pudo conectar con Firebase:", error);
     }
     return copiaEstado();
+}
+
+/** Comprobación local (sin peticiones): si llevas 24 h sin hacer nada en la sala, sales. Devuelve true si has salido. */
+export function comprobarInactividad() {
+    if (!estado.sala) return false;
+    const local = leerSalaLocal();
+    const sala = local?.codigo === estado.sala.codigo ? local : { ...estado.sala, actividad: ultimaActividad };
+    if (!salaInactiva(sala)) return false;
+    const nombre = estado.sala.nombre;
+    salirSala();
+    avisar("salida", { motivo: "inactividad", nombre });
+    return true;
 }
 
 export async function iniciarSesion(email, contrasena) {
@@ -148,7 +254,12 @@ export async function recuperarContrasena(email) {
 }
 
 export async function cerrarSesion() {
-    if (estado.sala) dejarSala();
+    if (estado.sala) {
+        // Antes de cerrar la sesión, que después ya no hay permiso para escribir
+        await quitarPersonaje().catch(() => { /* sin conexión: se limpia al volver a entrar */ });
+        dejarSala();
+        escribirSalaLocal(null);
+    }
     escribirLocal(CLAVE_SESION, null);
     if (sdk) await sdk.a.signOut(sdk.auth);
 }
@@ -167,6 +278,9 @@ function codigoAleatorio(longitud = 6) {
 
 const normalizarCodigo = (codigo) => String(codigo ?? "").trim().toUpperCase();
 
+/* Milisegundos de un Timestamp de Firestore (null mientras el servidor no lo ha puesto: se toma "ahora") */
+const msDe = (marca) => marca?.toMillis?.() ?? Date.now();
+
 export async function crearSala(nombre) {
     const { db, f, uid } = exigirUsuario();
     const codigo = codigoAleatorio();
@@ -174,29 +288,76 @@ export async function crearSala(nombre) {
         nombre: String(nombre).trim().slice(0, 60) || "Sala",
         master: uid,
         miembros: [uid],
-        creada: f.serverTimestamp()
+        creada: f.serverTimestamp(),
+        personajes: {},
+        ocultos: [],
+        expulsados: {}
     });
     return entrarSala(codigo);
 }
 
-/** Entra en una sala por su código (si no eras miembro, te añade) y empieza a escuchar sus eventos y artes */
-export async function entrarSala(codigo) {
+/* Entrada del personaje de esta pestaña en "personajes.<uid>.<instancia>" */
+const campoPersonaje = (uid) => `personajes.${uid}.${personajeLocal.instancia}`;
+const datosPersonaje = (f) => ({ nombre: personajeLocal.nombre || "", visto: f.serverTimestamp() });
+
+/**
+ * Entra en una sala por su código y empieza a escuchar sus eventos y artes. En una sola escritura: te añade a
+ * los miembros (si no lo eras), apunta el personaje de esta pestaña, quita tus entradas caducadas y, si el
+ * máster te había echado, la marca (se puede volver a entrar).
+ */
+export async function entrarSala(codigo, { actividad = Date.now() } = {}) {
     const { db, f, uid } = exigirUsuario();
     codigo = normalizarCodigo(codigo);
     if (!codigo) throw Object.assign(new Error("Escribe el código de la sala"), { code: "sin-codigo" });
+    if (!personajeLocal.instancia) throw new Error("La ficha aún no está lista");
     const ref = f.doc(db, "salas", codigo);
     const instantanea = await f.getDoc(ref);
     if (!instantanea.exists()) throw Object.assign(new Error(`No existe ninguna sala con el código ${codigo}`), { code: "sala-no-existe" });
     const datos = instantanea.data();
-    if (!datos.miembros?.includes(uid)) await f.updateDoc(ref, { miembros: f.arrayUnion(uid) });
 
-    if (estado.sala) dejarSala();
-    estado.sala = { codigo, nombre: datos.nombre, master: datos.master };
-    escribirLocal(CLAVE_SALA, codigo);
+    if (estado.sala) {
+        quitarPersonaje().catch(() => { /* se limpia al volver a entrar */ });
+        dejarSala();
+    }
+
+    const cambios = { [campoPersonaje(uid)]: datosPersonaje(f) };
+    if (!datos.miembros?.includes(uid)) cambios.miembros = f.arrayUnion(uid);
+    if (datos.expulsados?.[uid]) cambios[`expulsados.${uid}`] = f.deleteField();
+    const limite = Date.now() - HORAS_PERSONAJE_CADUCADO * HORA_MS;
+    Object.entries(datos.personajes?.[uid] ?? {}).forEach(([instancia, p]) => {
+        if (instancia !== personajeLocal.instancia && msDe(p?.visto) < limite) cambios[`personajes.${uid}.${instancia}`] = f.deleteField();
+    });
+    await f.updateDoc(ref, cambios);
+    ultimoVisto = Date.now();
+
+    estado.sala = { codigo, nombre: datos.nombre, master: datos.master, ocultos: datos.ocultos ?? [] };
+    ultimaActividad = Math.max(Number(actividad) || 0, 0);
+    escribirSalaLocal({ codigo, nombre: datos.nombre, master: datos.master, actividad: ultimaActividad });
     escucharSala(codigo);
     limpiarEventosAntiguos(codigo);
     avisar("estado", copiaEstado());
     return copiaEstado();
+}
+
+/* Vuelve a escribir la entrada del personaje de esta pestaña (nombre nuevo o "visto" antiguo) */
+async function publicarPersonaje() {
+    const { db, f, uid } = exigirUsuario();
+    if (!estado.sala || !personajeLocal.instancia) return;
+    ultimoVisto = Date.now();
+    await f.updateDoc(f.doc(db, "salas", estado.sala.codigo), { [campoPersonaje(uid)]: datosPersonaje(f) });
+}
+
+/* Quita el personaje de esta pestaña de la sala (al salir o cerrar la pestaña) */
+async function quitarPersonaje() {
+    if (!sdk || !estado.usuario || !estado.sala || !personajeLocal.instancia) return;
+    const { db, f } = sdk;
+    await f.updateDoc(f.doc(db, "salas", estado.sala.codigo), { [campoPersonaje(estado.usuario.uid)]: f.deleteField() });
+}
+
+/** Al cerrar o recargar la pestaña: intenta quitar su personaje de la sala (si no llega, la recarga reutiliza
+ *  la misma entrada y una pestaña cerrada caduca a las 25 h) */
+export function alCerrarPestana() {
+    quitarPersonaje().catch(() => { /* mejor esfuerzo */ });
 }
 
 /* Los pop-ups solo sirven en directo: al entrar en una sala se borran los de más de un día.
@@ -208,7 +369,7 @@ const MAX_EVENTOS_LIMPIEZA = 400;
 async function limpiarEventosAntiguos(codigo) {
     try {
         const { db, f } = sdk;
-        const limite = f.Timestamp.fromMillis(Date.now() - HORAS_CONSERVAR_EVENTOS * 3600 * 1000);
+        const limite = f.Timestamp.fromMillis(Date.now() - HORAS_CONSERVAR_EVENTOS * HORA_MS);
         const viejos = await f.getDocs(f.query(f.collection(db, "salas", codigo, "eventos"),
             f.where("creado", "<", limite), f.limit(MAX_EVENTOS_LIMPIEZA)));
         if (viejos.empty) return;
@@ -232,43 +393,69 @@ function dejarSala() {
     dejarDeEscuchar.forEach(parar => parar());
     dejarDeEscuchar = [];
     estado.sala = null;
-    miembros = [];
+    personajesSala = [];
     avisar("artesSala", []);
-    avisar("miembros", []);
+    avisar("personajes", []);
 }
 
-/* Nombres de los miembros (con caché; si alguien no tiene nombre público, sale "Jugador") */
-async function nombresDe(uids) {
-    const { db, f } = sdk;
-    return Promise.all(uids.map(async uid => {
+/** Nombres de usuario (usuarios/{uid}), con caché: solo se leen los que faltan. Para la gestión de sala. */
+export async function nombresUsuarios(uids) {
+    const { db, f } = exigirUsuario();
+    const lista = await Promise.all([...new Set(uids)].map(async uid => {
         if (!nombresCache.has(uid)) {
             try {
                 const instantanea = await f.getDoc(f.doc(db, "usuarios", uid));
                 nombresCache.set(uid, instantanea.data()?.nombre || "Jugador");
             } catch {
-                return { uid, nombre: "Jugador" };
+                return [uid, "Jugador"];
             }
         }
-        return { uid, nombre: nombresCache.get(uid) };
+        return [uid, nombresCache.get(uid)];
     }));
+    return Object.fromEntries(lista);
 }
 
+/** Sale de la sala (sigue en "Tus salas" para volver con un clic) */
 export function salirSala() {
+    quitarPersonaje().catch(() => { /* sin conexión: se limpia al volver a entrar */ });
     dejarSala();
-    escribirLocal(CLAVE_SALA, null);
+    escribirSalaLocal(null);
     avisar("estado", copiaEstado());
+}
+
+/* Lista de personajes conectados a partir del documento de sala (sin caducados) */
+function leerPersonajes(datos) {
+    const limite = Date.now() - HORAS_PERSONAJE_CADUCADO * HORA_MS;
+    const ocultos = datos.ocultos ?? [];
+    return Object.entries(datos.personajes ?? {}).flatMap(([jugador, instancias]) =>
+        Object.entries(instancias ?? {})
+            .filter(([, p]) => msDe(p?.visto) >= limite)
+            .map(([instancia, p]) => {
+                const nombre = String(p?.nombre ?? "").trim();
+                return { jugador, instancia, nombre, oculto: ocultos.includes(claveOculto(jugador, nombre)) };
+            }))
+        .sort((x, y) => x.nombre.localeCompare(y.nombre));
 }
 
 function escucharSala(codigo) {
     const { db, f } = sdk;
-    // Miembros de la sala: cambian cuando alguien entra por primera vez
-    dejarDeEscuchar.push(f.onSnapshot(f.doc(db, "salas", codigo), async instantanea => {
-        const uids = instantanea.data()?.miembros ?? [];
-        const lista = await nombresDe(uids);
+    // Documento de la sala: personajes conectados, ocultos y expulsados (sin peticiones extra)
+    dejarDeEscuchar.push(f.onSnapshot(f.doc(db, "salas", codigo), instantanea => {
         if (estado.sala?.codigo !== codigo) return; // se ha salido mientras tanto
-        miembros = lista.sort((x, y) => x.nombre.localeCompare(y.nombre));
-        avisar("miembros", getMiembros());
-    }, error => console.warn("Error escuchando los miembros de la sala:", error)));
+        const datos = instantanea.data() ?? {};
+        const uid = estado.usuario?.uid;
+        if (uid && datos.expulsados?.[uid] && datos.master !== uid) {
+            const nombre = estado.sala.nombre;
+            dejarSala();
+            escribirSalaLocal(null);
+            avisar("estado", copiaEstado());
+            avisar("salida", { motivo: "expulsado", nombre });
+            return;
+        }
+        estado.sala = { ...estado.sala, nombre: datos.nombre ?? estado.sala.nombre, ocultos: datos.ocultos ?? [] };
+        personajesSala = leerPersonajes(datos);
+        avisar("personajes", getPersonajesSala());
+    }, error => console.warn("Error escuchando la sala:", error)));
 
     // Eventos: solo los que lleguen a partir de ahora
     const eventos = f.query(f.collection(db, "salas", codigo, "eventos"),
@@ -298,14 +485,43 @@ function escucharSala(codigo) {
     }, error => console.warn("Error escuchando las artes de la sala:", error)));
 }
 
-/** Envía un evento de eventos.js a la sala actual (sin sala no hace nada) */
+/** Envía un evento de eventos.js a la sala actual (sin sala no hace nada). Cuenta como actividad. */
 export async function publicarEvento(evento) {
     if (!estado.sala) return;
     const { db, f, uid } = exigirUsuario();
+    marcarActividad();
+    if (Date.now() - ultimoVisto > HORAS_REFRESCAR_VISTO * HORA_MS) {
+        publicarPersonaje().catch(error => console.warn("No se pudo refrescar el personaje en la sala:", error));
+    }
     await f.addDoc(f.collection(db, "salas", estado.sala.codigo, "eventos"), {
         jugador: uid,
         evento: JSON.stringify(evento),
         creado: f.serverTimestamp()
+    });
+}
+
+/* Máster ______________________________________________________________________ */
+
+function exigirMaster() {
+    const contexto = exigirUsuario();
+    if (!soyMasterSala()) throw Object.assign(new Error("Solo el máster de la sala puede hacer eso"), { code: "permission-denied" });
+    return contexto;
+}
+
+/** Oculta o muestra un personaje a los demás (no se le puede ofrecer nada y sus tiradas salen sin el cálculo) */
+export async function cambiarOculto(jugador, nombre, ocultar) {
+    const { db, f } = exigirMaster();
+    const clave = claveOculto(jugador, nombre);
+    await f.updateDoc(f.doc(db, "salas", estado.sala.codigo), { ocultos: ocultar ? f.arrayUnion(clave) : f.arrayRemove(clave) });
+}
+
+/** Echa a un jugador: sale de la sala, pero la conserva en "Tus salas" y puede volver a entrar */
+export async function expulsar(jugador) {
+    const { db, f, uid } = exigirMaster();
+    if (jugador === uid) return;
+    await f.updateDoc(f.doc(db, "salas", estado.sala.codigo), {
+        [`expulsados.${jugador}`]: true,
+        [`personajes.${jugador}`]: f.deleteField()
     });
 }
 

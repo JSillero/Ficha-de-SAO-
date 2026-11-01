@@ -22,8 +22,9 @@ import { iconoSao, tieneIconoSao } from "./iconos.js";
 import { mostrarPopup, getHistorialPopups, vaciarHistorialPopups } from "./popups.js";
 import { emitirEvento, configurarOrigen, setAplicadorDanno, setConsumidorOferta } from "./eventos.js";
 import { escaparHtml } from "./html.js";
+import { inicializarVentanas, abrirCapa, cerrarCapa } from "./ventanas.js";
 import {
-    inicializarOnline, getEstadoOnline, getMiembrosSala, setIdPersonajeNube, abrirCuenta, abrirSala, abrirPersonajesNube,
+    inicializarOnline, getEstadoOnline, getPersonajesSala, avisarNombrePersonaje, setIdPersonajeNube, abrirCuenta, abrirSala, abrirPersonajesNube,
     guardarEnNube, compartirArte, quitarArteDeSala
 } from "./interfazOnline.js";
 import {
@@ -319,6 +320,8 @@ function actualizarTodo() {
     actualizarEstados();
     actualizarZona();
     comprobarCambios();
+    // En una sala, la lista de personajes conectados lleva el nombre (solo se envía si cambia)
+    avisarNombrePersonaje(personaje.nombre);
 }
 
 /* Cambios sin guardar ______________________________________________________
@@ -329,19 +332,77 @@ function actualizarTodo() {
 let hayCambiosSinGuardar = false;
 let fichaGuardada = null; // JSON de la ficha tal y como se guardó o cargó por última vez
 
+/* Caché en el navegador: la ficha y su última copia guardada se escriben en cada
+   cambio, y al volver a la página se cargan con cargarJSON (igual que guardar y
+   cargar el JSON). Se escribe en sessionStorage, propio de cada pestaña (así se
+   pueden tener varios personajes a la vez en pestañas distintas y cada una
+   recupera el suyo al recargar), y en localStorage, la última ficha usada, que
+   es la que abre una pestaña nueva. En modo master no se usa. Si no hay
+   almacenamiento, la ficha funciona igual. */
+const CLAVE_FICHA = "fichaSAO.ficha";
+let cacheEscrita = null; // último texto escrito, para no repetir
+
+function leerCache() {
+    if (MODO_MASTER) return null;
+    for (const almacen of [sessionStorage, localStorage]) {
+        try {
+            const texto = almacen.getItem(CLAVE_FICHA);
+            if (texto) return texto;
+        } catch { /* sin almacenamiento */ }
+    }
+    return null;
+}
+
+function escribirCache(ficha) {
+    if (MODO_MASTER || fichaGuardada === null) return; // aún arrancando: no pisar la caché
+    const texto = JSON.stringify({ ficha, guardada: fichaGuardada });
+    if (texto === cacheEscrita) return;
+    cacheEscrita = texto;
+    for (const almacen of [sessionStorage, localStorage]) {
+        try { almacen.setItem(CLAVE_FICHA, texto); } catch { /* sin almacenamiento */ }
+    }
+}
+
+/* Al arrancar: recupera la ficha de la caché. Devuelve false si no había. */
+function restaurarCache() {
+    const texto = leerCache();
+    if (!texto) return false;
+    try {
+        const { ficha, guardada } = JSON.parse(texto);
+        personaje.cargarJSON(JSON.parse(ficha));
+        desbloqueosNaturalesVistos = null; // no avisar de los desbloqueos que ya tenía
+        actualizarTodo();
+        fichaGuardada = typeof guardada === "string" ? guardada : ficha;
+        cacheEscrita = texto;
+        comprobarCambios();
+        return true;
+    } catch (error) {
+        console.warn("No se pudo recuperar la ficha guardada en el navegador:", error);
+        for (const almacen of [sessionStorage, localStorage]) {
+            try { almacen.removeItem(CLAVE_FICHA); } catch { /* sin almacenamiento */ }
+        }
+        return false;
+    }
+}
+
 function marcarGuardado() {
     fichaGuardada = personaje.toJSONString();
     hayCambiosSinGuardar = false;
+    escribirCache(fichaGuardada);
 }
 
 function comprobarCambios() {
     if (fichaGuardada === null) return; // aún arrancando
-    hayCambiosSinGuardar = personaje.toJSONString() !== fichaGuardada;
+    const ficha = personaje.toJSONString();
+    hayCambiosSinGuardar = ficha !== fichaGuardada;
+    escribirCache(ficha);
 }
 
 // Los campos de texto actualizan el personaje sin pasar siempre por actualizarTodo
 document.addEventListener("input", comprobarCambios);
 document.addEventListener("change", comprobarCambios);
+// Red de seguridad (en móvil beforeunload no siempre salta)
+window.addEventListener("pagehide", comprobarCambios);
 
 window.addEventListener("beforeunload", (e) => {
     comprobarCambios();
@@ -2393,12 +2454,14 @@ function crearMenuSao({ boton, menu, opciones, alElegir, rol = "menuitem" }) {
         colocar();
         senalar(filas().find(fila => fila.classList.contains("activa")) ?? filas()[0], conTeclado);
         reproducir("menuAbrir");
+        abrirCapa(menu, () => cerrar()); // atrás y Escape lo cierran (ventanas.js)
     };
 
     /* Las filas desaparecen una a una (.cerrando) y el menú se oculta al terminar.
        sonido: false cuando lo que se elige ya suena (p. ej. abre una ventana). */
     const cerrar = ({ devolverFoco = false, sonido = true } = {}) => {
         if (menu.hidden || cerrando()) return;
+        cerrarCapa(menu);
         boton.setAttribute("aria-expanded", "false");
         if (devolverFoco) boton.focus();
         if (sonido) reproducir("menuCerrar");
@@ -3255,6 +3318,7 @@ function inicializarOpciones() {
         opciones: () => [
             { clave: "cargar", etiqueta: "Cargar personaje", icono: "cargar" },
             { clave: "guardar", etiqueta: "Guardar personaje", icono: "guardar" },
+            { clave: "nueva", etiqueta: "Nueva ficha", icono: "nuevaFicha" },
             ...opcionesOnline(),
             { clave: "historial", etiqueta: "Historial de avisos", icono: "historial" },
             estaSilenciado()
@@ -3287,6 +3351,18 @@ function inicializarOpciones() {
                     personaje.guardarJSON();
                     marcarGuardado();
                     break;
+                case "nueva": {
+                    reproducir("click");
+                    menu.cerrar({ sonido: false });
+                    comprobarCambios();
+                    const pregunta = hayCambiosSinGuardar
+                        ? "La ficha actual tiene cambios sin guardar. ¿Empezar una ficha nueva y perderlos?"
+                        : "¿Empezar una ficha nueva? La actual se quitará de la pantalla.";
+                    if (!confirm(pregunta)) break;
+                    cargarFicha(JSON.parse(new PJ().toJSONString()));
+                    setIdPersonajeNube(null);
+                    break;
+                }
                 case "historial": {
                     reproducir("click");
                     menu.cerrar({ sonido: false });
@@ -3415,12 +3491,13 @@ function nombreEnMano(mano) {
 /* Formas de usar un objeto del inventario: { accion, etiqueta, mano?, motivo? } (motivo = no se puede) */
 function opcionesUso(objeto) {
     const sinManoLibre = manoParaUsar(personaje) ? null : "Necesitas una mano libre";
-    // En una sala, la comida y las pociones se pueden ofrecer a los demás jugadores (gasta una mano libre)
+    // En una sala, la comida y las pociones se pueden ofrecer a los demás personajes conectados, también a los
+    // de otras pestañas tuyas, pero no a los ocultos (gasta una mano libre)
     const ofrecer = () => {
         const { usuario, sala } = getEstadoOnline();
         if (!usuario || !sala) return [];
-        return getMiembrosSala().filter(miembro => miembro.uid !== usuario.uid)
-            .map(destino => ({ accion: "ofrecer", destino, etiqueta: `Ofrecer a ${destino.nombre} (mano libre)`, motivo: sinManoLibre }));
+        return getPersonajesSala()
+            .map(destino => ({ accion: "ofrecer", destino, etiqueta: `Ofrecer a ${destino.nombre || "Sin nombre"} (mano libre)`, motivo: sinManoLibre }));
     };
     switch (objeto.tipo) {
         case "comida":
@@ -3602,7 +3679,7 @@ function ejecutarUso(indice, opcion) {
             titulo: `${nombre} ofrece ${resultado.objeto.nombre} a ${opcion.destino.nombre}`,
             subtitulo: TIPOS_OBJETO[resultado.objeto.tipo].etiqueta,
             lineas: [detalleObjeto(resultado.objeto)],
-            para: opcion.destino.uid,
+            para: opcion.destino.instancia,
             objeto: resultado.objeto
         });
         return;
@@ -4156,11 +4233,14 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarOpciones();
     inicializarHistorialPopups();
     inicializarBotonesModales();
+    inicializarVentanas();
     inicializarDebug();
     actualizarTodo();
-    marcarGuardado(); // ficha vacía de inicio: cerrar sin tocar nada no avisa
+    // La ficha de la última visita; si no hay, la vacía de inicio (cerrar sin tocar nada no avisa)
+    if (!restaurarCache()) marcarGuardado();
     // Online (Firebase): si la última vez se dejó la sesión abierta, se recupera con su sala
     inicializarOnline({
+        modoMaster: MODO_MASTER,
         personaje: () => personaje,
         cargarFicha,
         marcarGuardado,
@@ -4171,7 +4251,7 @@ document.addEventListener("DOMContentLoaded", () => {
             actualizarCatalogoArtes();
         },
         alCambiarArtesSala,
-        // Las opciones "Ofrecer a…" del inventario dependen de quién hay en la sala
-        alCambiarMiembros: () => actualizarObjetos()
+        // Las opciones "Ofrecer a…" del inventario dependen de qué personajes hay en la sala
+        alCambiarPersonajes: () => actualizarObjetos()
     });
 });

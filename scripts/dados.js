@@ -19,6 +19,7 @@ import { escaparHtml, colorSeguro } from "./html.js";
  * @property {string|null} [etiquetaHabilidad] - Texto del sumando de habilidad (null lo oculta)
  * @property {string|null} [etiquetaCaracteristica] - Texto del sumando de característica (null lo oculta)
  * @property {number} [bonificador] - Bonificador extra (p. ej. ventaja acumulada)
+ * @property {boolean} [resumido] - Solo en eventos recibidos de un personaje oculto: sin dados ni sumandos
  * @property {string} [etiquetaBonificador]
  * @property {string} [etiquetaTotal]
  * @property {{ total: number, desglose: string[], notas?: string[], elemental?: { cantidad: number, etiqueta: string, color?: string }[] }|null} [danno]
@@ -270,7 +271,9 @@ function pintarPopupTirada(resultado) {
     const valorHab = Number(resultado.valorHabilidad) || 0;
     const valorCaract = Number(resultado.valorCaracteristica) || 0;
     const valorBonif = Number(resultado.bonificador) || 0;
-    const totalFinal = valorDado + valorHab + valorCaract + valorBonif;
+    // Resumida (personaje oculto, eventos.js): sin dados ni sumandos, solo el total que llega
+    const resumido = resultado.resumido === true;
+    const totalFinal = resumido ? numero(resultado.total) : valorDado + valorHab + valorCaract + valorBonif;
 
     // Sumandos de la operación; una etiqueta null oculta ese sumando
     const sumandos = [`${valorDado} (Dado)`];
@@ -288,13 +291,14 @@ function pintarPopupTirada(resultado) {
         </div>
         ${resultado.subtitulo ? `<div class="popup-subtitulo">${escaparHtml(resultado.subtitulo)}</div>` : ""}
         ${badgeEspecialHtml}
+        ${resumido ? "" : `
         <div class="popup-dados-contenedor">
             <span class="popup-dados-label">Dados:</span>
             <div class="popup-dados-chips">${dadosHtml}</div>
         </div>
         <div class="popup-operacion">
             ${sumandos.join(" ")}
-        </div>
+        </div>`}
         <div class="popup-total-wrapper">
             <span class="popup-total-label">${escaparHtml(resultado.etiquetaTotal ?? "TOTAL")}</span>
             <span class="popup-total-valor">${totalFinal}</span>

@@ -5,50 +5,109 @@ import * as servicio from "./online/servicio.js";
 import { configurarOrigen, setPublicador, recibirEvento } from "./eventos.js";
 import { escaparHtml } from "./html.js";
 import { reproducir } from "./sonidos.js";
+import { getInstancia, instanciaLista } from "./instancia.js";
 
 /**
  * @typedef {Object} ContextoOnline
- * @property {() => object} personaje           la instancia de PJ actual
+ * @property {boolean} [modoMaster]          en master no se recuerda el personaje de la nube abierto
+ * @property {() => object} personaje          la instancia de PJ actual
  * @property {(datos: object) => void} cargarFicha  carga un JSON ya parseado (como el de un fichero)
  * @property {() => void} marcarGuardado
  * @property {() => boolean} hayCambiosSinGuardar
  * @property {(titulo: string, lineas: string[]) => void} aviso  pop-up informativo (texto plano)
  * @property {(estado: object) => void} alCambiarEstado
  * @property {(artes: object[]) => void} alCambiarArtesSala
- * @property {(miembros: object[]) => void} [alCambiarMiembros]  jugadores de la sala (para ofrecer objetos)
+ * @property {(personajes: object[]) => void} [alCambiarPersonajes]  personajes conectados (para ofrecer objetos)
  */
 /** @type {ContextoOnline} */
 let ctx;
-/* Personaje de la nube que hay cargado (para guardar encima), o null */
+/* Personaje de la nube que hay cargado (para guardar encima), o null.
+   Se recuerda con la ficha (salvo en modo master): en sessionStorage (propio de cada pestaña, para tener
+   varios personajes a la vez) y en localStorage (el último, para una pestaña nueva). */
+const CLAVE_ID_NUBE = "fichaSAO.idNube";
 let idPersonajeNube = null;
+
+function cambiarIdNube(id) {
+    idPersonajeNube = id;
+    if (ctx?.modoMaster) return;
+    for (const almacen of [sessionStorage, localStorage]) {
+        try { id ? almacen.setItem(CLAVE_ID_NUBE, id) : almacen.removeItem(CLAVE_ID_NUBE); } catch { /* sin almacenamiento */ }
+    }
+}
+
+function leerIdNube() {
+    for (const almacen of [sessionStorage, localStorage]) {
+        try {
+            const id = almacen.getItem(CLAVE_ID_NUBE);
+            if (id) return id;
+        } catch { /* sin almacenamiento */ }
+    }
+    return null;
+}
 let ocupado = false;
+
+/* Inactividad: se comprueba en local (sin peticiones) al volver a la pestaña y cada tanto */
+const MINUTOS_COMPROBAR_INACTIVIDAD = 10;
+/* Cambio de nombre del personaje: se publica en la sala tras este rato sin cambios (una escritura, no una por tecla) */
+const RETARDO_NOMBRE_MS = 3000;
+let temporizadorNombre = null;
 
 const el = (id) => document.getElementById(id);
 const formatoFecha = new Intl.DateTimeFormat("es-ES", { dateStyle: "short", timeStyle: "short" });
 
 export const getEstadoOnline = () => servicio.getEstado();
-/** Jugadores de la sala actual: [{ uid, nombre }] (también tú) */
-export const getMiembrosSala = () => servicio.getMiembros();
-export const setIdPersonajeNube = (id) => { idPersonajeNube = id; };
+/** Personajes de la sala a los que se puede ofrecer algo: [{ jugador, instancia, nombre }]
+ *  (sin el de esta pestaña ni los ocultos) */
+export const getPersonajesSala = () => servicio.getPersonajesSala()
+    .filter(p => p.instancia !== getInstancia() && !p.oculto);
+export const setIdPersonajeNube = (id) => cambiarIdNube(id);
 
-export function inicializarOnline(contexto) {
+/** La ficha avisa del nombre de su personaje (en cada actualizarTodo); solo se publica si cambia, con retardo */
+export function avisarNombrePersonaje(nombre) {
+    clearTimeout(temporizadorNombre);
+    temporizadorNombre = setTimeout(() => servicio.configurarPersonaje({ nombre }), RETARDO_NOMBRE_MS);
+}
+
+export async function inicializarOnline(contexto) {
     ctx = contexto;
+    if (!ctx.modoMaster) idPersonajeNube = leerIdNube();
     inicializarCuenta();
     inicializarSala();
     inicializarPersonajesNube();
 
     servicio.alCambiarEstado(estado => {
-        // Los pop-ups que se emitan llevan tu nombre; con sala, se envían
-        configurarOrigen({ jugador: estado.usuario?.uid ?? null, nombreJugador: estado.usuario?.nombre ?? "" });
+        // Los pop-ups que se emitan llevan el nombre del personaje (no el del usuario); con sala, se envían
+        configurarOrigen({ jugador: estado.usuario?.uid ?? null, oculto: servicio.personajeLocalOculto, esMaster: servicio.soyMasterSala });
         setPublicador(estado.sala ? servicio.publicarEvento : null);
-        if (!estado.usuario) idPersonajeNube = null;
+        if (!estado.usuario && idPersonajeNube) cambiarIdNube(null);
         pintarCuenta();
         pintarSala();
         ctx.alCambiarEstado(estado);
     });
     servicio.alRecibirEvento(recibirEvento);
     servicio.alCambiarArtesSala(artes => ctx.alCambiarArtesSala(artes));
-    servicio.alCambiarMiembros(lista => ctx.alCambiarMiembros?.(lista));
+    servicio.alCambiarPersonajes(lista => {
+        ctx.alCambiarPersonajes?.(lista);
+        if (el("modalSala").classList.contains("show")) pintarJugadores();
+    });
+    servicio.alSalirSala(({ motivo, nombre }) => {
+        if (motivo === "expulsado") {
+            ctx.aviso("Sala", [`El máster te ha sacado de ${nombre}.`, "Puedes volver a entrar desde Tus salas."]);
+        } else {
+            ctx.aviso("Sala", [`Has salido de ${nombre} por inactividad (${servicio.HORAS_INACTIVIDAD_SALA} h sin hacer nada).`,
+                "Puedes volver a entrar desde Tus salas."]);
+        }
+    });
+
+    // Inactividad (local) y cierre de la pestaña (quita su personaje de la sala)
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") servicio.comprobarInactividad();
+    });
+    setInterval(() => servicio.comprobarInactividad(), MINUTOS_COMPROBAR_INACTIVIDAD * 60 * 1000);
+    window.addEventListener("pagehide", () => servicio.alCerrarPestana());
+
+    // La instancia de esta pestaña tiene que estar comprobada (pestaña duplicada) antes de entrar en la sala
+    servicio.configurarPersonaje({ instancia: await instanciaLista, nombre: ctx.personaje().nombre });
     servicio.iniciar();
 }
 
@@ -174,6 +233,7 @@ export function abrirSala() {
     pintarSala();
     pintarMisSalas();
     abrir("modalSala");
+    pintarJugadores();
 }
 
 function pintarSala() {
@@ -182,6 +242,55 @@ function pintarSala() {
     if (!sala) return;
     el("salaActualNombre").textContent = sala.nombre;
     el("salaActualCodigo").textContent = sala.codigo;
+    if (el("modalSala").classList.contains("show")) pintarJugadores();
+}
+
+/* Jugadores conectados y sus personajes. Es el único sitio donde sale el nombre de usuario (se lee de la
+ * nube solo aquí, al abrir la ventana, y queda en caché). El máster ve también los ocultos y puede ocultar
+ * y mostrar personajes o echar a un jugador; los demás no ven los ocultos. */
+let pintandoJugadores = 0;
+async function pintarJugadores() {
+    const lista = el("listaJugadoresSala");
+    const { sala, usuario } = servicio.getEstado();
+    if (!sala || !usuario) return;
+    const soyMaster = sala.master === usuario.uid;
+    const personajes = servicio.getPersonajesSala().filter(p => soyMaster || !p.oculto || p.jugador === usuario.uid);
+    const porJugador = new Map();
+    personajes.forEach(p => porJugador.set(p.jugador, [...(porJugador.get(p.jugador) ?? []), p]));
+    if (!porJugador.size) {
+        lista.innerHTML = `<p class="lista-vacia">No hay nadie conectado.</p>`;
+        return;
+    }
+    const turno = ++pintandoJugadores;
+    let nombres = {};
+    try {
+        nombres = await servicio.nombresUsuarios([...porJugador.keys()]);
+    } catch (error) {
+        console.warn(error);
+    }
+    if (turno !== pintandoJugadores) return; // ha llegado otro cambio mientras tanto
+
+    const filaPersonaje = (p) => `
+        <div class="fila-online personaje-sala${p.oculto ? " oculto" : ""}">
+            <span class="nombre-online">${escaparHtml(p.nombre || "Sin nombre")}
+                <span class="texto-online-secundario">${p.instancia === getInstancia() ? "esta pestaña" : ""}${p.oculto ? `${p.instancia === getInstancia() ? " · " : ""}oculto` : ""}</span>
+            </span>
+            ${soyMaster ? `<button type="button" class="btn-cabecera" data-accion="ocultar" data-jugador="${escaparHtml(p.jugador)}"
+                data-nombre="${escaparHtml(p.nombre)}" data-oculto="${p.oculto ? "1" : ""}">${p.oculto ? "Mostrar" : "Ocultar"}</button>` : ""}
+        </div>`;
+    lista.innerHTML = [...porJugador.entries()]
+        .sort(([a], [b]) => (a === sala.master ? -1 : b === sala.master ? 1 : (nombres[a] ?? "").localeCompare(nombres[b] ?? "")))
+        .map(([jugador, suyos]) => `
+            <div class="jugador-sala">
+                <div class="fila-online">
+                    <span class="nombre-online">${escaparHtml(nombres[jugador] ?? "Jugador")}
+                        <span class="texto-online-secundario">${jugador === sala.master ? "máster" : ""}${jugador === usuario.uid ? `${jugador === sala.master ? " · " : ""}tú` : ""}</span>
+                    </span>
+                    ${soyMaster && jugador !== usuario.uid ? `<button type="button" class="btn-cabecera btn-online-peligro" data-accion="echar"
+                        data-jugador="${escaparHtml(jugador)}" data-nombre="${escaparHtml(nombres[jugador] ?? "Jugador")}">Echar</button>` : ""}
+                </div>
+                ${suyos.map(filaPersonaje).join("")}
+            </div>`).join("");
 }
 
 async function pintarMisSalas() {
@@ -238,6 +347,18 @@ function inicializarSala() {
         reproducir("click");
         entrar(() => servicio.entrarSala(codigo));
     });
+    el("listaJugadoresSala").addEventListener("click", (e) => {
+        const boton = e.target.closest("button[data-accion]");
+        if (!boton) return;
+        reproducir("click");
+        const { jugador, nombre } = boton.dataset;
+        if (boton.dataset.accion === "ocultar") {
+            operar("avisoSala", () => servicio.cambiarOculto(jugador, nombre, !boton.dataset.oculto));
+        } else if (boton.dataset.accion === "echar") {
+            if (!confirm(`¿Echar a ${nombre} de la sala? Podrá volver a entrar.`)) return;
+            operar("avisoSala", () => servicio.expulsar(jugador));
+        }
+    });
     el("btnSalirSala").addEventListener("click", () => {
         reproducir("click");
         servicio.salirSala();
@@ -268,7 +389,7 @@ export async function guardarEnNube() {
                 id = mismo.id;
             }
         }
-        idPersonajeNube = await servicio.guardarPersonaje(pj.toJSONString(), pj.nombre, id);
+        cambiarIdNube(await servicio.guardarPersonaje(pj.toJSONString(), pj.nombre, id));
         ctx.marcarGuardado();
         ctx.aviso("Guardado en la nube", [pj.nombre]);
     });
@@ -315,14 +436,14 @@ function inicializarPersonajesNube() {
             operar("avisoPersonajesNube", async () => {
                 const json = await servicio.cargarPersonaje(id);
                 ctx.cargarFicha(JSON.parse(json));
-                idPersonajeNube = id;
+                cambiarIdNube(id);
                 cerrar("modalPersonajesNube");
             });
         } else if (boton.dataset.accion === "borrar") {
             if (!confirm(`¿Borrar ${nombre} de la nube? No se puede deshacer.`)) return;
             operar("avisoPersonajesNube", async () => {
                 await servicio.borrarPersonaje(id);
-                if (id === idPersonajeNube) idPersonajeNube = null;
+                if (id === idPersonajeNube) cambiarIdNube(null);
                 await pintarPersonajesNube();
             });
         }

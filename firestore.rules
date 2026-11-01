@@ -11,8 +11,11 @@ service cloud.firestore {
     function sala(codigo) {
       return get(/databases/$(database)/documents/salas/$(codigo)).data;
     }
+    // Miembro y no echado (al volver a entrar se quita la marca). Una sola lectura del documento de sala.
     function esMiembro(codigo) {
-      return conSesion() && request.auth.uid in sala(codigo).miembros;
+      let datos = sala(codigo);
+      return conSesion() && request.auth.uid in datos.miembros
+        && !(request.auth.uid in datos.get('expulsados', {}));
     }
     function esMaster(codigo) {
       return conSesion() && sala(codigo).master == request.auth.uid;
@@ -41,7 +44,44 @@ service cloud.firestore {
         && request.resource.data.nombre.size() <= 40;
     }
 
-    // Salas: se entra conociendo el código
+    // Campos de la sala que pueden faltar en salas antiguas
+    function personajesDe(datos) {
+      return datos.get('personajes', {});
+    }
+    function expulsadosDe(datos) {
+      return datos.get('expulsados', {});
+    }
+
+    // Jugador: entrar (añadirse a miembros y quitarse la marca de echado), y apuntar, renombrar o quitar
+    // sus propios personajes conectados (personajes.<uid>.<pestaña>). Nada más.
+    function cambioDeJugador() {
+      let uid = request.auth.uid;
+      let antes = resource.data;
+      let despues = request.resource.data;
+      let cambioExpulsados = expulsadosDe(despues).diff(expulsadosDe(antes));
+      return despues.diff(antes).affectedKeys().hasOnly(['miembros', 'personajes', 'expulsados'])
+        && despues.miembros.hasAll(antes.miembros)
+        && despues.miembros.removeAll(antes.miembros).hasOnly([uid])
+        && uid in despues.miembros
+        && personajesDe(despues).diff(personajesDe(antes)).affectedKeys().hasOnly([uid])
+        && (!(uid in personajesDe(despues)) || (personajesDe(despues)[uid] is map && personajesDe(despues)[uid].size() <= 20))
+        && cambioExpulsados.addedKeys().size() == 0
+        && cambioExpulsados.changedKeys().size() == 0
+        && cambioExpulsados.removedKeys().hasOnly([uid]);
+    }
+
+    // Máster: ocultar personajes y echar jugadores (marca y quita sus personajes). No puede echarse a sí mismo.
+    function cambioDeMaster() {
+      let despues = request.resource.data;
+      return resource.data.master == request.auth.uid
+        && despues.diff(resource.data).affectedKeys().hasOnly(['ocultos', 'expulsados', 'personajes'])
+        && despues.get('ocultos', []) is list
+        && despues.get('ocultos', []).size() <= 200
+        && expulsadosDe(despues) is map
+        && !(request.auth.uid in expulsadosDe(despues));
+    }
+
+    // Salas: se entra conociendo el código. Sin get() en estas reglas: todo sale de resource.data (gratis).
     match /salas/{codigo} {
       allow get: if conSesion();
       allow list: if conSesion() && request.auth.uid in resource.data.miembros;
@@ -49,12 +89,11 @@ service cloud.firestore {
         && request.resource.data.master == request.auth.uid
         && request.resource.data.miembros == [request.auth.uid]
         && request.resource.data.nombre is string
-        && request.resource.data.nombre.size() <= 60;
-      // Entrar en la sala: solo se puede añadir uno mismo a los miembros
-      allow update: if conSesion()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['miembros'])
-        && request.resource.data.miembros.hasAll(resource.data.miembros)
-        && request.resource.data.miembros.removeAll(resource.data.miembros).hasOnly([request.auth.uid]);
+        && request.resource.data.nombre.size() <= 60
+        && personajesDe(request.resource.data).size() == 0
+        && expulsadosDe(request.resource.data).size() == 0
+        && request.resource.data.get('ocultos', []).size() == 0;
+      allow update: if conSesion() && (cambioDeJugador() || cambioDeMaster());
       allow delete: if conSesion() && resource.data.master == request.auth.uid;
 
       // Pop-ups compartidos (eventos.js). Cualquiera de la sala borra los de más de 24 h

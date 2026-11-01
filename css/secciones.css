@@ -2613,6 +2613,30 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
     margin: 0 0 6px;
 }
 
+/* Gestión de sala: un bloque por jugador con sus personajes conectados */
+.jugador-sala {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 10px;
+    background: #fff;
+    border-radius: 6px;
+}
+
+.jugador-sala .fila-online {
+    padding: 0;
+    background: none;
+}
+
+.personaje-sala {
+    padding-left: 12px;
+}
+
+.personaje-sala.oculto .nombre-online {
+    opacity: 0.55;
+    font-style: italic;
+}
+
 /* Catálogo de artes: quién compartió un arte de la sala */
 .arte-autor {
     font-size: 12px;
