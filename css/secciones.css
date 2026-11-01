@@ -330,6 +330,52 @@
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3), inset 0 0 0 2px #FBFBFB;
 }
 
+/* Menú con un submenú abierto (crearMenuSao): la fila que lo abre se queda dorada, el resto en gris
+   (siguen pulsables: vuelven al principal), la flecha pasa a ser dorada y sin punto, y la línea y la flecha
+   blanca pasan al submenú */
+.menu-sao.con-submenu {
+    border-image: none;
+    border-color: transparent;
+}
+
+.menu-sao.con-submenu::before {
+    border-right-color: var(--menu-dorado);
+    filter: none;
+}
+
+.menu-sao.con-submenu.a-la-izquierda::before {
+    border-left-color: var(--menu-dorado);
+}
+
+.menu-sao.con-submenu::after {
+    display: none;
+}
+
+.menu-sao .opcion-menu-sao.abierta {
+    background: var(--menu-dorado);
+    color: #FBFBFB;
+}
+
+.menu-sao .opcion-menu-sao.abierta .icono-sao {
+    --fondo: #FBFBFB;
+    --glifo: var(--menu-dorado);
+}
+
+.menu-sao.con-submenu .opcion-menu-sao:not(.abierta) {
+    background: #666;
+    color: #2b2b2b;
+    box-shadow: none;
+}
+
+.menu-sao.con-submenu .opcion-menu-sao:not(.abierta):hover {
+    background: #727272;
+}
+
+.menu-sao.con-submenu .opcion-menu-sao:not(.abierta) .icono-sao {
+    --fondo: #232323;
+    --glifo: #666;
+}
+
 @keyframes menu-sao-entrar {
     from { opacity: 0; }
     to { opacity: 1; }

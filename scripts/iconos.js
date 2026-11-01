@@ -359,6 +359,14 @@ const GLIFOS = {
         <path class="f" d="M46 42H54V52H62V60H54V70H46V60H38V52H46Z"/>`,
     guardar: `
         <path class="p" d="M69 67.77v7.23h-7.23l7.23-7.23zm0-42.77v35.699l-14.302 14.301h-23.698v-50h38zm-19 25.25h-14v1.5h14v-1.5zm14-5.5h-28v1.5h28v-1.5zm0-5.5h-28v1.5h28v-1.5zm0-5.5h-28v1.5h28v-1.5zm-10.376 47.451l-2.917 1.326 1.326-2.917 1.591 1.591zm25.014-24.483l-2.121-2.121-24.042 24.041 2.121 2.121 24.042-24.041z"/>`,
+    /* Menú de opciones: Personaje (silueta de busto) y Online (punto con ondas) */
+    personaje: `
+        <polygon class="p" points="41,22 59,22 64,30 64,47 57,56 43,56 36,47 36,30"/>
+        <polygon class="p" points="43,58 57,58 60,64 78,70 80,80 20,80 22,70 40,64"/>`,
+    online: `
+        <circle class="p" cx="50" cy="62" r="8"/>
+        <path class="t" style="stroke-width:8;stroke-linecap:round" d="M36 49A20 20 0 0 1 64 49"/>
+        <path class="t o" style="stroke-width:8;stroke-linecap:round" d="M24 37A37 37 0 0 1 76 37"/>`,
     /* Historial de avisos: reloj */
     historial: `
         <circle class="t" cx="50" cy="50" r="28" style="stroke-width:8"/>

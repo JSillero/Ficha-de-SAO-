@@ -2386,29 +2386,42 @@ const sinAnimacion = window.matchMedia("(prefers-reduced-motion: reduce)");
  * @param {object} config
  * @param {HTMLElement} config.boton  botón que lo abre y lo cierra
  * @param {HTMLElement} config.menu   contenedor (.menu-sao, hidden)
- * @param {() => Array<{clave, etiqueta, icono, activa?}>} config.opciones  filas (se vuelven a leer al abrir y en actualizar)
- * @param {(clave: string, menu) => void} config.alElegir  qué hacer al elegir una fila (el menú no se cierra solo)
+ * @param {() => Array<{clave, etiqueta, icono, activa?, submenu?}>} config.opciones  filas (se vuelven a leer al abrir y
+ *   en actualizar). Una fila con submenu (() => filas) abre un menú secundario a su lado: la fila se queda dorada,
+ *   las demás en gris y la flecha blanca pasa al secundario. Pulsar una gris vuelve al menú principal.
+ * @param {(clave: string, menu) => void} config.alElegir  qué hacer al elegir una fila, también las de un submenú
+ *   (el menú no se cierra solo)
  * @param {"menuitem"|"menuitemradio"} [config.rol]  menuitemradio si una fila es la activa (p. ej. la zona)
  * @returns {{ abrir, cerrar, actualizar }}
  */
 function crearMenuSao({ boton, menu, opciones, alElegir, rol = "menuitem" }) {
     let temporizadorCierre = null;
     const cerrando = () => temporizadorCierre !== null;
-    const filas = () => [...menu.querySelectorAll(".opcion-menu-sao")];
+    const filasDe = (contenedor) => [...contenedor.querySelectorAll(".opcion-menu-sao")];
+    const filas = () => filasDe(menu);
+
+    // Menú secundario: se crea al lado del principal (mismo contenedor, para colocarlo igual)
+    const sub = document.createElement("div");
+    sub.className = "menu-sao menu-sao-sub";
+    sub.setAttribute("role", "menu");
+    sub.hidden = true;
+    menu.after(sub);
+    let subClave = null;            // fila del principal cuyo submenú está abierto
+    let temporizadorCierreSub = null;
+    const opcionDe = (clave) => opciones().find(opcion => opcion.clave === clave);
 
     // Las filas solo se regeneran si cambia cuántas hay; si no, se actualizan en su sitio
     // (así una actualización a mitad de la animación no la reinicia)
-    const actualizar = () => {
-        const lista = opciones();
-        if (filas().length !== lista.length) {
-            menu.innerHTML = lista.map(() => `
-                <button type="button" class="opcion-menu-sao" role="${rol}">
+    const pintarFilas = (contenedor, lista, rolFilas) => {
+        if (filasDe(contenedor).length !== lista.length) {
+            contenedor.innerHTML = lista.map(() => `
+                <button type="button" class="opcion-menu-sao" role="${rolFilas}">
                     <span class="opcion-menu-sao-icono"></span>
                     <span class="opcion-menu-sao-nombre"></span>
                 </button>`).join("");
         }
         lista.forEach((opcion, i) => {
-            const fila = filas()[i];
+            const fila = filasDe(contenedor)[i];
             fila.dataset.clave = opcion.clave;
             const icono = fila.querySelector(".opcion-menu-sao-icono");
             if (icono.dataset.icono !== opcion.icono) {
@@ -2417,8 +2430,26 @@ function crearMenuSao({ boton, menu, opciones, alElegir, rol = "menuitem" }) {
             }
             fila.querySelector(".opcion-menu-sao-nombre").textContent = opcion.etiqueta;
             fila.classList.toggle("activa", Boolean(opcion.activa));
-            if (rol === "menuitemradio") fila.setAttribute("aria-checked", String(Boolean(opcion.activa)));
+            fila.classList.toggle("con-submenu", Boolean(opcion.submenu));
+            fila.classList.toggle("abierta", Boolean(opcion.submenu) && opcion.clave === subClave);
+            if (opcion.submenu) {
+                fila.setAttribute("aria-haspopup", "menu");
+                fila.setAttribute("aria-expanded", String(opcion.clave === subClave));
+            } else {
+                fila.removeAttribute("aria-haspopup");
+                fila.removeAttribute("aria-expanded");
+            }
+            if (rolFilas === "menuitemradio") fila.setAttribute("aria-checked", String(Boolean(opcion.activa)));
         });
+    };
+
+    const actualizar = () => {
+        const lista = opciones();
+        pintarFilas(menu, lista, rol);
+        if (subClave === null) return;
+        const padre = lista.find(opcion => opcion.clave === subClave);
+        if (padre?.submenu) pintarFilas(sub, padre.submenu(), "menuitem");
+        else cerrarSub({ sonido: false });
     };
 
     // Sale a la derecha del botón; si no cabe, a la izquierda
@@ -2435,11 +2466,76 @@ function crearMenuSao({ boton, menu, opciones, alElegir, rol = "menuitem" }) {
         }
     };
 
+    /* Submenú: a la derecha de su fila (o a la izquierda del principal si este ya está a la izquierda);
+       si no cabe en ningún lado (móvil), pegado al borde de la pantalla */
+    const colocarSub = () => {
+        const fila = filas().find(otra => otra.dataset.clave === subClave);
+        if (!fila) return;
+        const wrapper = boton.parentElement.getBoundingClientRect();
+        const rectFila = fila.getBoundingClientRect();
+        const rectMenu = menu.getBoundingClientRect();
+        const separacion = 20;
+        const ancho = document.documentElement.clientWidth;
+        sub.classList.remove("a-la-izquierda");
+        sub.style.top = `${rectFila.top + rectFila.height / 2 - wrapper.top}px`;
+        let izquierda;
+        if (menu.classList.contains("a-la-izquierda")) {
+            sub.classList.add("a-la-izquierda");
+            izquierda = rectMenu.left - separacion - sub.offsetWidth;
+        } else {
+            izquierda = rectFila.right + separacion;
+        }
+        izquierda = Math.min(Math.max(8, izquierda), ancho - 8 - sub.offsetWidth);
+        sub.style.left = `${izquierda - wrapper.left}px`;
+    };
+
     /* Fila señalada con el teclado (dorada): la marca .teclado solo la pone el teclado,
        así el foco que se da al abrir con el ratón no la pinta */
-    const senalar = (fila, conTeclado) => {
-        filas().forEach(otra => otra.classList.toggle("teclado", conTeclado && otra === fila));
+    const senalar = (fila, conTeclado, contenedor = menu) => {
+        filasDe(contenedor).forEach(otra => otra.classList.toggle("teclado", conTeclado && otra === fila));
         fila?.focus();
+    };
+
+    const abrirSub = (clave, conTeclado = false) => {
+        const padre = opcionDe(clave);
+        if (!padre?.submenu) return;
+        clearTimeout(temporizadorCierreSub);
+        temporizadorCierreSub = null;
+        sub.classList.remove("cerrando");
+        const otroAbierto = subClave !== null;
+        subClave = clave;
+        sub.setAttribute("aria-label", padre.etiqueta);
+        if (otroAbierto) sub.innerHTML = ""; // otro submenú: sus filas vuelven a entrar
+        menu.classList.add("con-submenu");
+        filas().forEach(fila => fila.classList.remove("teclado", "elegida"));
+        pintarFilas(menu, opciones(), rol);
+        pintarFilas(sub, padre.submenu(), "menuitem");
+        sub.hidden = false;
+        colocarSub();
+        senalar(filasDe(sub).find(fila => fila.classList.contains("activa")) ?? filasDe(sub)[0], conTeclado, sub);
+        reproducir("click"); // el sonido de menú es solo para el principal
+        abrirCapa(sub, () => cerrarSub({ devolverFoco: true })); // atrás y Escape vuelven al principal
+    };
+
+    /* Vuelve al menú principal: las filas del submenú se van y el principal recupera sus colores.
+       Suena el click (el sonido de cerrar menú solo suena al cerrar el principal) */
+    const cerrarSub = ({ devolverFoco = false, sonido = true } = {}) => {
+        if (subClave === null) return;
+        const clave = subClave;
+        subClave = null;
+        cerrarCapa(sub);
+        menu.classList.remove("con-submenu");
+        pintarFilas(menu, opciones(), rol);
+        if (devolverFoco) senalar(filas().find(fila => fila.dataset.clave === clave), true);
+        if (sonido) reproducir("click");
+        const ocultar = () => {
+            temporizadorCierreSub = null;
+            sub.classList.remove("cerrando");
+            sub.hidden = true;
+        };
+        if (sinAnimacion.matches) return ocultar();
+        sub.classList.add("cerrando");
+        temporizadorCierreSub = setTimeout(ocultar, DURACION_CIERRE_MENU);
     };
 
     const abrir = (conTeclado = false) => {
@@ -2461,6 +2557,7 @@ function crearMenuSao({ boton, menu, opciones, alElegir, rol = "menuitem" }) {
        sonido: false cuando lo que se elige ya suena (p. ej. abre una ventana). */
     const cerrar = ({ devolverFoco = false, sonido = true } = {}) => {
         if (menu.hidden || cerrando()) return;
+        cerrarSub({ sonido: false });
         cerrarCapa(menu);
         boton.setAttribute("aria-expanded", "false");
         if (devolverFoco) boton.focus();
@@ -2483,23 +2580,53 @@ function crearMenuSao({ boton, menu, opciones, alElegir, rol = "menuitem" }) {
 
     // La fila elegida se queda dorada mientras el menú se cierra; si el menú sigue abierto
     // (p. ej. silenciar), solo destella un momento
-    menu.addEventListener("click", (e) => {
-        const fila = e.target.closest(".opcion-menu-sao");
-        if (!fila) return;
-        filas().forEach(otra => otra.classList.remove("elegida"));
+    const elegir = (fila) => {
+        filasDe(fila.parentElement).forEach(otra => otra.classList.remove("elegida"));
         fila.classList.add("elegida");
         alElegir(fila.dataset.clave, control);
         if (!menu.hidden && !cerrando()) setTimeout(() => fila.classList.remove("elegida"), 180);
+    };
+
+    menu.addEventListener("click", (e) => {
+        const fila = e.target.closest(".opcion-menu-sao");
+        if (!fila) return;
+        const clave = fila.dataset.clave;
+        // Con un submenú abierto, el resto de filas están en gris: pulsar una vuelve al principal
+        if (subClave !== null) {
+            cerrarSub({ devolverFoco: e.detail === 0 });
+            return;
+        }
+        if (opcionDe(clave)?.submenu) {
+            abrirSub(clave, e.detail === 0);
+            return;
+        }
+        elegir(fila);
     });
 
-    // Teclado: flechas para moverse, Escape o Tab para cerrar
-    menu.addEventListener("keydown", (e) => {
-        const lista = filas();
+    sub.addEventListener("click", (e) => {
+        const fila = e.target.closest(".opcion-menu-sao");
+        if (fila) elegir(fila);
+    });
+
+    // Teclado: flechas para moverse, → abre el submenú y ← vuelve, Escape o Tab para cerrar
+    const moverConFlechas = (e, contenedor) => {
+        const lista = filasDe(contenedor);
         const actual = lista.indexOf(document.activeElement);
+        const paso = e.key === "ArrowDown" ? 1 : -1;
+        e.preventDefault();
+        senalar(lista[(actual + paso + lista.length) % lista.length], true, contenedor);
+    };
+
+    menu.addEventListener("keydown", (e) => {
         if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-            e.preventDefault();
-            const paso = e.key === "ArrowDown" ? 1 : -1;
-            senalar(lista[(actual + paso + lista.length) % lista.length], true);
+            moverConFlechas(e, menu);
+        } else if (e.key === "ArrowRight" && !menu.classList.contains("a-la-izquierda")
+            || e.key === "ArrowLeft" && menu.classList.contains("a-la-izquierda")) {
+            const clave = document.activeElement?.dataset?.clave;
+            if (opcionDe(clave)?.submenu) {
+                e.preventDefault();
+                abrirSub(clave, true);
+            }
         } else if (e.key === "Escape") {
             e.preventDefault();
             cerrar({ devolverFoco: true });
@@ -2508,11 +2635,27 @@ function crearMenuSao({ boton, menu, opciones, alElegir, rol = "menuitem" }) {
         }
     });
 
-    // Clic fuera del menú lo cierra
-    document.addEventListener("click", (e) => {
-        if (!menu.hidden && !menu.contains(e.target) && !boton.contains(e.target)) cerrar();
+    sub.addEventListener("keydown", (e) => {
+        const volver = sub.classList.contains("a-la-izquierda") ? "ArrowRight" : "ArrowLeft";
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            moverConFlechas(e, sub);
+        } else if (e.key === volver || e.key === "Escape") {
+            e.preventDefault();
+            cerrarSub({ devolverFoco: true });
+        } else if (e.key === "Tab") {
+            cerrar();
+        }
     });
-    window.addEventListener("resize", () => { if (!menu.hidden) colocar(); });
+
+    // Clic fuera del menú (y de su submenú) lo cierra
+    document.addEventListener("click", (e) => {
+        if (!menu.hidden && !menu.contains(e.target) && !sub.contains(e.target) && !boton.contains(e.target)) cerrar();
+    });
+    window.addEventListener("resize", () => {
+        if (menu.hidden) return;
+        colocar();
+        if (subClave !== null) colocarSub();
+    });
 
     actualizar();
     return control;
@@ -3295,8 +3438,15 @@ function inicializarCatalogoArtes() {
     });
 }
 
-/* Menú de opciones: cargar y guardar personaje, online, silencio ___________ */
-/* Opciones online según haya sesión y sala (interfazOnline.js) */
+/* Menú de opciones: Personaje (submenú), Online (submenú), historial y silencio __ */
+/* Submenú Personaje: cargar y guardar el fichero, nueva ficha */
+const opcionesPersonaje = () => [
+    { clave: "cargar", etiqueta: "Cargar personaje", icono: "cargar" },
+    { clave: "guardar", etiqueta: "Guardar personaje", icono: "guardar" },
+    { clave: "nueva", etiqueta: "Nueva ficha", icono: "nuevaFicha" }
+];
+
+/* Submenú Online: según haya sesión y sala (interfazOnline.js) */
 function opcionesOnline() {
     const { usuario, sala } = getEstadoOnline();
     if (!usuario) return [{ clave: "cuenta", etiqueta: "Iniciar sesión (online)", icono: "amigos" }];
@@ -3316,10 +3466,8 @@ function inicializarOpciones() {
         boton: document.getElementById("btnOpciones"),
         menu: document.getElementById("menuOpciones"),
         opciones: () => [
-            { clave: "cargar", etiqueta: "Cargar personaje", icono: "cargar" },
-            { clave: "guardar", etiqueta: "Guardar personaje", icono: "guardar" },
-            { clave: "nueva", etiqueta: "Nueva ficha", icono: "nuevaFicha" },
-            ...opcionesOnline(),
+            { clave: "personaje", etiqueta: "Personaje", icono: "personaje", submenu: opcionesPersonaje },
+            { clave: "online", etiqueta: "Online", icono: "online", submenu: opcionesOnline },
             { clave: "historial", etiqueta: "Historial de avisos", icono: "historial" },
             estaSilenciado()
                 ? { clave: "sonido", etiqueta: "Activar audio", icono: "silencio" }
