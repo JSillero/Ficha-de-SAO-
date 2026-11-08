@@ -292,7 +292,11 @@
                                             <input type="number" class="inputDefensaEquipo" min="0" value="0">
                                         </div>
                                         <button type="button" class="btn-usar-equipo" title="Usar">Usar</button>
+                                        <!-- Lanzas y cuchillos: lanzar (daño a distancia) y recoger (actualizarBotonesLanzar) -->
+                                        <button type="button" class="btn-lanzar-equipo" hidden>Lanzar</button>
+                                        <button type="button" class="btn-recoger-equipo" hidden>Recoger</button>
                                     </div>
+                                    <p class="equipamiento-lanzada" hidden>Lanzada: no ataca ni aporta nada hasta recogerla.</p>
                                     <!-- Daño elemental del arma: solo se ven los elementos que tiene -->
                                     <div class="bloque-elemental" data-elemental="dannoElemental" title="Se suma a cada ataque, aparte del daño físico">
                                         <span class="subtitulo-elemental">Daño elemental:</span>
@@ -308,6 +312,8 @@
                                     <ul class="mods-equipo"></ul>
                                     <!-- Si el arma es reliquia: sus habilidades se editan y se usan aquí (pintarHabilidadesReliquia) -->
                                     <div class="reliquia-habilidades" hidden></div>
+                                    <!-- Efectos del equipo (pasivos y activos, efectosEquipo.js; pintarEfectosEquipo) -->
+                                    <div class="efectos-equipo" hidden></div>
                                 </div>
                             </div>
                         </template>
@@ -351,6 +357,7 @@
                                     <button type="button" class="btn-anadir-mod-equipo">+</button>
                                 </div>
                                 <ul class="mods-equipo"></ul>
+                                <div class="efectos-equipo" hidden></div>
                             </div>
                         </div>
 
@@ -573,15 +580,28 @@
         </div>
     </div>
 
-    <!-- Inventario: 10 huecos, generado desde personaje.inventario (pintarListaObjetos en interfaz.js) -->
+    <!-- Inventario: huecos de personaje.inventario (actualizarObjetos en interfaz.js) y pestaña de objetos clave -->
     <div class="modal fade modal-sao" id="modalInventario" tabindex="-1" aria-labelledby="modalInventarioLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="modalInventarioLabel">Inventario <span id="contadorInventario" class="contador-objetos"></span></h5>
-                    <button type="button" class="btn-crear-objeto" data-destino="inventario">+ Crear objeto</button>
+                    <button type="button" class="btn-crear-objeto" data-destino="inventario" data-pestana-panel="objetos">+ Crear objeto</button>
                 </div>
                 <div class="modal-body">
+                    <!-- Pestañas: objetos (con huecos) y objetos clave (sin hueco); inicializarPestanasInventario -->
+                    <div class="pestanas-inventario" role="tablist">
+                        <button type="button" class="pestana-inventario activa" role="tab" aria-selected="true" data-pestana="objetos">Objetos</button>
+                        <button type="button" class="pestana-inventario" role="tab" aria-selected="false" data-pestana="clave">Objetos clave <span id="contadorObjetosClave" class="contador-objetos"></span></button>
+                    </div>
+                    <div data-pestana-panel="clave" hidden>
+                        <div class="cabecera-objetos-clave">
+                            <p class="pista-form">No ocupan hueco ni se usan.</p>
+                            <button type="button" id="btnCrearObjetoClave" class="btn-sao">+ Crear objeto clave</button>
+                        </div>
+                        <div id="listaObjetosClave" class="lista-objetos"></div>
+                    </div>
+                    <div data-pestana-panel="objetos">
                     <!-- Cor: monedas, no ocupan hueco (anadirCor/gastarCor en objetos.js) -->
                     <div class="barra-cor">
                         <span class="cor-icono" aria-hidden="true"></span>
@@ -590,10 +610,37 @@
                         <button type="button" id="btnAnadirCor" class="btn-cor anadir" title="Añadir esta cantidad" aria-label="Añadir Cor"></button>
                         <button type="button" id="btnGastarCor" class="btn-cor gastar" title="Gastar esta cantidad" aria-label="Gastar Cor"></button>
                     </div>
+                    <p id="avisoSobrantesInventario" class="aviso-sobrantes" hidden></p>
                     <div id="listaInventario" class="lista-objetos"></div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Crear o editar un objeto clave (se abre desde la pestaña del inventario) -->
+    <div class="modal fade modal-sao" id="modalObjetoClave" tabindex="-1" aria-labelledby="modalObjetoClaveLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalObjetoClaveLabel">Crear objeto clave</h5>
+                </div>
+                <div class="modal-body">
+                    <form id="formObjetoClave" class="form-objeto" novalidate>
+                        <label class="campo-crece">Nombre <input type="text" id="objetoClaveNombre" required></label>
+                        <div class="campo-objeto">
+                            <label for="objetoClaveDescripcion">Descripción</label>
+                            <textarea id="objetoClaveDescripcion" rows="3"></textarea>
+                        </div>
+                        <p id="avisoObjetoClave" class="aviso-objeto" role="alert"></p>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao aceptar" id="btnGuardarObjetoClave" title="Crear" aria-label="Crear"></button>
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cancelar" aria-label="Cancelar"></button>
                 </div>
             </div>
         </div>
@@ -677,6 +724,14 @@
                                 <button type="button" id="btnAnadirHabilidadObjeto" class="btn-anadir-mod-objeto" title="Añadir habilidad" aria-label="Añadir habilidad">+</button>
                             </div>
                             <ul id="listaHabilidadesObjeto" class="lista-habilidades-reliquia"></ul>
+                        </div>
+                        <!-- Efectos del equipo: pasivas y activas como las artes (efectosEquipo.js); se editan en #modalCrearArte -->
+                        <div class="campo-objeto" data-campos="equipo">
+                            <div class="equipamiento-mods-header">
+                                <span>Efectos (pasivos o activos con PA):</span>
+                                <button type="button" id="btnAnadirEfectoObjeto" class="btn-anadir-mod-objeto" title="Añadir efecto" aria-label="Añadir efecto">+</button>
+                            </div>
+                            <ul id="listaEfectosObjeto" class="lista-efectos-objeto"></ul>
                         </div>
 
                         <!-- Poción -->
@@ -780,6 +835,23 @@
         </div>
     </div>
 
+    <!-- Ficha resumida de un compañero de grupo (o la tuya en el perfil): pintarFichaResumen en interfaz.js -->
+    <div class="modal fade modal-sao" id="modalFichaResumen" tabindex="-1" aria-labelledby="modalFichaResumenLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalFichaResumenLabel">Ficha</h5>
+                </div>
+                <div class="modal-body">
+                    <div id="contenidoFichaResumen" class="ficha-resumen"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Solicitud recibida (amistad o invitación a un grupo): aceptar o rechazar -->
     <div class="modal fade modal-sao" id="modalSolicitud" tabindex="-1" aria-labelledby="modalSolicitudLabel" aria-hidden="true"
         data-bs-backdrop="static">
@@ -873,7 +945,7 @@
                                     <option value="pasiva">Pasiva</option>
                                 </select>
                             </label>
-                            <label title="Memoria de artes que ocupa">Ranuras <input type="number" id="arteRanuras" min="1" value="1"></label>
+                            <label class="solo-arte" title="Memoria de artes que ocupa">Ranuras <input type="number" id="arteRanuras" min="1" value="1"></label>
                         </div>
                         <div class="campo-objeto">
                             <label for="arteDescripcion">Descripción (sale en la notificación al usarla)</label>
@@ -881,7 +953,7 @@
                         </div>
 
                         <!-- Requisitos: obligatorios y alternativos (basta con cumplir uno de los alternativos) -->
-                        <div class="campo-objeto">
+                        <div class="campo-objeto solo-arte">
                             <div class="equipamiento-mods-header">
                                 <span>Requisitos:</span>
                                 <button type="button" id="btnAnadirRequisitoArte" class="btn-anadir-mod-objeto" title="Añadir requisito" aria-label="Añadir requisito">+</button>
@@ -889,7 +961,7 @@
                             <ul id="listaRequisitosArte" class="lista-requisitos-arte"></ul>
                             <p class="pista-form">Hay que cumplir todos los requisitos obligatorios y, si hay alternativos, al menos uno de ellos. Habilidades y características se comparan con su valor base.</p>
                         </div>
-                        <div class="campo-objeto">
+                        <div class="campo-objeto solo-arte">
                             <label for="arteNotaRequisitos">Otros requisitos (no se comprueban: hazañas, artes previas, profesión…)</label>
                             <input type="text" id="arteNotaRequisitos">
                         </div>
@@ -906,16 +978,16 @@
                         <!-- Activa: coste, qué usa y daño -->
                         <div class="fila-campos" data-tipo-arte="activa">
                             <label>Coste PA <input type="number" id="arteCostePA" min="0" value="1"></label>
-                            <label title="No gasta acción"><input type="checkbox" id="arteCombo"> Combo</label>
-                            <label>Usa
+                            <label class="solo-arte" title="No gasta acción"><input type="checkbox" id="arteCombo"> Combo</label>
+                            <label class="solo-arte">Usa
                                 <select id="arteUsoTipo">
                                     <option value="parte">Una parte del cuerpo</option>
                                     <option value="arma">Un arma</option>
                                 </select>
                             </label>
-                            <label data-uso="parte">Parte <select id="arteUsoParte"></select></label>
+                            <label class="solo-arte" data-uso="parte">Parte <select id="arteUsoParte"></select></label>
                         </div>
-                        <div class="campo-objeto" data-tipo-arte="activa" data-uso="arma">
+                        <div class="campo-objeto solo-arte" data-tipo-arte="activa" data-uso="arma">
                             <span class="etiqueta-campo">Armas con las que se usa (gasta la acción de la mano que la lleve)</span>
                             <div id="arteUsoArmas" class="casillas-tipos"></div>
                             <label><input type="checkbox" id="arteUsoAmbasManos"> Con las dos manos (armas duales)</label>
@@ -925,13 +997,14 @@
                             <label data-danno title="Con arma se suma al daño del arma y al bonificador CaC">Daño extra <input type="number" id="arteDanno" min="0" value="0"></label>
                             <label data-danno title="Ataques separados al usarla, cada uno con su daño. Con las dos manos, cada golpe usa un arma">Golpes <input type="number" id="arteGolpes" min="1" value="1"></label>
                         </div>
+                        <p class="pista-form solo-efecto" data-tipo-arte="activa">En las manos gasta además la acción de esa mano; en la armadura o un accesorio solo los PA. En un arma, el daño es el del arma + bonificador CaC + el daño extra.</p>
                         <div data-tipo-arte="activa" data-danno>
                             <details id="detallesDannoElementalArte" class="acordeon-elemental">
                                 <summary>Daño elemental del arte</summary>
                                 <div id="arteDannoElemental" class="valores-elementales"></div>
                             </details>
                         </div>
-                        <label id="filaCompartirArte" hidden title="Los demás jugadores de la sala la verán en su catálogo"><input type="checkbox" id="arteCompartir"> Compartir en el catálogo de la sala</label>
+                        <label id="filaCompartirArte" class="solo-arte" hidden title="Los demás jugadores de la sala la verán en su catálogo"><input type="checkbox" id="arteCompartir"> Compartir en el catálogo de la sala</label>
                         <p id="avisoCrearArte" class="aviso-objeto" role="alert"></p>
                     </form>
                 </div>

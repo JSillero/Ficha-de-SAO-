@@ -1,16 +1,19 @@
-import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ESCUDO, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, ELEMENTOS, cargarValoresElementales } from "./equipamiento.js";
+import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ESCUDO, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, ELEMENTOS, cargarValoresElementales, estaLanzada } from "./equipamiento.js";
 import { esReliquia, usarHabilidadReliquia, motivoNoUsarHabilidad, cargarHabilidadReliquia, equipoDeRanura } from "./reliquias.js";
+import { partesDeEfecto, motivoNoUsarEfecto, usarEfectoEquipo, pasivasDeEquipo, cargarEfectos } from "./efectosEquipo.js";
 import Modificador, { TURNOS_PERMANENTE } from "./modificador.js";
 import PJ from "./PJ.js";
+import { VALORES_COMBATE, PROFESIONES, crearResumenFicha } from "./resumenFicha.js";
 import { tirarFalloEmbriaguez } from "./embriaguez.js";
 import { ejecutarTirada, combinarModos, esCritico, mostrarPopupDanno } from "./dados.js";
-import { prepararAtaque, calcularDannoAtaque, prepararLanzamiento, calcularDannoLanzamiento, describirEfecto } from "./ataque.js";
+import { prepararAtaque, calcularDannoAtaque, prepararLanzamiento, calcularDannoLanzamiento, calcularDannoLanzamientoArma, describirEfecto } from "./ataque.js";
 import {
     TIPOS_OBJETO, MAX_PILA_INVENTARIO, ELEMENTOS_ARROJADIZA, cargarObjeto, anadirAInventario, anadirABaul,
     transferirABaul, transferirAInventario, descartar, comer, beberPocion, aplicarPocionAArma, manosConArma,
     usarCristal, lanzarArrojadiza, manoParaUsar, categoriaEquipo, manosParaEquipar, motivoNoEquipar, equipar,
     motivoNoGuardar, motivoNoBeber, guardarEquipado, ranuraTieneEquipo, getCantidadAccesoriosPorArmadura, cabenEnInventario,
-    anadirCor, gastarCor, aplicarEfectoEnObjetivo, ofrecerObjeto, consumirOfrecido
+    anadirCor, gastarCor, aplicarEfectoEnObjetivo, ofrecerObjeto, consumirOfrecido,
+    capacidadInventario, ajustarInventario, cargarObjetosClave, motivoNoLanzar, recogerArma
 } from "./objetos.js";
 import {
     puedeGastarVarias, gastarVarias, gastarTodas, partesDeMano, estaIncapacitado,
@@ -320,6 +323,7 @@ function inicializarBotonesModales() {
 }
 
 function actualizarTodo() {
+    ajustarInventario(personaje); // la capacidad cambia con el equipo, la comida o los modificadores
     comprobarMemoriaArtes();
     comprobarDesbloqueosNaturales();
     actualizarInformacion();
@@ -332,6 +336,7 @@ function actualizarTodo() {
     generarAccesorios();
     parseModificadoresEquipo();
     pintarHabilidadesReliquia();
+    pintarEfectosEquipo();
     actualizarObjetos();
     actualizarArtes();
     actualizarArtesPasivas();
@@ -644,31 +649,7 @@ function actuaizarTextos() {
     }
 }
 
-/* Valores de combate _________________________________________________________ */
-
-/* clave = propiedad de PJ; ayuda = fórmula que se ve al pasar el ratón */
-const VALORES_COMBATE = [
-    { clave: "defensa", etiqueta: "Defensa", icono: "escudo",
-        ayuda: "Reflejos + Atletismo efectivo + 5 (+ escudo en uso). El atacante debe igualarla para hacer daño." },
-    { clave: "armadura", etiqueta: "Armadura", icono: "armadura",
-        ayuda: "Daño que la armadura resta a cada impacto." },
-    { clave: "iniciativa", etiqueta: "Iniciativa", icono: "iniciativa",
-        ayuda: "Reflejos + Inteligencia / 2. Orden de actuación en combate." },
-    { clave: "vMovimiento", etiqueta: "Movimiento", icono: "movimiento", unidad: "casillas",
-        ayuda: "Atletismo efectivo / 5 + 3. Casillas sin correr; correr las duplica." },
-    { clave: "dFisico", etiqueta: "Daño CaC", icono: "espada",
-        ayuda: "(Fortaleza + Combate) / 4, hacia abajo. En sigilo usa Sigilo en lugar de Combate." },
-    { clave: "dDistancia", etiqueta: "Daño a distancia", icono: "distancia",
-        ayuda: "Combate / 4, hacia abajo. En sigilo usa Sigilo en lugar de Combate." },
-    { clave: "dMagico", etiqueta: "Daño mágico", icono: "magia",
-        ayuda: "(Inteligencia + Sacro) / 4, hacia abajo." },
-    { clave: "aguante", etiqueta: "Aguante", icono: "aguante",
-        ayuda: "Fortaleza + Voluntad / 2. PV que ganas cada 5 niveles y resistencia al frío." },
-    { clave: "perspicacia", etiqueta: "Perspicacia", icono: "perspicacia",
-        ayuda: "Voluntad + Cultura + 5. Las tiradas para manipular tus emociones deben igualarla." },
-    { clave: "percepcionPasiva", etiqueta: "Percepción pasiva", icono: "percepcion",
-        ayuda: "Inteligencia + Percepción + 5. Detecta trampas y enemigos en sigilo sin tirar." }
-];
+/* Valores de combate (VALORES_COMBATE en resumenFicha.js) ____________________ */
 
 const valoresCombateDiv = document.getElementById("valoresCombateDiv");
 
@@ -772,7 +753,7 @@ const GRUPOS_ATRIBUTOS = [
     ["Otros", [
         ["aguante", "Aguante"], ["vidaMax", "PV máximos"], ["arte", "PA máximos"], ["espacios", "Memoria de artes"],
         ["perspicacia", "Perspicacia"], ["percepcionPasiva", "Percepción pasiva"],
-        ["regeneracion", "Regeneración (PV/turno)"]
+        ["regeneracion", "Regeneración (PV/turno)"], ["inventario", "Huecos de inventario"]
     ]],
     // Se suman a la armadura elemental (PJ.getResistencia)
     ["Resistencias", ELEMENTOS.map(elemento => [`res_${elemento}`, `Resistencia a ${TIPOS_DANNO[elemento].etiqueta.toLowerCase()}`])]
@@ -1124,6 +1105,8 @@ function inicializarEquipamiento() {
         if (btnUsar) {
             btnUsar.addEventListener("click", () => usarEquipo(propEquipo));
         }
+        elemento.querySelector(".btn-lanzar-equipo")?.addEventListener("click", () => lanzarEquipo(propEquipo));
+        elemento.querySelector(".btn-recoger-equipo")?.addEventListener("click", () => recogerEquipo(propEquipo));
 
     });
 }
@@ -1261,6 +1244,7 @@ function actualizarEquipamiento() {
             inputDefensa.value = item.defensa ?? 0;
         }
         if (btnUsar) actualizarBotonUsar(btnUsar, propEquipo);
+        actualizarBotonesLanzar(elemento, propEquipo);
 
         if (select) {
             select.value = item.tipo || "";
@@ -1465,6 +1449,10 @@ function usarEquipo(propEquipo) {
     const item = personaje[propEquipo];
     const arma = ARMAS[item?.tipo];
     if (!arma) return;
+    if (estaLanzada(item)) {
+        mostrarPopupInfo("No se puede atacar", ["El arma está lanzada: recógela primero."]);
+        return;
+    }
     const partes = partesDeMano(propEquipo, arma.manos === 2);
     const nombre = item.nombre?.trim() || arma.etiqueta;
 
@@ -1505,6 +1493,75 @@ function usarEquipo(propEquipo) {
     // La poción aplicada al arma se gasta en este ataque
     item.pocionAplicada = null;
     actualizarTodo();
+}
+
+/* Lanzar una lanza o un cuchillo: misma tirada que el ataque, daño con el bonificador a distancia.
+   Gasta la acción de esa mano (las dos si es a dos manos) y el arma queda lanzada hasta recogerla. */
+function lanzarEquipo(propEquipo) {
+    const item = personaje[propEquipo];
+    const arma = ARMAS[item?.tipo];
+    const motivo = motivoNoLanzar(personaje, propEquipo);
+    if (motivo) {
+        mostrarPopupInfo("No se puede lanzar", [escaparHtml(motivo)]);
+        return;
+    }
+    const nombre = item.nombre?.trim() || arma.etiqueta;
+    const { modos, criticoFacil } = obtenerConfiguracionTirada();
+    const ataque = prepararAtaque(personaje, propEquipo, modos);
+    if (!ataque) return;
+    const partes = partesDeMano(propEquipo, arma.manos === 2);
+    const { resultado: lanzado, fallo } = conEmbriaguez("ataque", () => gastarAccionesOConfirmar(partes, `Lanzar ${nombre}`));
+    // Borracho: la acción se ha gastado, pero el arma no sale de la mano
+    if (!lanzado || fallo) { actualizarTodo(); return; }
+
+    // El daño se calcula con el arma antes de marcarla como lanzada (la poción va en el golpe)
+    const conPocion = { ...item };
+    ejecutarTirada({
+        nombreAccion: ataque.nombre,
+        subtitulo: `Lanzamiento de ${arma.etiqueta.toLowerCase()} · ${arma.manos === 2 ? "Dos manos" : ETIQUETAS_MANO[propEquipo]}`,
+        valorHabilidad: ataque.valorHabilidad,
+        etiquetaHabilidad: ataque.etiquetaHabilidad,
+        valorCaracteristica: ataque.valorCaracteristica,
+        etiquetaCaracteristica: ataque.etiquetaCaracteristica,
+        modoTirada: ataque.modo,
+        criticoFacil,
+        bonificador: ataque.bonificador,
+        etiquetaBonificador: ataque.bonificador > 0 ? "Ventaja extra" : "Desventaja extra",
+        etiquetaTotal: "ATAQUE",
+        calcularDanno: (resultado) => calcularDannoLanzamientoArma(personaje, conPocion, esCritico(resultado))
+    });
+    item.pocionAplicada = null;
+    item.lanzada = true;
+    personaje.calcularCaracteristicas(); // sus modificadores dejan de contar
+    actualizarTodo();
+}
+
+function recogerEquipo(propEquipo) {
+    reproducir("click");
+    const { resultado, fallo } = conEmbriaguez("equipo", () => recogerArma(personaje, propEquipo, gastarAccionesOConfirmar));
+    actualizarTodo();
+    if (!fallo && !resultado.ok) mostrarPopupInfo("No se puede recoger", resultado.resumen.map(escaparHtml));
+}
+
+/* Botones Lanzar y Recoger de la tarjeta de una mano (solo lanzas y cuchillos) */
+function actualizarBotonesLanzar(tarjeta, propEquipo) {
+    const item = personaje[propEquipo];
+    const lanzable = Boolean(ARMAS[item?.tipo]?.lanzable);
+    const lanzada = estaLanzada(item);
+    const btnLanzar = tarjeta.querySelector(".btn-lanzar-equipo");
+    const btnRecoger = tarjeta.querySelector(".btn-recoger-equipo");
+    if (!btnLanzar || !btnRecoger) return;
+    btnLanzar.hidden = !lanzable || lanzada;
+    btnRecoger.hidden = !lanzada;
+    tarjeta.querySelector(".equipamiento-lanzada").hidden = !lanzada;
+    tarjeta.classList.toggle("lanzada", lanzada);
+    if (!lanzable) return;
+    const partes = partesDeMano(propEquipo, ARMAS[item.tipo].manos === 2);
+    const sinAccion = !puedeGastarVarias(personaje, partes) ? " · Sin acciones disponibles" : "";
+    btnLanzar.title = `Lanzar (daño ${Number(item.danno) || 0} + ${Math.max(0, personaje.dDistancia)} a distancia; queda lanzada hasta recogerla)${sinAccion}`;
+    btnRecoger.title = `Recoger el arma (gasta la acción de esa mano)${sinAccion}`;
+    btnLanzar.classList.toggle("sin-accion", Boolean(sinAccion));
+    btnRecoger.classList.toggle("sin-accion", Boolean(sinAccion));
 }
 
 /* Botón Guardar de cada tarjeta: lleva lo equipado al inventario */
@@ -1814,6 +1871,111 @@ function inicializarHabilidadesReliquia() {
     });
 }
 
+/* Efectos del equipo (reglas en efectosEquipo.js) ____________________________ */
+// Cada .efectos-equipo está en la tarjeta de su ranura (manos, armadura, accesorios). Se crean y
+// editan en el formulario de objetos; aquí solo se ven y se usan las activas.
+
+/* Coste de usar un efecto activo, en texto */
+function textoCosteEfecto(ranura, efecto) {
+    const partes = partesDeEfecto(personaje, ranura);
+    const accion = !partes.length ? "" : partes.length > 1 ? "las acciones de las dos manos" : "la acción de esa mano";
+    return [efecto.costePA > 0 ? `${efecto.costePA} PA` : "", accion].filter(Boolean).join(" y ") || "nada";
+}
+
+/* Línea de un efecto: modificadores (pasivas) o coste y daño (activas) */
+function detalleEfecto(efecto) {
+    if (efecto.tipo === "pasiva") return textoModificadores(efecto.modificadores) || "Sin modificadores";
+    const partes = [`${efecto.costePA} PA`];
+    if (efecto.haceDanno) {
+        if (efecto.danno > 0) partes.push(`Daño +${efecto.danno}`);
+        const elemental = textoElemental(efecto.dannoElemental, "+");
+        if (elemental) partes.push(elemental);
+        if (efecto.golpes > 1) partes.push(`${efecto.golpes} golpes`);
+    }
+    return partes.join(" · ");
+}
+
+function filaEfectoEquipo(ranura, efecto, i) {
+    const detalle = escaparHtml(detalleEfecto(efecto));
+    if (efecto.tipo === "pasiva") {
+        return `<li class="efecto-equipo pasiva" data-index="${i}" role="button" tabindex="0" title="Ver detalle">
+            <span class="efecto-icono">${iconoSao("artePasiva")}</span>
+            <span class="efecto-texto"><b>${escaparHtml(efecto.nombre)}</b><small>${detalle}</small></span>
+        </li>`;
+    }
+    const motivo = motivoNoUsarEfecto(personaje, ranura, i);
+    const titulo = motivo ?? `Usar ${efecto.nombre}: gasta ${textoCosteEfecto(ranura, efecto)}`;
+    return `<li class="efecto-equipo activa" data-index="${i}">
+        <span class="efecto-icono">${iconoSao("arteActiva")}</span>
+        <span class="efecto-texto"><b>${escaparHtml(efecto.nombre)}</b><small>${detalle}</small></span>
+        <button type="button" class="btn-usar-efecto" ${motivo ? "disabled" : ""} title="${escaparHtml(titulo)}" aria-label="${escaparHtml(titulo)}">Usar</button>
+    </li>`;
+}
+
+function pintarEfectosEquipo() {
+    document.querySelectorAll("#divEquipamiento .efectos-equipo").forEach(caja => {
+        const ranura = ranuraDeTarjeta(caja);
+        const equipo = equipoDeRanura(personaje, ranura);
+        const efectos = equipo?.tipo ? equipo.efectos ?? [] : [];
+        caja.hidden = !efectos.length;
+        const html = efectos.length
+            ? `<div class="equipamiento-mods-header"><span>Efectos:</span></div>
+               <ul class="lista-efectos-equipo">${efectos.map((efecto, i) => filaEfectoEquipo(ranura, efecto, i)).join("")}</ul>`
+            : "";
+        // Solo se regenera si cambia (no pierde el foco del botón)
+        if (caja.dataset.html !== html) {
+            caja.dataset.html = html;
+            caja.innerHTML = html;
+        }
+    });
+}
+
+function usarEfecto(ranura, indice) {
+    const efecto = equipoDeRanura(personaje, ranura)?.efectos?.[indice];
+    if (!efecto) return;
+    // Los que no gastan acción no pasan por gastarAccionesOConfirmar: la embriaguez se tira aparte
+    const sinAcciones = partesDeEfecto(personaje, ranura).length === 0;
+    const { resultado, fallo } = conEmbriaguez("arte", () => {
+        const usado = usarEfectoEquipo(personaje, ranura, indice, gastarAccionesOConfirmar);
+        if (usado.ok && sinAcciones) fallaPorEmbriaguez(`Usar ${efecto.nombre}`);
+        return usado;
+    });
+    actualizarTodo();
+    if (!fallo) mostrarPopupArte(efecto, resultado, "Efecto");
+}
+
+function inicializarEfectosEquipo() {
+    const contenedor = document.getElementById("divEquipamiento");
+    const datosFila = (elemento) => {
+        const ranura = ranuraDeTarjeta(elemento);
+        const indice = Number(elemento.closest(".efecto-equipo")?.dataset.index);
+        return { ranura, indice, efecto: equipoDeRanura(personaje, ranura)?.efectos?.[indice] };
+    };
+    const abrirPasiva = (elemento) => {
+        const { efecto } = datosFila(elemento);
+        if (!efecto) return;
+        reproducir("click");
+        mostrarDetalleArte(efecto);
+    };
+    contenedor.addEventListener("click", (e) => {
+        const usar = e.target.closest(".btn-usar-efecto");
+        if (usar) {
+            reproducir("click");
+            const { ranura, indice } = datosFila(usar);
+            usarEfecto(ranura, indice);
+            return;
+        }
+        const pasiva = e.target.closest(".efecto-equipo.pasiva");
+        if (pasiva) abrirPasiva(pasiva);
+    });
+    contenedor.addEventListener("keydown", (e) => {
+        const pasiva = e.target.closest(".efecto-equipo.pasiva");
+        if (!pasiva || (e.key !== "Enter" && e.key !== " ")) return;
+        e.preventDefault();
+        abrirPasiva(pasiva);
+    });
+}
+
 /* Accesorios _________________________________________________________________ */
 const MAX_ACCESORIOS = 3;
 const NOMBRES_ARMADURA = { pesada: "pesada", media: "media", ligera: "ligera", ropa: "de ropa", real: "real" };
@@ -1862,6 +2024,7 @@ function generarAccesorios() {
                 </div>
                 <ul class="mods-equipo" data-mods="accesorio-${i}"></ul>
                 <div class="reliquia-habilidades" hidden></div>
+                <div class="efectos-equipo" hidden></div>
             </div>` : `
             <div class="tarjeta-accesorio bloqueada" aria-disabled="true">
                 <div class="accesorio-cabecera">
@@ -2837,6 +3000,14 @@ function inicializarArtes() {
     // Tarjetas de "Artes pasivas" (columna derecha): clic o Enter/Espacio abre su detalle
     const abrirDetallePasiva = (e) => {
         const tarjeta = e.target.closest(".arte-pasiva");
+        // Pasiva de un equipo: siempre activa
+        if (tarjeta?.dataset.ranura) {
+            const efecto = equipoDeRanura(personaje, tarjeta.dataset.ranura)?.efectos?.[Number(tarjeta.dataset.efecto)];
+            if (!efecto) return;
+            reproducir("click");
+            mostrarDetalleArte(efecto);
+            return;
+        }
         const arte = personaje.artes[Number(tarjeta?.dataset.index)];
         // Las inactivas (requisitos sin cumplir) no abren notificación
         if (!arte || motivoRequisitos(personaje, arte)) return;
@@ -2891,7 +3062,7 @@ function alPulsarArte(e) {
 }
 
 /* Notificación al usar un arte: descripción, PA y, si hace daño, el daño (sin tirar dados) */
-function mostrarPopupArte(arte, resultado) {
+function mostrarPopupArte(arte, resultado, etiqueta = "Arte") {
     if (!resultado.ok) {
         mostrarPopupInfo(`No se puede usar ${escaparHtml(arte.nombre)}`, resultado.resumen.map(escaparHtml));
         return;
@@ -2900,13 +3071,13 @@ function mostrarPopupArte(arte, resultado) {
     const [descripcion, ...extras] = resultado.resumen;
     const golpes = resultado.danno;
     if (!golpes) {
-        emitirEvento("arte", { titulo: arte.nombre, lineas: [descripcion, ...extras] });
+        emitirEvento("arte", { titulo: arte.nombre, subtitulo: etiqueta === "Arte" ? undefined : etiqueta, lineas: [descripcion, ...extras] });
         return;
     }
     // Hace daño: popup como el de las tiradas, sin dados (el arte no falla); un bloque por golpe
     mostrarPopupDanno({
         titulo: arte.nombre,
-        subtitulo: ["Arte", ...(golpes.length > 1 ? [`${golpes.length} golpes`] : []), ...extras].join(" · "),
+        subtitulo: [etiqueta, ...(golpes.length > 1 ? [`${golpes.length} golpes`] : []), ...extras].join(" · "),
         descripcion,
         golpes: structuredClone(golpes)
     });
@@ -3084,11 +3255,32 @@ function actualizarArtesPasivas() {
     const pasivas = personaje.artes
         .map((arte, indice) => ({ arte, indice }))
         .filter(({ arte }) => arte.equipada && arte.tipo === "pasiva");
-    const visible = pasivas.length > 0;
+    // Las pasivas del equipo puesto también (siempre activas mientras se lleva)
+    const deEquipo = pasivasDeEquipo(personaje);
+    const visible = pasivas.length + deEquipo.length > 0;
     document.getElementById("tituloArtesPasivas").style.display = visible ? "" : "none";
     listaArtesPasivasEl.style.display = visible ? "" : "none";
 
-    pintarLista(listaArtesPasivasEl, pasivas.map(({ arte, indice }) => {
+    const chips = (mods) => mods.map(mod => {
+        const numero = Number(mod.numero) || 0;
+        return `<span class="chip-mod-pasiva ${numero < 0 ? "negativo" : "positivo"}">${conSigno(numero)} ${escaparHtml(ETIQUETAS_ATRIBUTO[mod.modificado] ?? mod.modificado)}</span>`;
+    }).join("");
+    const htmlEquipo = deEquipo.map(({ ranura, equipo, efecto }) => {
+        const indiceEfecto = equipo.efectos.indexOf(efecto);
+        const modificadores = chips(efecto.modificadores);
+        return `<div class="arte-pasiva de-equipo" data-ranura="${ranura}" data-efecto="${indiceEfecto}" role="button" tabindex="0"
+            title="Ver detalle" aria-label="${escaparHtml(efecto.nombre)}: ver detalle">
+            <div class="arte-pasiva-cabecera">
+                <span class="arte-pasiva-icono">${iconoSao("artePasiva")}</span>
+                <span class="arte-pasiva-nombre">${escaparHtml(efecto.nombre)}</span>
+                <span class="arte-pasiva-estado" title="Efecto de equipo">${escaparHtml(equipo.nombre?.trim() || "Equipo")}</span>
+            </div>
+            ${modificadores ? `<div class="arte-pasiva-mods">${modificadores}</div>` : ""}
+            ${efecto.descripcion ? `<div class="arte-pasiva-descripcion">${escaparHtml(efecto.descripcion)}</div>` : ""}
+        </div>`;
+    }).join("");
+
+    pintarLista(listaArtesPasivasEl, htmlEquipo + pasivas.map(({ arte, indice }) => {
         const motivo = motivoRequisitos(personaje, arte);
         const modificadores = arte.modificadores.map(mod => {
             const numero = Number(mod.numero) || 0;
@@ -3120,6 +3312,13 @@ function pintarAviso(id, textos) {
  * Ventana que se abre desde otra (p. ej. crear arte desde las artes sin equipar): oculta la de origen
  * y vuelve a ella al cerrarse, sin los sonidos de abrir y cerrar (es un cambio de ventana).
  */
+/* ¿La ventana se acaba de ocultar para abrir una hija suya? (consume la marca) */
+function seVaAUnaHija(modalEl) {
+    if (!modalEl.dataset.haciaHija) return false;
+    delete modalEl.dataset.haciaHija;
+    return true;
+}
+
 function crearVentanaHija(modalEl) {
     const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
     let origen = null;
@@ -3127,7 +3326,7 @@ function crearVentanaHija(modalEl) {
         if (origen) modalEl.dataset.sinSonidoCerrar = "1";
     });
     modalEl.addEventListener("hidden.bs.modal", () => {
-        if (!origen) return;
+        if (seVaAUnaHija(modalEl) || !origen) return;
         const anterior = origen;
         origen = null;
         anterior.dataset.sinSonidoAbrir = "1";
@@ -3136,7 +3335,12 @@ function crearVentanaHija(modalEl) {
     return {
         abrirDesde(ventanaOrigen) {
             origen = ventanaOrigen;
-            ventanaOrigen.addEventListener("hidden.bs.modal", () => modal.show(), { once: true });
+            // La de origen se oculta para abrir esta, no se cierra: no debe volver a la suya
+            ventanaOrigen.dataset.haciaHija = "1";
+            ventanaOrigen.addEventListener("hidden.bs.modal", () => {
+                delete ventanaOrigen.dataset.haciaHija; // por si la de origen no la consulta
+                modal.show();
+            }, { once: true });
             ventanaOrigen.dataset.sinSonidoCerrar = "1";
             modalEl.dataset.sinSonidoAbrir = "1";
             bootstrap.Modal.getOrCreateInstance(ventanaOrigen).hide();
@@ -3149,6 +3353,8 @@ function crearVentanaHija(modalEl) {
 
 /** Abre el formulario para editar un arte (o para crear una si arte es null); se asigna en inicializarFormularioArte */
 let abrirEditorArte = () => {};
+/** Abre el mismo formulario para un efecto de equipo (efecto o null, ventana de origen, alGuardar(efecto)) */
+let abrirEditorEfecto = () => {};
 
 const ETIQUETAS_TIPO_REQUISITO = {
     nivel: "Nivel", caracteristica: "Característica", habilidad: "Habilidad",
@@ -3225,6 +3431,8 @@ function inicializarFormularioArte() {
     let mods = [];
     /* Arte que se está editando, o null al crear */
     let edicion = null;
+    /* Modo efecto de equipo: función que recibe el efecto guardado (sin requisitos, memoria ni uso), o null */
+    let alGuardarEfecto = null;
 
     // Desplegables y casillas fijas
     campo("arteUsoParte").innerHTML = Object.entries(PARTES_USO_ARTE)
@@ -3336,7 +3544,9 @@ function inicializarFormularioArte() {
         pintarMods();
         actualizarCampos();
         const textoBoton = arte ? "Guardar" : "Crear";
-        campo("modalCrearArteLabel").textContent = arte ? "Editar arte" : "Crear arte";
+        const nombreTipo = alGuardarEfecto ? "efecto" : "arte";
+        campo("modalCrearArteLabel").textContent = `${arte ? "Editar" : "Crear"} ${nombreTipo}`;
+        modalEl.classList.toggle("modo-efecto", Boolean(alGuardarEfecto));
         campo("btnGuardarArte").title = textoBoton;
         campo("btnGuardarArte").setAttribute("aria-label", textoBoton);
     };
@@ -3344,7 +3554,7 @@ function inicializarFormularioArte() {
     const guardar = () => {
         const nombre = campo("arteNombre").value.trim();
         if (!nombre) {
-            aviso.textContent = "Ponle un nombre al arte.";
+            aviso.textContent = alGuardarEfecto ? "Ponle un nombre al efecto." : "Ponle un nombre al arte.";
             campo("arteNombre").focus();
             return;
         }
@@ -3354,7 +3564,7 @@ function inicializarFormularioArte() {
             return;
         }
         const tipo = campo("arteTipo").value;
-        const usoTipo = campo("arteUsoTipo").value;
+        const usoTipo = alGuardarEfecto ? "parte" : campo("arteUsoTipo").value;
         const armas = [...campo("arteUsoArmas").querySelectorAll(".uso-arma:checked")].map(c => c.value);
         if (tipo === "activa" && usoTipo === "arma" && armas.length === 0) {
             aviso.textContent = "Marca al menos un arma con la que se usa el arte.";
@@ -3380,6 +3590,13 @@ function inicializarFormularioArte() {
             golpes: Math.max(1, numero("arteGolpes")),
             dannoElemental: Object.fromEntries(ELEMENTOS.map(e => [e, campo(`arteElem_${e}`).value]))
         };
+        // Efecto de equipo: lo recibe el formulario de objetos (no es un arte de la lista ni gasta desbloqueo)
+        if (alGuardarEfecto) {
+            alGuardarEfecto(cargarEfectos([{ ...datos, id: edicion?.id }])[0]);
+            reproducir("click");
+            ventana.cerrar();
+            return;
+        }
         const arte = cargarArte(datos);
         if (edicion) {
             personaje.artes[personaje.artes.indexOf(edicion)] = arte;
@@ -3413,7 +3630,14 @@ function inicializarFormularioArte() {
 
     abrirEditorArte = (arte, origen) => {
         edicion = arte;
+        alGuardarEfecto = null;
         rellenar(arte);
+        ventana.abrirDesde(origen);
+    };
+    abrirEditorEfecto = (efecto, origen, alGuardar) => {
+        edicion = efecto;
+        alGuardarEfecto = alGuardar;
+        rellenar(efecto);
         ventana.abrirDesde(origen);
     };
     campo("btnAbrirCrearArte").addEventListener("click", (e) => {
@@ -3639,6 +3863,7 @@ function inicializarSocial() {
         boton: document.getElementById("btnSocial"),
         menu: document.getElementById("menuSocial"),
         opciones: () => [
+            { clave: "perfil", etiqueta: "Perfil", icono: "personaje" },
             { clave: "amigos", etiqueta: "Amigos", icono: "amigos", submenu: () => [
                 { clave: "verAmigos", etiqueta: `Ver amigos (${personaje.amigos.length})`, icono: "amigos" },
                 { clave: "anadirAmigo", etiqueta: "Añadir amigo", icono: "anadirAmigo" }
@@ -3647,6 +3872,7 @@ function inicializarSocial() {
         ],
         alElegir: (clave, menu) => {
             const acciones = {
+                perfil: abrirPerfil,
                 verAmigos: abrirAmigos,
                 anadirAmigo: abrirAnadirAmigo,
                 crearGrupo,
@@ -3726,6 +3952,128 @@ function textoElemental(valores, prefijo) {
         .join(", ");
 }
 
+/* Daño, defensa o armadura de un equipo (sin tipo ni modificadores), p. ej. "daño 4 · una mano" */
+function valoresEquipo(equipo) {
+    const partes = [];
+    if (ARMAS[equipo.tipo]?.escudo) partes.push(`defensa ${equipo.defensa || 0}`);
+    else if (ARMAS[equipo.tipo]) {
+        partes.push(`daño ${equipo.danno || 0}`, ARMAS[equipo.tipo].manos === 2 ? "dos manos" : "una mano");
+        const elemental = textoElemental(equipo.dannoElemental, "+");
+        if (elemental) partes.push(elemental);
+    }
+    if (TIPOS_ARMADURA.includes(equipo.tipo)) {
+        partes.push(`armadura ${equipo.armadura || 0}`, `−${equipo.penalizacionAtletismo || 0} Atletismo`);
+        const resistencias = textoElemental(equipo.resistencias, "res. ");
+        if (resistencias) partes.push(resistencias);
+    }
+    return partes.join(" · ");
+}
+
+/* Ficha resumida (resumenFicha.js) _________________________________________ */
+// La ven los compañeros de grupo (la piden con un evento privado, interfazOnline.js) y tú en tu perfil.
+
+/** Tu ficha resumida, lista para enviar */
+function resumenPropio() {
+    return crearResumenFicha(personaje, { detalleArte, detalleEfecto, etiquetaTipoEquipo, valoresEquipo, textoModificadores });
+}
+
+/* HTML de la ficha resumida. Todo el texto se escapa: puede venir de otro jugador.
+   perfil: es la tuya (Social → Perfil): la profesión se puede cambiar y se ven amigos, sala y grupo. */
+function htmlFichaResumen(resumen, { perfil = false } = {}) {
+    const e = escaparHtml;
+    const plegable = (titulo, detalle, cuerpo) => cuerpo
+        ? `<details class="resumen-plegable"><summary><b>${e(titulo)}</b>${detalle ? ` <small>${e(detalle)}</small>` : ""}</summary>${cuerpo}</details>`
+        : `<div class="resumen-plegable sin-detalle"><b>${e(titulo)}</b>${detalle ? ` <small>${e(detalle)}</small>` : ""}</div>`;
+    const parrafo = (texto) => (texto ? `<p>${e(texto)}</p>` : "");
+
+    const habilidades = resumen.habilidades.map(h => `
+        <div class="resumen-valor"><span>${e(ETIQUETAS_HABILIDAD[h.clave] ?? h.clave)}</span>
+            <b>${h.base}</b>${h.efectivo !== h.base ? ` <small title="Con modificadores">(${h.efectivo})</small>` : ""}</div>`).join("");
+    const combate = resumen.combate.map(c => {
+        const info = VALORES_COMBATE.find(v => v.clave === c.clave);
+        return `<div class="resumen-valor" title="${e(info.ayuda)}"><span>${e(info.etiqueta)}</span>
+            <b>${formatearNumero(c.valor)}</b>${info.unidad ? ` <small>${e(info.unidad)}</small>` : ""}</div>`;
+    }).join("");
+    const artes = resumen.artes.map(arte =>
+        plegable(arte.nombre, `${arte.tipo === "pasiva" ? "Pasiva" : "Activa"} · ${arte.detalle}`, parrafo(arte.descripcion))).join("");
+    const equipo = resumen.equipo.map(item => {
+        const efectos = item.efectos.map(ef =>
+            `<li><b>${e(ef.nombre)}</b> <small>${ef.tipo === "pasiva" ? "Pasiva" : "Activa"} · ${e(ef.detalle)}</small>${parrafo(ef.descripcion)}</li>`).join("");
+        const cuerpo = [item.modificadores ? `<p>Modificadores: ${e(item.modificadores)}</p>` : "", parrafo(item.descripcion),
+            efectos ? `<p>Efectos:</p><ul class="resumen-efectos">${efectos}</ul>` : ""].join("");
+        return plegable(`${item.ranura}: ${item.nombre}`, [item.tipo, item.valores].filter(Boolean).join(" · "), cuerpo);
+    }).join("");
+
+    const profesion = perfil
+        ? `<label class="resumen-profesion-editable">Profesión
+            <select class="select-profesion-perfil" aria-label="Profesión">${Object.entries(PROFESIONES).map(([clave, etiqueta]) =>
+                `<option value="${clave}" ${clave === resumen.profesion ? "selected" : ""}>${etiqueta}</option>`).join("")}</select></label>`
+        : `<span class="resumen-profesion">${e(PROFESIONES[resumen.profesion] ?? "Sin profesión")}</span>`;
+
+    return `
+        <div class="resumen-cabecera"><b>${e(resumen.nombre || "Sin nombre")}</b> <span>LV ${resumen.nivel}</span>${profesion}</div>
+        ${perfil ? htmlDatosPerfil() : ""}
+        <h6 class="titulo-online">Habilidades</h6><div class="resumen-rejilla">${habilidades}</div>
+        <h6 class="titulo-online">Valores de combate</h6><div class="resumen-rejilla">${combate}</div>
+        <h6 class="titulo-online">Artes equipadas</h6>${artes || `<p class="lista-vacia">Ninguna.</p>`}
+        <h6 class="titulo-online">Equipamiento</h6>${equipo || `<p class="lista-vacia">Nada equipado.</p>`}`;
+}
+
+/* Perfil: amigos, sala y grupo (sin pedir nada a la red: lo que ya se sabe) */
+function htmlDatosPerfil() {
+    const { sala } = getEstadoOnline();
+    const grupo = getGrupoSala();
+    const companeros = (grupo?.miembros ?? []).map(m => m.nombre || "Sin nombre");
+    const fila = (etiqueta, valor) => `<div class="resumen-valor"><span>${etiqueta}</span><b>${escaparHtml(valor)}</b></div>`;
+    return `<div class="resumen-rejilla resumen-perfil">
+        ${fila("Amigos", String(personaje.amigos.length))}
+        ${fila("Sala", sala ? [sala.nombre, sala.codigo].filter(Boolean).join(" · ") : "Sin sala")}
+        ${fila("Grupo", companeros.length ? companeros.join(", ") : "Sin grupo")}
+    </div>`;
+}
+
+/* Lo que hay en la ventana: para repintar el perfil al cambiar la profesión */
+let fichaResumenAbierta = null;
+
+/**
+ * Muestra la ventana de la ficha resumida. contenido: un resumen, o un texto mientras carga o si falla.
+ * opciones.perfil: es tu perfil (ver htmlFichaResumen). Si la ventana ya está abierta solo se cambia el contenido.
+ */
+function mostrarFichaResumen(titulo, contenido, opciones = {}) {
+    const modalEl = document.getElementById("modalFichaResumen");
+    fichaResumenAbierta = { titulo, perfil: Boolean(opciones.perfil) };
+    document.getElementById("modalFichaResumenLabel").textContent = titulo;
+    document.getElementById("contenidoFichaResumen").innerHTML = typeof contenido === "string"
+        ? `<p class="lista-vacia">${escaparHtml(contenido)}</p>`
+        : htmlFichaResumen(contenido, opciones);
+    if (!modalEl.classList.contains("show")) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+}
+
+/** Social → Perfil: tu ficha resumida tal como la ven tus compañeros, con la profesión editable */
+function abrirPerfil() {
+    mostrarFichaResumen("Tu perfil", resumenPropio(), { perfil: true });
+}
+
+function inicializarPerfil() {
+    const contenido = document.getElementById("contenidoFichaResumen");
+    contenido.addEventListener("change", (e) => {
+        const select = e.target.closest(".select-profesion-perfil");
+        if (!select || !fichaResumenAbierta?.perfil) return;
+        const nueva = select.value;
+        if (nueva === personaje.tipoProfesion) return;
+        // Solo se puede tener una profesión
+        if (!confirm(`¿Cambiar tu profesión de ${PROFESIONES[personaje.tipoProfesion] ?? "ninguna"} a ${PROFESIONES[nueva]}? Solo se puede tener una.`)) {
+            select.value = personaje.tipoProfesion;
+            return;
+        }
+        reproducir("click");
+        personaje.tipoProfesion = nueva;
+        actualizarTodo();
+        abrirPerfil();
+    });
+    document.getElementById("modalFichaResumen").addEventListener("hidden.bs.modal", () => { fichaResumenAbierta = null; });
+}
+
 /* Resumen de lo que hace el objeto, bajo su nombre */
 function detalleObjeto(objeto) {
     switch (objeto.tipo) {
@@ -3738,17 +4086,8 @@ function detalleObjeto(objeto) {
         case "equipo": {
             const equipo = objeto.equipo;
             const partes = [etiquetaTipoEquipo(equipo.tipo)];
-            if (ARMAS[equipo.tipo]?.escudo) partes.push(`defensa ${equipo.defensa || 0}`);
-            else if (ARMAS[equipo.tipo]) {
-                partes.push(`daño ${equipo.danno || 0}`, ARMAS[equipo.tipo].manos === 2 ? "dos manos" : "una mano");
-                const elemental = textoElemental(equipo.dannoElemental, "+");
-                if (elemental) partes.push(elemental);
-            }
-            if (TIPOS_ARMADURA.includes(equipo.tipo)) {
-                partes.push(`armadura ${equipo.armadura || 0}`, `−${equipo.penalizacionAtletismo || 0} Atletismo`);
-                const resistencias = textoElemental(equipo.resistencias, "res. ");
-                if (resistencias) partes.push(resistencias);
-            }
+            const valores = valoresEquipo(equipo);
+            if (valores) partes.push(valores);
             const mods = textoModificadores(equipo.modificadores);
             if (mods) partes.push(mods);
             if (equipo.pocionAplicada) partes.push(`con ${equipo.pocionAplicada.nombre}`);
@@ -3850,7 +4189,10 @@ function filaObjeto(objeto, indice, enInventario) {
             + botonObjeto("descartar", "descartar", "Descartar 1");
     }
 
-    return `<div class="fila-objeto" data-index="${indice}">
+    // Por encima de la capacidad: objeto sobrante (se puede usar o sacar, pero no entra nada más)
+    const sobrante = enInventario && indice >= capacidadInventario(personaje);
+    return `<div class="fila-objeto${sobrante ? " sobrante" : ""}" data-index="${indice}"
+        ${sobrante ? `title="Sin espacio: libera un hueco"` : ""}>
         <span class="objeto-icono" title="${tipoInfo.etiqueta}">${iconoSao(iconoObjeto(objeto))}</span>
         <div class="objeto-info">
             <div class="objeto-cabecera">
@@ -3890,8 +4232,16 @@ function actualizarObjetos() {
         : `<p class="lista-vacia">El baúl está vacío.</p>`);
 
     const ocupados = personaje.inventario.filter(Boolean).length;
-    document.getElementById("contadorInventario").textContent = `(${ocupados} / ${personaje.inventario.length})`;
+    const capacidad = capacidadInventario(personaje);
+    const sobrantes = Math.max(0, personaje.inventario.length - capacidad);
+    const contador = document.getElementById("contadorInventario");
+    contador.textContent = `(${ocupados} / ${capacidad})`;
+    contador.classList.toggle("excedido", sobrantes > 0);
+    const aviso = document.getElementById("avisoSobrantesInventario");
+    aviso.hidden = !sobrantes;
+    aviso.textContent = `Te ${sobrantes === 1 ? "sobra 1 objeto" : `sobran ${sobrantes} objetos`}: no puedes coger nada más hasta liberar espacio.`;
     document.getElementById("contadorBaul").textContent = `(${personaje.baul.length})`;
+    actualizarObjetosClave();
     document.getElementById("cantidadCor").textContent = personaje.cor;
 
     // Fuera de la base no se crean objetos en el baúl
@@ -3899,6 +4249,108 @@ function actualizarObjetos() {
     crearEnBaul.disabled = !baulAccesible(personaje);
     crearEnBaul.title = crearEnBaul.disabled ? MOTIVOS_ZONA.crearEnBaul : "";
     document.getElementById("avisoZonaBaul").hidden = baulAccesible(personaje);
+}
+
+/* Objetos clave (pestaña del inventario) ___________________________________ */
+// No ocupan hueco ni se usan: solo se crean, editan y descartan.
+
+const listaObjetosClaveEl = document.getElementById("listaObjetosClave");
+/** Abre el formulario de un objeto clave (índice, o null para crear); se asigna en inicializarObjetosClave */
+let abrirEditorObjetoClave = () => {};
+
+function filaObjetoClave(objeto, indice) {
+    return `<div class="fila-objeto objeto-clave" data-index="${indice}">
+        <span class="objeto-icono" title="Objeto clave">${iconoSao("llave")}</span>
+        <div class="objeto-info">
+            <div class="objeto-cabecera"><span class="objeto-nombre">${escaparHtml(objeto.nombre)}</span></div>
+            ${objeto.descripcion ? `<div class="objeto-descripcion">${escaparHtml(objeto.descripcion)}</div>` : ""}
+        </div>
+        <div class="objeto-acciones">${botonObjeto("editar", "editar", "Editar") + botonObjeto("descartar", "descartar", "Descartar")}</div>
+    </div>`;
+}
+
+function actualizarObjetosClave() {
+    const lista = personaje.objetosClave;
+    pintarLista(listaObjetosClaveEl, lista.length
+        ? lista.map(filaObjetoClave).join("")
+        : `<p class="lista-vacia">No tienes objetos clave.</p>`);
+    document.getElementById("contadorObjetosClave").textContent = lista.length ? `(${lista.length})` : "";
+}
+
+/* Pestañas del inventario: objetos (con huecos) y objetos clave */
+function inicializarPestanasInventario() {
+    const modalEl = document.getElementById("modalInventario");
+    const pestanas = modalEl.querySelectorAll(".pestana-inventario");
+    pestanas.forEach(pestana => pestana.addEventListener("click", () => {
+        reproducir("click");
+        pestanas.forEach(p => {
+            const activa = p === pestana;
+            p.classList.toggle("activa", activa);
+            p.setAttribute("aria-selected", String(activa));
+        });
+        modalEl.querySelectorAll("[data-pestana-panel]").forEach(panel => {
+            panel.hidden = panel.dataset.pestanaPanel !== pestana.dataset.pestana;
+        });
+    }));
+}
+
+function inicializarObjetosClave() {
+    const modalEl = document.getElementById("modalObjetoClave");
+    const ventana = crearVentanaHija(modalEl);
+    const campo = (id) => document.getElementById(id);
+    const aviso = campo("avisoObjetoClave");
+    /* Índice del que se edita, o null al crear */
+    let edicion = null;
+
+    abrirEditorObjetoClave = (indice) => {
+        edicion = indice;
+        const objeto = indice === null ? null : personaje.objetosClave[indice];
+        campo("objetoClaveNombre").value = objeto?.nombre ?? "";
+        campo("objetoClaveDescripcion").value = objeto?.descripcion ?? "";
+        aviso.textContent = "";
+        const texto = objeto ? "Guardar" : "Crear";
+        campo("modalObjetoClaveLabel").textContent = objeto ? "Editar objeto clave" : "Crear objeto clave";
+        campo("btnGuardarObjetoClave").title = texto;
+        campo("btnGuardarObjetoClave").setAttribute("aria-label", texto);
+        ventana.abrirDesde(document.getElementById("modalInventario"));
+    };
+
+    const guardar = () => {
+        const [objeto] = cargarObjetosClave([{ nombre: campo("objetoClaveNombre").value, descripcion: campo("objetoClaveDescripcion").value.trim() }]);
+        if (!objeto) {
+            aviso.textContent = "Ponle un nombre al objeto.";
+            campo("objetoClaveNombre").focus();
+            return;
+        }
+        if (edicion === null) personaje.objetosClave.push(objeto);
+        else personaje.objetosClave[edicion] = objeto;
+        reproducir("click");
+        actualizarTodo();
+        ventana.cerrar();
+    };
+    campo("btnGuardarObjetoClave").addEventListener("click", guardar);
+    campo("objetoClaveNombre").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); guardar(); }
+    });
+    modalEl.addEventListener("shown.bs.modal", () => campo("objetoClaveNombre").focus());
+
+    campo("btnCrearObjetoClave").addEventListener("click", () => {
+        reproducir("click");
+        abrirEditorObjetoClave(null);
+    });
+    listaObjetosClaveEl.addEventListener("click", (e) => {
+        const boton = e.target.closest("button[data-accion]");
+        const indice = Number(boton?.closest(".fila-objeto")?.dataset.index);
+        const objeto = personaje.objetosClave[indice];
+        if (!objeto) return;
+        reproducir("click");
+        if (boton.dataset.accion === "editar") {
+            abrirEditorObjetoClave(indice);
+        } else if (boton.dataset.accion === "descartar" && confirm(`¿Descartar ${objeto.nombre}? Se pierde.`)) {
+            personaje.objetosClave.splice(indice, 1);
+            actualizarTodo();
+        }
+    });
 }
 
 /* Cor: añadir o gastar la cantidad del campo */
@@ -3975,7 +4427,8 @@ function ejecutarUso(indice, opcion) {
     if (!resultado.resumen.length) return;
     // Comida, pociones y cristales usados se comparten en la sala; lo demás (equipar, fallos) solo se ve aquí
     const subtitulo = resultado.ok ? SUBTITULOS_USO_COMPARTIDO[opcion.accion] : null;
-    if (subtitulo) emitirEvento("objeto", { titulo, subtitulo, lineas: resultado.resumen });
+    // El cristal se oye romperse también en las fichas de los demás (datos.sonido, ver eventos.js)
+    if (subtitulo) emitirEvento("objeto", { titulo, subtitulo, lineas: resultado.resumen, ...(opcion.accion === "cristal" && { sonido: "cristal" }) });
     else mostrarPopupInfo(escaparHtml(titulo), resultado.resumen.map(escaparHtml));
 }
 
@@ -4095,6 +4548,9 @@ function inicializarCrearObjeto() {
     let habilidades = [];
     const listaHabilidades = campo("listaHabilidadesObjeto");
     const checkReliquia = campo("objetoEsReliquia");
+    /* Efectos del equipo (formato de arte), editados en el formulario de artes */
+    let efectos = [];
+    const listaEfectos = campo("listaEfectosObjeto");
     /* Objeto que se está editando: { lista: "inventario" | "baul", indice }, o null al crear */
     let edicion = null;
 
@@ -4122,6 +4578,34 @@ function inicializarCrearObjeto() {
         listaHabilidades.innerHTML = habilidades.map((_, i) => filaHabilidadReliquia(i, false)).join("");
         rellenarFilasHabilidades(listaHabilidades, habilidades);
     };
+    const pintarEfectos = () => {
+        listaEfectos.innerHTML = efectos.map((efecto, i) => `
+            <li class="efecto-objeto" data-index="${i}">
+                <span class="efecto-icono">${iconoSao(efecto.tipo === "pasiva" ? "artePasiva" : "arteActiva")}</span>
+                <span class="efecto-texto"><b>${escaparHtml(efecto.nombre)}</b>
+                    <small>${efecto.tipo === "pasiva" ? "Pasiva · " : "Activa · "}${escaparHtml(detalleEfecto(efecto))}</small></span>
+                <button type="button" class="editar-efecto" title="Editar efecto" aria-label="Editar efecto">✎</button>
+                <button type="button" class="quitar-mod" title="Eliminar efecto" aria-label="Eliminar efecto">×</button>
+            </li>`).join("") || `<li class="lista-vacia">Sin efectos.</li>`;
+    };
+    campo("btnAnadirEfectoObjeto").addEventListener("click", () => {
+        reproducir("click");
+        abrirEditorEfecto(null, modalEl, (efecto) => { efectos.push(efecto); pintarEfectos(); });
+    });
+    listaEfectos.addEventListener("click", (e) => {
+        const fila = e.target.closest(".efecto-objeto");
+        if (!fila) return;
+        const i = Number(fila.dataset.index);
+        if (e.target.closest(".quitar-mod")) {
+            if (!confirm(`¿Eliminar el efecto ${efectos[i].nombre}?`)) return;
+            efectos.splice(i, 1);
+            pintarEfectos();
+        } else if (e.target.closest(".editar-efecto")) {
+            reproducir("click");
+            abrirEditorEfecto(efectos[i], modalEl, (efecto) => { efectos[i] = efecto; pintarEfectos(); });
+        }
+    });
+
     /* ¿El equipo elegido lleva habilidades de reliquia? */
     const conHabilidades = () => {
         const tipoEquipo = selectTipoEquipo.value;
@@ -4212,6 +4696,8 @@ function inicializarCrearObjeto() {
         pintarMods();
         habilidades = [];
         pintarHabilidades();
+        efectos = [];
+        pintarEfectos();
         aviso.textContent = "";
         edicion = null;
         ponerModo(false);
@@ -4256,6 +4742,8 @@ function inicializarCrearObjeto() {
             checkReliquia.checked = Boolean(equipo.reliquia);
             habilidades = (equipo.reliquia?.habilidades ?? []).map(cargarHabilidadReliquia);
             pintarHabilidades();
+            efectos = cargarEfectos(structuredClone(equipo.efectos ?? []));
+            pintarEfectos();
         }
         actualizarCampos();
     };
@@ -4312,7 +4800,8 @@ function inicializarCrearObjeto() {
                 dannoElemental: tarjetaUsaElemental({ tipo: selectTipoEquipo.value }, "dannoElemental")
                     ? leerElementalesFormulario("dannoElemental") : cargarValoresElementales(),
                 modificadores,
-                reliquia: conHabilidades() ? { habilidades: habilidades.map(cargarHabilidadReliquia) } : null
+                reliquia: conHabilidades() ? { habilidades: habilidades.map(cargarHabilidadReliquia) } : null,
+                efectos
             };
         }
 
@@ -4407,7 +4896,8 @@ function inicializarCrearObjeto() {
         if (modalOrigen) modalEl.dataset.sinSonidoCerrar = "1";
     });
     modalEl.addEventListener("hidden.bs.modal", () => {
-        if (!modalOrigen) return;
+        // Oculta para editar un efecto: al cerrar el efecto vuelve aquí, y esta al inventario o al baúl
+        if (seVaAUnaHija(modalEl) || !modalOrigen) return;
         const origen = modalOrigen;
         modalOrigen = null;
         origen.dataset.sinSonidoAbrir = "1";
@@ -4422,6 +4912,8 @@ function inicializarDebug() {
     // Acceso desde la consola del navegador: fichaDebug.personaje, fichaDebug.ejecutar()...
     window.fichaDebug = {
         personaje, ejecutar: () => ejecutarDebug(personaje), crearPersonajePrueba, validarFicha,
+        // Repinta la ficha tras cambiar fichaDebug.personaje a mano
+        actualizar: () => actualizarTodo(),
         // Artes: el catálogo cargado y los requisitos de cada una para este personaje
         get catalogoArtes() { return catalogoArtes; },
         // Copia un arte del catálogo a las artes sin equipar, p. ej. fichaDebug.anadirArte("golpe-horizontal")
@@ -4502,6 +4994,7 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarBloquesElementales();
     inicializarModsEquipo();
     inicializarHabilidadesReliquia();
+    inicializarEfectosEquipo();
     actualizarModificadores();
     parseModificadoresEquipo();
     actualizarTodo();
@@ -4516,6 +5009,9 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarCatalogoArtes();
     inicializarObjetos();
     inicializarCor();
+    inicializarPestanasInventario();
+    inicializarObjetosClave();
+    inicializarPerfil();
     precargarSonidos();
     inicializarOpciones();
     inicializarSocial();
@@ -4543,6 +5039,9 @@ document.addEventListener("DOMContentLoaded", () => {
         alCambiarPersonajes: () => actualizarObjetos(),
         actualizar: actualizarTodo,
         // El submenú Grupo cambia según estés en un grupo o seas el líder
-        alCambiarGrupo: () => menuSocial?.actualizar()
+        alCambiarGrupo: () => menuSocial?.actualizar(),
+        // Ficha resumida: la tuya para enviarla a un compañero y la ventana para ver la suya
+        resumenPropio,
+        mostrarFichaResumen
     });
 });

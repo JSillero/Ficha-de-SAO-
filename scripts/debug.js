@@ -5,7 +5,8 @@
 import PJ, { ESTADOS_LISTA } from "./PJ.js";
 import Equipamiento from "./equipamiento.js";
 import Modificador, { TURNOS_PERMANENTE } from "./modificador.js";
-import { cargarObjeto } from "./objetos.js";
+import { cargarObjeto, crearInventarioVacio, capacidadInventario } from "./objetos.js";
+import { cargarEfectos } from "./efectosEquipo.js";
 import { cargarArte, artesEquipadas, ranurasUsadas, motivoRequisitos, desbloqueosDisponibles } from "./artes.js";
 
 /* Ids de la interfaz que no coinciden con el nombre del campo en PJ */
@@ -85,12 +86,20 @@ export function crearPersonajePrueba() {
         { tipo: "arrojadiza", nombre: "daga", cantidad: 4, danno: 2, estado: { clave: "veneno", valor: 2, turnos: TURNOS_PERMANENTE },
             elemental: { tipo: "fuego", cantidad: 3 } }
     ].map(cargarObjeto);
+    // 10 huecos: los 5 base + el modificador "inventario" +5 de abajo
+    pj.inventario = crearInventarioVacio(10);
     objetos.forEach((objeto, i) => { pj.inventario[i] = objeto; });
     pj.baul = objetos.map(objeto => cargarObjeto({ ...objeto, cantidad: 7 }));
+    pj.objetosClave = [{ nombre: "llave", descripcion: "abre la puerta" }, { nombre: "mapa", descripcion: "" }];
 
     pj.manoDerecha = crearEquipo("espada", "espada");
     pj.manoDerecha.pocionAplicada = { ...pocion, cantidad: 1 };
     pj.manoDerecha.dannoElemental = { fuego: 1, electricidad: 0, hielo: 2, luz: 0, oscuridad: 3 };
+    // Efectos de equipo: una pasiva y una activa en el arma
+    pj.manoDerecha.efectos = cargarEfectos([
+        { id: "efecto-pasiva", nombre: "filo", tipo: "pasiva", descripcion: "afilada", modificadores: [{ modificado: "dFisico", numero: 1 }] },
+        { id: "efecto-activa", nombre: "tajo", tipo: "activa", costePA: 1, danno: 2, golpes: 2, dannoElemental: { fuego: 1 } }
+    ]);
     pj.manoIzquierda = crearEquipo("escudo", "escudo");
     pj.equipoArmadura = crearEquipo("cota", "ligera");
     pj.equipoArmadura.resistencias = { fuego: 1, electricidad: 2, hielo: 3, luz: 4, oscuridad: 5 };
@@ -111,6 +120,7 @@ export function crearPersonajePrueba() {
     pj.modificadores = [
         new Modificador("permanente", "percepcion", 2, TURNOS_PERMANENTE),
         new Modificador("temporal", "cultura", -1, 3),
+        new Modificador("mochila", "inventario", 5, TURNOS_PERMANENTE),
         Object.assign(new Modificador("hasta descansar", "combate", 1, TURNOS_PERMANENTE), { descansoCorto: true }),
         deComida
     ];
@@ -236,6 +246,8 @@ export function validarFicha(pj) {
     }
 
     if (pj.cor < 0) avisos.push(`Cor negativo (${pj.cor}).`);
+    const sobrantes = pj.inventario.length - capacidadInventario(pj);
+    if (sobrantes > 0) avisos.push(`El inventario tiene ${sobrantes} objeto(s) de más (capacidad ${capacidadInventario(pj)}).`);
     // Puede pasar si se baja de nivel después de gastar desbloqueos
     if (desbloqueosDisponibles(pj) < 0) avisos.push(`Desbloqueos de arte en negativo (${desbloqueosDisponibles(pj)}).`);
 

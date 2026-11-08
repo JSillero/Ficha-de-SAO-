@@ -3,13 +3,14 @@
 // No toca el DOM: recibe el personaje, lo modifica y devuelve lo que ha pasado.
 
 import Modificador, { cargarModificador, TURNOS_PERMANENTE } from "./modificador.js";
-import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, cargarEquipamiento } from "./equipamiento.js";
+import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, cargarEquipamiento, estaLanzada } from "./equipamiento.js";
 import { activarEstado, quitarEstado, aplicarDanno, ESTADOS_INFO, TIPOS_DANNO } from "./estados.js";
-import { MANOS, gastarVarias, gastarTodas, partesDeMano, parteDeMano, manoVacia, puedeGastar } from "./turno.js";
+import { MANOS, gastarVarias, gastarTodas, partesDeMano, parteDeMano, manoVacia, manoSinUso, puedeGastar } from "./turno.js";
 import { esZonaSegura } from "./zonas.js";
+import { cargarEfectos } from "./efectosEquipo.js";
 
-/* Huecos base del inventario: 10 objetos distintos apilables */
-export const TAMANO_INVENTARIO = 10;
+/* Huecos base del inventario; el modificador `inventario` los amplía (o reduce) */
+export const TAMANO_INVENTARIO = 5;
 /* Unidades por hueco en el inventario. El baúl no tiene límite de huecos ni de pila. */
 export const MAX_PILA_INVENTARIO = 5;
 
@@ -28,6 +29,33 @@ export const ELEMENTOS_ARROJADIZA = ["fuego", "electricidad", "hielo", "luz", "o
 
 export function crearInventarioVacio(tamano = TAMANO_INVENTARIO) {
     return Array.from({ length: tamano }, () => null);
+}
+
+/** Huecos que permite el personaje: los base más los modificadores `inventario` */
+export function capacidadInventario(pj) {
+    return Math.max(0, TAMANO_INVENTARIO + (Number(pj.getModificador("inventario")) || 0));
+}
+
+/**
+ * Ajusta los huecos a la capacidad sin perder objetos: añade huecos vacíos si faltan,
+ * baja los objetos de más a huecos libres y quita los vacíos sobrantes del final.
+ * Lo que queda por encima de la capacidad son objetos sobrantes. Devuelve cuántos hay.
+ */
+export function ajustarInventario(pj) {
+    const capacidad = capacidadInventario(pj);
+    const lista = pj.inventario;
+    while (lista.length < capacidad) lista.push(null);
+    for (let i = capacidad; i < lista.length; i++) {
+        if (!lista[i]) continue;
+        const libre = lista.findIndex((hueco, k) => k < capacidad && !hueco);
+        if (libre < 0) break;
+        lista[libre] = lista[i];
+        lista[i] = null;
+    }
+    // Por encima de la capacidad no quedan huecos vacíos: solo los objetos sobrantes
+    const sobrantes = lista.slice(capacidad).filter(Boolean);
+    lista.splice(capacidad, lista.length - capacidad, ...sobrantes);
+    return sobrantes.length;
 }
 
 /* Carga y normalización ______________________________________________________ */
@@ -52,6 +80,7 @@ function cargarElemental(datos) {
 export function cargarEquipo(datos) {
     const equipo = cargarEquipamiento(datos);
     equipo.pocionAplicada = cargarObjeto(equipo.pocionAplicada);
+    equipo.efectos = cargarEfectos(equipo.efectos);
     return equipo;
 }
 
@@ -95,6 +124,16 @@ export function cargarObjeto(datos) {
     return objeto;
 }
 
+/**
+ * Objetos clave: no ocupan hueco ni se usan (como materiales), cada uno en su fila y sin cantidad.
+ * Guardados como [{ nombre, descripcion }]; se descartan los que no tienen nombre.
+ */
+export function cargarObjetosClave(datos) {
+    return (Array.isArray(datos) ? datos : [])
+        .map(objeto => ({ nombre: String(objeto?.nombre ?? "").trim(), descripcion: String(objeto?.descripcion ?? "") }))
+        .filter(objeto => objeto.nombre);
+}
+
 /** Baúl guardado: array de objetos, o texto de las fichas antiguas (cada línea es un material). */
 export function cargarBaul(datos) {
     if (Array.isArray(datos)) return datos.map(cargarObjeto).filter(Boolean);
@@ -115,12 +154,13 @@ export function mismoObjeto(a, b) {
     return JSON.stringify({ ...a, cantidad: 0 }) === JSON.stringify({ ...b, cantidad: 0 });
 }
 
-/* Mete el objeto en la lista: primero en pilas iguales, luego en huecos libres. Devuelve lo que no cabe. */
-function apilar(lista, objeto, maxPila, huecoLibre) {
+/* Mete el objeto en la lista: primero en pilas iguales, luego en huecos libres. Devuelve lo que no cabe.
+   Solo usa las posiciones por debajo de `limite` (en el inventario, los sobrantes no reciben nada). */
+function apilar(lista, objeto, maxPila, huecoLibre, limite = Infinity) {
     const pila = objeto.tipo === "equipo" ? 1 : maxPila;
     let resto = objeto.cantidad;
-    for (const item of lista) {
-        if (resto <= 0) break;
+    for (const [i, item] of lista.entries()) {
+        if (resto <= 0 || i >= limite) break;
         if (item && mismoObjeto(item, objeto) && item.cantidad < pila) {
             const n = Math.min(pila - item.cantidad, resto);
             item.cantidad += n;
@@ -137,11 +177,19 @@ function apilar(lista, objeto, maxPila, huecoLibre) {
     return resto;
 }
 
-const huecoInventario = (lista) => lista.findIndex(hueco => !hueco);
+/* Primer hueco libre dentro de la capacidad, o -1 */
+const huecoInventario = (capacidad) => (lista) => lista.findIndex((hueco, i) => i < capacidad && !hueco);
+
+/* Mete el objeto en una lista con huecos de inventario (la del personaje o una copia) */
+function apilarEnInventario(pj, lista, objeto) {
+    const capacidad = capacidadInventario(pj);
+    while (lista.length < capacidad) lista.push(null);
+    return apilar(lista, objeto, MAX_PILA_INVENTARIO, huecoInventario(capacidad), capacidad);
+}
 
 /** Añade al inventario lo que quepa. Devuelve la cantidad que no cabe. */
 export function anadirAInventario(pj, objeto) {
-    return apilar(pj.inventario, objeto, MAX_PILA_INVENTARIO, huecoInventario);
+    return apilarEnInventario(pj, pj.inventario, objeto);
 }
 
 /** Añade al baúl (siempre cabe todo). */
@@ -152,11 +200,11 @@ export function anadirABaul(pj, objeto) {
 /** Cuántas unidades del objeto caben en el inventario, sin modificarlo. */
 export function cabenEnInventario(pj, objeto) {
     const copia = pj.inventario.map(hueco => hueco && { ...hueco });
-    return objeto.cantidad - apilar(copia, objeto, MAX_PILA_INVENTARIO, huecoInventario);
+    return objeto.cantidad - apilarEnInventario(pj, copia, objeto);
 }
 
 export function hayHuecoLibre(pj) {
-    return pj.inventario.some(hueco => !hueco);
+    return huecoInventario(capacidadInventario(pj))(pj.inventario) >= 0;
 }
 
 /* Transferir y descartar _____________________________________________________ */
@@ -228,7 +276,7 @@ export function gastarCor(pj, cantidad) {
 
 /** Mano vacía para usar algo (prefiere una con la acción disponible). null si las dos están ocupadas. */
 export function manoParaUsar(pj) {
-    const vacias = MANOS.filter(mano => manoVacia(pj, mano));
+    const vacias = MANOS.filter(mano => manoSinUso(pj, mano));
     return vacias.find(mano => puedeGastar(pj, parteDeMano(mano))) ?? vacias[0] ?? null;
 }
 
@@ -474,6 +522,7 @@ export function ranuraAccesorioLibre(pj) {
 export function motivoNoEquiparEnMano(pj, tipo, mano) {
     const otra = mano === "manoIzquierda" ? "manoDerecha" : "manoIzquierda";
     const tipoOtra = pj[otra]?.tipo || "";
+    if (estaLanzada(pj[mano])) return "Ahí está el arma que has lanzado: recógela antes.";
     if (!manoVacia(pj, mano)) return "Esa mano no está vacía.";
     if (TIPOS_DOS_MANOS.includes(tipo) && tipoOtra) return "Un arma a dos manos necesita las dos manos vacías.";
     if (tipo === "estoque" && tipoOtra && tipoOtra !== "escudo") return "El estoque solo se lleva con la otra mano vacía o con escudo.";
@@ -568,9 +617,33 @@ export function ranuraTieneEquipo(pj, ranura) {
     return ranura.startsWith("accesorio-") ? !accesorioVacio(equipo) : Boolean(equipo.tipo);
 }
 
+/* Armas lanzadas (lanza, cuchillo) _________________________________________ */
+// Al lanzarla queda en su mano con `lanzada`: sin ataque ni efecto hasta recogerla (la tirada y el daño
+// están en ataque.js y la interfaz). Recoger gasta la acción de esa mano (las dos si es a dos manos).
+
+/** Motivo por el que no se puede lanzar el arma de esa mano, o null */
+export function motivoNoLanzar(pj, mano) {
+    const equipo = pj[mano];
+    if (!ARMAS[equipo?.tipo]?.lanzable) return "Solo se pueden lanzar lanzas y cuchillos.";
+    if (estaLanzada(equipo)) return "Ya está lanzada: recógela primero.";
+    return null;
+}
+
+/** Recoge el arma lanzada de esa mano */
+export function recogerArma(pj, mano, gastar = gastarEstricto(pj)) {
+    const equipo = pj[mano];
+    if (!estaLanzada(equipo)) return fallo("No hay ningún arma lanzada en esa mano.");
+    const nombre = equipo.nombre?.trim() || ARMAS[equipo.tipo].etiqueta;
+    if (!gastar(partesDeMano(mano, TIPOS_DOS_MANOS.includes(equipo.tipo)), `Recoger ${nombre}`)) return fallo("Sin acción en esa mano.");
+    equipo.lanzada = false;
+    pj.calcularCaracteristicas();
+    return exito(`Recoges ${nombre}`);
+}
+
 /** Motivo por el que no se puede guardar lo equipado en esa ranura, o null. */
 export function motivoNoGuardar(pj, ranura) {
     if (!ranuraTieneEquipo(pj, ranura)) return "No hay nada equipado.";
+    if (estaLanzada(equipoEnRanura(pj, ranura))) return "Está lanzada: recógela antes.";
     if (!hayHuecoLibre(pj)) return "El inventario está lleno.";
     if (ranura === "equipoArmadura" && pj.accesorios.some(acc => !accesorioVacio(acc))) {
         return "Guarda antes los accesorios: sin armadura no hay ranuras.";

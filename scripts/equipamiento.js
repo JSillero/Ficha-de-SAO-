@@ -5,13 +5,14 @@ import Modificador, { cargarModificador } from "./modificador.js";
  * - caracteristica: la que se suma al ataque; "mejor" = la más alta entre Reflejos y Fortaleza.
  * - dado: 0 bajo (desventaja), 1 medio (normal), 2 alto (ventaja).
  * - manos: 2 ocupa las dos manos y gasta las acciones de ambos brazos.
+ * - lanzable: se puede lanzar (botón Lanzar de la tarjeta); queda lanzada hasta recogerla.
  */
 export const ARMAS = {
-    cuchillo: { etiqueta: "Cuchillo", manos: 1, caracteristica: "reflejos", dado: 1 },
+    cuchillo: { etiqueta: "Cuchillo", manos: 1, caracteristica: "reflejos", dado: 1, lanzable: true },
     espada: { etiqueta: "Espada", manos: 1, caracteristica: "mejor", dado: 1 },
     estoque: { etiqueta: "Estoque", manos: 1, caracteristica: "reflejos", dado: 2 },
     maza: { etiqueta: "Maza", manos: 1, caracteristica: "fortaleza", dado: 0 },
-    lanza: { etiqueta: "Lanza", manos: 2, caracteristica: "reflejos", dado: 1 },
+    lanza: { etiqueta: "Lanza", manos: 2, caracteristica: "reflejos", dado: 1, lanzable: true },
     espadon: { etiqueta: "Espadón", manos: 2, caracteristica: "fortaleza", dado: 1 },
     martillo_guerra: { etiqueta: "Martillo de guerra", manos: 2, caracteristica: "fortaleza", dado: 0 },
     hacha: { etiqueta: "Hacha", manos: 2, caracteristica: "fortaleza", dado: 0 },
@@ -32,6 +33,13 @@ export function cargarValoresElementales(datos) {
 
 export const TIPOS_DOS_MANOS =Object.keys(ARMAS).filter(tipo => ARMAS[tipo].manos === 2);
 export const TIPOS_ESCUDO = Object.keys(ARMAS).filter(tipo => ARMAS[tipo].escudo);
+export const TIPOS_LANZABLES = Object.keys(ARMAS).filter(tipo => ARMAS[tipo].lanzable);
+
+/** Arma lanzada (lanza o cuchillo) que aún no se ha recogido */
+export const estaLanzada = (equipo) => Boolean(equipo?.lanzada) && TIPOS_LANZABLES.includes(equipo.tipo);
+
+/** Equipo con efecto: puesto y no lanzado (lo lanzado no aporta modificadores, efectos ni habilidades) */
+export const equipoActivo = (equipo) => Boolean(equipo?.tipo) && !estaLanzada(equipo);
 
 export default class Equipamiento {
 
@@ -58,6 +66,8 @@ export default class Equipamiento {
         this.enUso = false; // true cuando el escudo se ha activado con el botón Usar
         this.pocionAplicada = null; // poción untada en el arma: se aplica en el siguiente ataque
         this.reliquia = tipo === TIPO_RELIQUIA ? { habilidades: [] } : null; // { habilidades } si es reliquia (reliquias.js)
+        this.efectos = []; // pasivas y activas con formato de arte (efectosEquipo.js; se cargan en cargarEquipo)
+        this.lanzada = false; // lanza o cuchillo lanzado: sigue en la mano pero sin efecto hasta recogerlo
     }
 
     esEscudo() {
@@ -120,7 +130,9 @@ export default class Equipamiento {
             defensa: this.defensa,
             enUso: this.enUso,
             pocionAplicada: this.pocionAplicada,
-            reliquia: this.reliquia
+            reliquia: this.reliquia,
+            efectos: this.efectos,
+            lanzada: this.lanzada
         });
     }
 }
@@ -163,5 +175,6 @@ export function cargarEquipamiento(datos) {
     equipo.dannoElemental = cargarValoresElementales(equipo.dannoElemental);
     // Una reliquia sin arma siempre tiene su lista de habilidades
     equipo.reliquia = cargarReliquia(equipo.reliquia) ?? (equipo.tipo === TIPO_RELIQUIA ? { habilidades: [] } : null);
+    equipo.lanzada = Boolean(equipo.lanzada) && TIPOS_LANZABLES.includes(equipo.tipo);
     return equipo;
 }

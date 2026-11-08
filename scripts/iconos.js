@@ -274,6 +274,12 @@ const GLIFOS = {
     corMas: monedaConSigno("M70 58V82M58 70H82"),
     corMenos: monedaConSigno("M58 70H82"),
     /* Desbloqueos de arte: candado abierto; con + o − para los botones */
+    /* Objeto clave: una llave */
+    llave: `
+        <circle class="p" cx="34" cy="50" r="16"/>
+        <circle class="ic-fondo" cx="34" cy="50" r="6"/>
+        <path class="p" d="M48 45H84V55H78V64H70V55H64V62H56V55H48Z"/>
+        <path class="s" d="M48 50H84V55H78V64H70V55H64V62H56V55H48Z"/>`,
     desbloqueo: candado(),
     desbloqueoMas: candadoConSigno("M70 58V82M58 70H82"),
     desbloqueoMenos: candadoConSigno("M58 70H82"),

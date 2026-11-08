@@ -8,7 +8,7 @@
 // turno.js importa avanzarEnfriamientos y este módulo importa turno.js: el ciclo es seguro porque
 // ninguno de los dos usa lo importado al cargarse, solo dentro de funciones.
 
-import { TIPOS_DOS_MANOS } from "./equipamiento.js";
+import { TIPOS_DOS_MANOS, equipoActivo } from "./equipamiento.js";
 export { cargarReliquia, cargarHabilidadReliquia } from "./equipamiento.js";
 import { partesDeMano, puedeGastar } from "./turno.js";
 
@@ -33,7 +33,7 @@ export function reliquiasEquipadas(pj) {
     const ranuras = [...RANURAS_RELIQUIA, ...(pj.accesorios || []).map((_, i) => `accesorio-${i}`)];
     return ranuras
         .map(ranura => ({ ranura, equipo: equipoDeRanura(pj, ranura) }))
-        .filter(({ equipo }) => esReliquia(equipo) && equipo.tipo);
+        .filter(({ equipo }) => esReliquia(equipo) && equipoActivo(equipo));
 }
 
 /* Acciones que gasta usar una habilidad:
@@ -50,6 +50,7 @@ export function motivoNoUsarHabilidad(pj, ranura, indice) {
     const habilidad = equipo?.reliquia?.habilidades?.[indice];
     if (!habilidad) return "Esa habilidad no existe.";
     if (!equipo.tipo) return "La reliquia no está equipada.";
+    if (!equipoActivo(equipo)) return "Está lanzada: recógela primero.";
     if (habilidad.restante > 0) {
         return `En enfriamiento: ${habilidad.restante} turno${habilidad.restante === 1 ? "" : "s"}.`;
     }

@@ -1525,6 +1525,153 @@
     box-shadow: none;
 }
 
+/* Ficha resumida (compañeros de grupo y perfil) */
+.ficha-resumen .resumen-cabecera {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-size: 18px;
+}
+
+.ficha-resumen .resumen-profesion {
+    padding: 2px 10px;
+    border-radius: 10px;
+    background: #d1ab52;
+    color: #fff;
+    font-size: 13px;
+}
+
+.ficha-resumen .resumen-profesion-editable {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+}
+
+.ficha-resumen .select-profesion-perfil {
+    padding: 2px 6px;
+    border: 1px solid #d1ab52;
+    border-radius: 10px;
+    background: #fff;
+}
+
+.ficha-resumen .resumen-perfil {
+    margin-bottom: 4px;
+}
+
+.ficha-resumen .resumen-rejilla {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.ficha-resumen .resumen-valor {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: #fff;
+    font-size: 13px;
+}
+
+.ficha-resumen .resumen-valor span {
+    flex: 1;
+    color: #555;
+}
+
+.ficha-resumen .resumen-plegable {
+    margin-bottom: 6px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    background: #fff;
+    font-size: 13px;
+}
+
+.ficha-resumen .resumen-plegable summary {
+    cursor: pointer;
+}
+
+.ficha-resumen .resumen-plegable small {
+    color: #666;
+}
+
+.ficha-resumen .resumen-plegable p {
+    margin: 4px 0 0;
+    white-space: pre-line;
+}
+
+.ficha-resumen .resumen-efectos {
+    margin: 2px 0 0;
+    padding-left: 18px;
+}
+
+/* Pestañas del inventario: objetos y objetos clave */
+.pestanas-inventario {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 10px;
+    border-bottom: 2px solid #d1ab52;
+}
+
+.pestana-inventario {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 6px 6px 0 0;
+    background: #e4e4e4;
+    color: #555;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.pestana-inventario.activa {
+    background: #d1ab52;
+    color: #fff;
+}
+
+.pestana-inventario.activa .contador-objetos {
+    color: #fff;
+}
+
+[data-pestana-panel][hidden] {
+    display: none !important;
+}
+
+.cabecera-objetos-clave {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.cabecera-objetos-clave .pista-form {
+    margin: 0;
+}
+
+/* Objetos que no caben en la capacidad del inventario */
+.modal-sao .fila-objeto.sobrante {
+    border-color: #c0392b;
+    background: #fdecea;
+}
+
+.modal-sao .contador-objetos.excedido {
+    color: #c0392b;
+    font-weight: bold;
+}
+
+.aviso-sobrantes {
+    margin: 0 0 8px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    background: #fdecea;
+    color: #a12a1e;
+    font-size: 14px;
+}
+
 .modal-sao .aviso-zona {
     border-left: none;
 }
@@ -2168,6 +2315,52 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
     color: #6c3483;
 }
 
+/* Lanzas y cuchillos: lanzar y recoger; la tarjeta del arma lanzada sale atenuada */
+.btn-lanzar-equipo,
+.btn-recoger-equipo {
+    flex: none;
+    padding: 4px 12px;
+    border: none;
+    border-radius: 12px;
+    background: #3478bf;
+    color: #fff;
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.btn-recoger-equipo {
+    background: #d1ab52;
+}
+
+.btn-lanzar-equipo[hidden],
+.btn-recoger-equipo[hidden],
+.equipamiento-lanzada[hidden] {
+    display: none;
+}
+
+.btn-lanzar-equipo.sin-accion,
+.btn-recoger-equipo.sin-accion {
+    opacity: 0.6;
+}
+
+.equipamiento-lanzada {
+    margin: 0;
+    padding: 3px 8px;
+    border-left: 3px solid #7f8c8d;
+    border-radius: 4px;
+    background: rgba(127, 140, 141, 0.12);
+    font-size: 12px;
+    font-weight: bold;
+    color: #5d6d6e;
+}
+
+.equipamiento.lanzada .btn-usar-equipo,
+.equipamiento.lanzada .mods-equipo,
+.equipamiento.lanzada .efectos-equipo {
+    opacity: 0.45;
+}
+
 .equipamiento-descripcion {
     margin: 0;
     font-size: 12px;
@@ -2443,6 +2636,91 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
 
 #listaHabilidadesObjeto:empty::before {
     content: "Sin habilidades";
+}
+
+/* Efectos del equipo (efectosEquipo.js): en las tarjetas y en el formulario de objetos */
+.efectos-equipo {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.efectos-equipo[hidden] {
+    display: none;
+}
+
+.lista-efectos-equipo,
+.lista-efectos-objeto {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.efecto-equipo,
+.efecto-objeto {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 6px;
+    border: 1px solid #d6dbe6;
+    border-left: 4px solid #3478bf;
+    border-radius: 4px;
+    background: #f7faff;
+    font-size: 12px;
+}
+
+.efecto-equipo.pasiva {
+    border-left-color: #6a9b5a;
+    background: #f8fbf6;
+    cursor: pointer;
+}
+
+.efecto-icono {
+    width: 22px;
+    height: 22px;
+    flex: none;
+}
+
+.efecto-icono svg {
+    width: 100%;
+    height: 100%;
+}
+
+.efecto-texto {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.efecto-texto small {
+    color: #666;
+}
+
+.btn-usar-efecto,
+.editar-efecto {
+    flex: none;
+    padding: 2px 10px;
+    border: none;
+    border-radius: 12px;
+    background: #3478bf;
+    color: #fff;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.btn-usar-efecto:disabled {
+    background: #9aa5b1;
+    cursor: not-allowed;
+}
+
+/* Formulario de artes abierto para un efecto de equipo: sin memoria, requisitos ni uso */
+#modalCrearArte:not(.modo-efecto) .solo-efecto,
+#modalCrearArte.modo-efecto .solo-arte {
+    display: none !important;
 }
 
 .habilidad-reliquia {

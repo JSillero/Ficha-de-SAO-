@@ -9,6 +9,7 @@ import { iconoSao } from "./iconos.js";
 import { ESTADOS_INFO, estiloColor } from "./estados.js";
 import { reproducir } from "./sonidos.js";
 import { getInstancia, instanciaLista } from "./instancia.js";
+import { cargarResumenFicha } from "./resumenFicha.js";
 
 /**
  * @typedef {Object} ContextoOnline
@@ -23,6 +24,8 @@ import { getInstancia, instanciaLista } from "./instancia.js";
  * @property {(personajes: object[]) => void} [alCambiarPersonajes]  personajes conectados (para ofrecer objetos)
  * @property {() => void} actualizar            repinta la ficha (actualizarTodo) tras cambiar los amigos
  * @property {(grupo: object|null) => void} [alCambiarGrupo]  tu grupo (para el menú Social)
+ * @property {() => object} resumenPropio       tu ficha resumida (resumenFicha.js), para enviarla a un compañero
+ * @property {(titulo: string, contenido: object|string) => void} mostrarFichaResumen  ventana de la ficha resumida
  */
 /** @type {ContextoOnline} */
 let ctx;
@@ -678,6 +681,7 @@ function inicializarSocial() {
     });
 
     inicializarGrupo();
+    inicializarFichaResumen();
 }
 
 /* Social: grupo ______________________________________________________________
@@ -744,6 +748,7 @@ function pintarGrupo() {
                 <span class="nombre-online">${escaparHtml(m.nombre || "Sin nombre")}
                     <span class="texto-online-secundario">LV ${m.nivel}${detalles ? ` · ${escaparHtml(detalles)}` : ""}</span>
                 </span>
+                ${propio ? "" : `<button type="button" class="btn-cabecera" data-accion="ficha">Ficha</button>`}
                 ${propio ? `<button type="button" class="btn-cabecera btn-online-peligro" data-accion="salir">Salir</button>`
                     : grupo.soyLider ? `<button type="button" class="btn-cabecera btn-online-peligro" data-accion="echar">Echar</button>` : ""}
             </div>`;
@@ -768,6 +773,59 @@ function pintarGrupo() {
                     : `<button type="button" class="btn-cabecera" data-accion="invitar">Invitar</button>`}
             </div>`).join("")
         : `<p class="lista-vacia">No hay nadie libre en la sala para invitar.</p>`;
+}
+
+/* Ficha resumida de un compañero ___________________________________________ */
+// Se le pide con el evento privado "pedirFicha" y responde con "fichaResumen" (su resumen, resumenFicha.js).
+// Solo responde a integrantes de su grupo. No se guarda nada: cada vez que se abre se vuelve a pedir.
+const ESPERA_FICHA_MS = 8000;
+/* Petición en curso: { instancia, titulo, temporizador }, o null */
+let fichaPedida = null;
+
+function cancelarFichaPedida() {
+    clearTimeout(fichaPedida?.temporizador);
+    fichaPedida = null;
+}
+
+/** Abre la ficha resumida de un compañero de grupo (la pide y la muestra al llegar) */
+export function verFichaCompanero(instancia) {
+    const miembro = servicio.getGrupo()?.miembros.find(m => m.instancia === instancia);
+    if (!miembro || instancia === getInstancia()) return;
+    const titulo = `Ficha de ${miembro.nombre || "Sin nombre"}`;
+    cancelarFichaPedida();
+    if (!instanciasConectadas().has(instancia)) {
+        ctx.mostrarFichaResumen(titulo, "Está desconectado: no puede enviar su ficha.");
+        return;
+    }
+    fichaPedida = {
+        instancia, titulo,
+        temporizador: setTimeout(() => {
+            if (fichaPedida?.instancia !== instancia) return;
+            fichaPedida = null;
+            ctx.mostrarFichaResumen(titulo, "No ha respondido. Prueba otra vez en un momento.");
+        }, ESPERA_FICHA_MS)
+    };
+    ctx.mostrarFichaResumen(titulo, "Pidiendo la ficha…");
+    emitirPrivado("pedirFicha", { para: instancia }).catch(error => {
+        cancelarFichaPedida();
+        ctx.mostrarFichaResumen(titulo, `No se pudo pedir la ficha: ${servicio.mensajeError(error)}`);
+    });
+}
+
+function inicializarFichaResumen() {
+    registrarManejador("pedirFicha", (evento) => {
+        if (!servicio.enMiGrupo(evento.instancia)) return;
+        emitirPrivado("fichaResumen", { para: evento.instancia, resumen: ctx.resumenPropio() })
+            .catch(error => console.warn("No se pudo enviar tu ficha:", error));
+    });
+    registrarManejador("fichaResumen", (evento) => {
+        if (fichaPedida?.instancia !== evento.instancia) return;
+        const { titulo } = fichaPedida;
+        cancelarFichaPedida();
+        ctx.mostrarFichaResumen(titulo, cargarResumenFicha(evento.datos?.resumen) ?? "La ficha recibida no es válida.");
+    });
+    // Si se cierra la ventana mientras se espera, la respuesta ya no la vuelve a abrir
+    el("modalFichaResumen").addEventListener("hidden.bs.modal", cancelarFichaPedida);
 }
 
 /* Barras del grupo en la cabecera (compañeros, sin ti). Las filas solo se regeneran si cambia el número */
@@ -848,6 +906,12 @@ function inicializarGrupo() {
             operar("avisoGrupo", () => servicio.crearGrupo());
         } else if (accion === "salir") {
             if (confirm("¿Salir del grupo?")) operar("avisoGrupo", () => servicio.salirDeGrupo());
+        } else if (accion === "ficha" && fila) {
+            // Se cierra el grupo (Bootstrap no apila ventanas) y se abre la ficha
+            const instancia = fila.dataset.instancia;
+            const modalGrupo = el("modalGrupo");
+            modalGrupo.addEventListener("hidden.bs.modal", () => verFichaCompanero(instancia), { once: true });
+            bootstrap.Modal.getOrCreateInstance(modalGrupo).hide();
         } else if (accion === "echar" && fila) {
             const nombre = fila.querySelector(".nombre-online").firstChild.textContent.trim();
             if (confirm(`¿Echar a ${nombre} del grupo?`)) operar("avisoGrupo", () => servicio.echarDeGrupo(fila.dataset.instancia));
@@ -877,7 +941,7 @@ function inicializarGrupo() {
         if (!fila) return;
         reproducir("click");
         hud.classList.remove("abierto");
-        abrirGrupo(fila.dataset.instancia);
+        verFichaCompanero(fila.dataset.instancia);
     });
     document.addEventListener("click", (e) => {
         if (hud.classList.contains("abierto") && !hud.contains(e.target)) {

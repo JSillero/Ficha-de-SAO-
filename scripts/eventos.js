@@ -19,8 +19,14 @@
 import { mostrarPopup } from "./popups.js";
 import { escaparHtml } from "./html.js";
 import { getInstancia } from "./instancia.js";
+import { reproducir } from "./sonidos.js";
 
 export const VERSION_EVENTO = 2;
+
+/* Sonidos que un evento puede pedir con datos.sonido al pintarse en las fichas de los demás (p. ej. el cristal
+   al romperse). Solo los de esta lista, porque el dato viene de otro jugador; si no pide ninguno, "notificacion". */
+const SONIDOS_EVENTO = ["cristal"];
+const SONIDO_EVENTO_AJENO = "notificacion";
 
 /* tipo → pintar(datos) que devuelve { popup: HTMLElement, titulo: string, tipoPopup: "tirada" | "info" } */
 const pintores = {};
@@ -149,6 +155,11 @@ function pintarEvento(evento, propio) {
         if (esOfertaParaMi(evento)) hacerOfertaConsumible(popup, evento, autor);
     }
     mostrarPopup(popup, { titulo, tipo: tipoPopup, evento });
+    // Los propios ya han sonado al hacer la acción; los de los demás suenan aquí
+    if (!propio) {
+        const sonido = evento.datos?.sonido;
+        reproducir(SONIDOS_EVENTO.includes(sonido) ? sonido : SONIDO_EVENTO_AJENO);
+    }
 }
 
 /* Recibir daño desde el pop-up de otro jugador ______________________________

@@ -1,8 +1,9 @@
-import Equipamiento from "./equipamiento.js";
+import Equipamiento, { estaLanzada } from "./equipamiento.js";
 import Modificador, { TURNOS_PERMANENTE, cargarModificador } from "./modificador.js";
-import { TAMANO_INVENTARIO, crearInventarioVacio, cargarObjeto, cargarBaul, cargarEquipo } from "./objetos.js";
+import { TAMANO_INVENTARIO, crearInventarioVacio, ajustarInventario, cargarObjeto, cargarBaul, cargarObjetosClave, cargarEquipo } from "./objetos.js";
 import { ZONAS, ZONA_POR_DEFECTO } from "./zonas.js";
 import { cargarArtes, modificadorArtes } from "./artes.js";
+import { modificadorEfectosEquipo } from "./efectosEquipo.js";
 
 export { TAMANO_INVENTARIO };
 
@@ -102,6 +103,7 @@ export default class PJ {
         /* Inventario: huecos fijos con un objeto (ver objetos.js) o null. Baúl: lista sin límite. */
         this.inventario = crearInventarioVacio();
         this.baul = [];
+        this.objetosClave = []; // [{ nombre, descripcion }]: no ocupan hueco ni se usan
         this.comidaActiva = ""; // nombre de la comida cuyo efecto está activo (sus modificadores llevan origen "comida")
         this.cor = 0; // monedas: no ocupan hueco, sin límite, nunca negativas
 
@@ -297,13 +299,12 @@ export default class PJ {
             return acc + ((obj['modificado'] == atributo) ? obj.numero : 0);
         }, 0));
 
-        /* Saca los modificadores del equipamiento */
-        acumulado += Number(this.manoDerecha.modificadores.reduce(function (acc, obj) {
-            return acc + ((obj['modificado'] == atributo) ? obj.numero : 0);
-        }, 0));
-        acumulado += Number(this.manoIzquierda.modificadores.reduce(function (acc, obj) {
-            return acc + ((obj['modificado'] == atributo) ? obj.numero : 0);
-        }, 0));
+        /* Saca los modificadores del equipamiento (un arma lanzada no aporta nada hasta recogerla) */
+        [this.manoDerecha, this.manoIzquierda].filter(mano => !estaLanzada(mano)).forEach(mano => {
+            acumulado += Number(mano.modificadores.reduce(function (acc, obj) {
+                return acc + ((obj['modificado'] == atributo) ? obj.numero : 0);
+            }, 0));
+        });
         acumulado += Number(this.equipoArmadura.modificadores.reduce(function (acc, obj) {
             return acc + ((obj['modificado'] == atributo) ? obj.numero : 0);
         }, 0));
@@ -318,6 +319,9 @@ export default class PJ {
 
         // Artes pasivas equipadas que cumplen sus requisitos (los requisitos usan valores base: sin recursión)
         acumulado += modificadorArtes(this, atributo);
+
+        // Efectos pasivos del equipo puesto (efectosEquipo.js)
+        acumulado += modificadorEfectosEquipo(this, atributo);
 
         return acumulado;
     }
@@ -379,16 +383,16 @@ export default class PJ {
             if (guardado.origen === "comida") this.estados[estado].origen = "comida";
         }
 
-        /* Inventario: se conservan los huecos guardados aunque superen el tamaño base.
+        /* Inventario: se cargan todos los huecos guardados; al final ajustarInventario los adapta a la capacidad.
            cargarObjeto acepta el formato antiguo { nombre, cantidad } (pasa a material; sin nombre, hueco vacío). */
         const inventarioGuardado = Array.isArray(jsonObject.inventario) ? jsonObject.inventario : [];
-        this.inventario = crearInventarioVacio(Math.max(TAMANO_INVENTARIO, inventarioGuardado.length));
-        inventarioGuardado.forEach((item, i) => {
-            this.inventario[i] = cargarObjeto(item);
-        });
+        this.inventario = inventarioGuardado.map(cargarObjeto);
 
         /* Baúl: lista de objetos (o texto de las fichas antiguas: cada línea es un material) */
         this.baul = cargarBaul(jsonObject.baul);
+
+        /* Objetos clave (las fichas antiguas no tienen: lista vacía) */
+        this.objetosClave = cargarObjetosClave(jsonObject.objetosClave);
 
         /* Equipo (con la poción aplicada, si la hay) */
         this.equipoArmadura = cargarEquipo(jsonObject.equipoArmadura);
@@ -411,6 +415,10 @@ export default class PJ {
                 this.amigos.push({ jugador, nombre });
             }
         });
+
+        // Huecos del inventario según la capacidad (con equipo, modificadores y artes ya cargados).
+        // No se pierde nada: lo que no cabe queda como sobrante.
+        ajustarInventario(this);
 
         // Los valores derivados (vidaMax, defensa, aguante...) no se leen: se recalculan
         this.calcularCaracteristicas();
@@ -445,6 +453,7 @@ export default class PJ {
             estados: this.estados,
             inventario: this.inventario, // null en los huecos vacíos
             baul: this.baul,
+            objetosClave: this.objetosClave,
 
             /* Equipo */
             equipoArmadura: this.equipoArmadura,

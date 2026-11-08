@@ -11,6 +11,7 @@ const SONIDOS = {
     cristal: "./sfx/cristal.mp3",
     muerte: "./sfx/dead.mp3",
     mensaje: "./sfx/message.mp3",
+    notificacion: "./sfx/notificacion.mp3", // pop-up de otro personaje de la sala
     teletransporte: "./sfx/tp.mp3"
 };
 
