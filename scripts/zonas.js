@@ -81,17 +81,56 @@ function listasModificadores(pj) {
 const etiquetaEstado = (clave) => ESTADOS_INFO[clave]?.etiqueta ?? clave;
 const estadoActivo = (estado) => (Number(estado?.valor) || 0) > 0;
 
+/* El descanso corto cura lo que curaría la regeneración en este número de turnos */
+export const TURNOS_REGENERACION_DESCANSO_CORTO = 5;
+
+/* Turnos (de los del descanso) que dura algo con esta duración; lo permanente dura todos */
+const turnosEnDescanso = (turnos) => {
+    const n = TURNOS_REGENERACION_DESCANSO_CORTO;
+    return Number(turnos) === TURNOS_PERMANENTE ? n : Math.min(n, Math.max(0, Math.trunc(Number(turnos) || 0)));
+};
+
+/**
+ * PV que cura la regeneración durante el descanso corto: estado y modificadores "regeneracion"
+ * (personaje, equipo, artes...), cada uno solo durante los turnos que le queden.
+ */
+function curacionRegeneracionDescanso(pj) {
+    const n = TURNOS_REGENERACION_DESCANSO_CORTO;
+    const estado = pj.estados?.regeneracion;
+    let total = estadoActivo(estado) ? (Number(estado.valor) || 0) * turnosEnDescanso(estado.turnos) : 0;
+
+    // getModificador ya suma todas las fuentes; se descuentan los turnos que no llegan a durar los temporales
+    total += (Number(pj.getModificador("regeneracion")) || 0) * n;
+    for (const lista of listasModificadores(pj)) {
+        for (const mod of lista) {
+            if (mod.modificado !== "regeneracion" || !(mod.turnos > 0)) continue;
+            total -= (Number(mod.numero) || 0) * (n - turnosEnDescanso(mod.turnos));
+        }
+    }
+    return Math.max(0, Math.trunc(total));
+}
+
 /**
  * Descanso corto (zona segura). Termina:
  * - el efecto de la comida;
  * - los estados con duración en turnos (no permanentes) y los marcados "Descanso corto";
  * - los modificadores con duración en turnos y los marcados "Descanso corto" (personaje y equipo);
  * - el enfriamiento de las habilidades de reliquia (quedan listas).
+ * Antes de nada, la regeneración cura lo de TURNOS_REGENERACION_DESCANSO_CORTO turnos.
  * No recarga los PA.
  * @returns {string[]} resumen legible
  */
 export function descansoCorto(pj) {
     const resumen = [];
+
+    // Primero la regeneración, que puede venir de estados, comida o modificadores que el descanso quita
+    const curacion = curacionRegeneracionDescanso(pj);
+    if (curacion > 0 && pj.vida < pj.vidaMax) {
+        const antes = pj.vida;
+        pj.vida = Math.min(pj.vidaMax, pj.vida + curacion); // vidaMax ya descuenta la oscuridad
+        resumen.push(`Regeneración: +${pj.vida - antes} PV (${antes} → ${pj.vida})`);
+    }
+
     const comida = quitarComida(pj);
     if (comida) resumen.push(`Termina el efecto de ${comida}`);
 

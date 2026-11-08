@@ -42,8 +42,8 @@ export const ESTADOS_INFO = {
         descripcion: "No actúa hasta que alguien le despierte." },
     wither: { etiqueta: "Wither", icono: "wither", color: "#4E342E", colorGlifo: "#D7CCC8", unidad: null, turnos: TURNOS_PERMANENTE,
         descripcion: "2 de daño por turno hasta dejarlo a 1 PV (no mata)." },
-    embriaguez: { etiqueta: "Embriaguez", icono: "embriaguez", color: "#D68910", unidad: null, turnos: TURNOS_PERMANENTE,
-        descripcion: "Input lag; desventaja en resistencia a la convicción." }
+    embriaguez: { etiqueta: "Embriaguez", icono: "embriaguez", color: "#D68910", unidad: "Potencia", turnos: TURNOS_PERMANENTE,
+        descripcion: "Por cada punto de potencia: +3 Carisma y −1 al resto de habilidades (salvo Sacro). Por cada punto que una habilidad quede por debajo de 0, 10 % de que cualquier acción salga mal y haga algo absurdo. Desventaja en resistencia a la convicción." }
 };
 
 /* Estados que cura el daño de luz: todos los alterados salvo oscuridad y ceguera */

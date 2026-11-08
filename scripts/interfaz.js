@@ -2,6 +2,7 @@ import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ESCUDO, TIPOS_ARMADURA, TIP
 import { esReliquia, usarHabilidadReliquia, motivoNoUsarHabilidad, cargarHabilidadReliquia, equipoDeRanura } from "./reliquias.js";
 import Modificador, { TURNOS_PERMANENTE } from "./modificador.js";
 import PJ from "./PJ.js";
+import { tirarFalloEmbriaguez } from "./embriaguez.js";
 import { ejecutarTirada, combinarModos, esCritico, mostrarPopupDanno } from "./dados.js";
 import { prepararAtaque, calcularDannoAtaque, prepararLanzamiento, calcularDannoLanzamiento, describirEfecto } from "./ataque.js";
 import {
@@ -36,7 +37,7 @@ import { reproducir, iniciarBucle, pararBucle, precargarSonidos, estaSilenciado,
 import { ejecutarDebug, crearPersonajePrueba, validarFicha } from "./debug.js";
 import {
     descargarCatalogo, copiarDelCatalogo, estadoRequisitos, motivoRequisitos, ranurasUsadas, PARTES_USO_ARTE,
-    equiparArte, desequiparArte, motivoNoEquiparArte, motivoNoDesequiparArte, usarArte, motivoNoUsarArte,
+    equiparArte, desequiparArte, motivoNoEquiparArte, motivoNoDesequiparArte, usarArte, motivoNoUsarArte, partesDeArte,
     cargarArte, cargarRequisito, cumpleRequisitos, ajustarMemoriaArtes, GRUPOS_ARTE, TIPOS_REQUISITO,
     desbloqueosDisponibles, desbloqueosNaturales, anadirDesbloqueos, quitarDesbloqueos, motivoNoConseguirArte, conseguirArte,
     ETIQUETAS_CARACTERISTICA, ETIQUETAS_HABILIDAD, ETIQUETAS_ARMADURA as ETIQUETAS_TIPO_ARMADURA
@@ -76,9 +77,27 @@ let culturaInp = document.getElementById("cultura")
 let profesionInp = document.getElementById("profesion")
 let sacroInp = document.getElementById("sacro")
 
+/* Campos numéricos: todos son enteros (solo el Aguante y la Iniciativa, que no se editan, tienen decimales).
+   En fase de captura, así cada campo ya recibe el valor limpio en sus propios listeners.
+   Un campo que sí admita decimales puede marcarse con data-decimal. */
+const esCampoEntero = (el) => el instanceof HTMLInputElement && el.type === "number" && !el.hasAttribute("data-decimal");
+
+document.addEventListener("keydown", (e) => {
+    if (esCampoEntero(e.target) && [".", ",", "e", "E"].includes(e.key)) e.preventDefault();
+}, true);
+
+for (const tipo of ["input", "change"]) {
+    document.addEventListener(tipo, (e) => {
+        const campo = e.target;
+        if (!esCampoEntero(campo) || campo.value === "") return;
+        const numero = Number(campo.value);
+        if (Number.isFinite(numero) && !Number.isInteger(numero)) campo.value = Math.trunc(numero);
+    }, true);
+}
+
 /* Caracteristicas */
 
-let inputs = document.querySelectorAll('#habilidadesDiv input, #atributosDiv input');
+let inputs =document.querySelectorAll('#habilidadesDiv input, #atributosDiv input');
 
 /* Evento generico que introduce nuevos valores en el atributo del objeto personaje dependiendo del id del input que lo contiene */
 for (const element of inputs) {
@@ -168,13 +187,13 @@ selectProfesion.addEventListener('change', (e) => {
 });
 
 inputNivel.addEventListener('change', (e) => {
-    personaje.nivel = Number(e.target.value);
+    personaje.nivel = Math.trunc(Number(e.target.value) || 0);
     personaje.calcularCaracteristicas();
     actualizarTodo();
 });
 
 inputVida.addEventListener('change', (e) => {
-    personaje.vida = Number(e.target.value);
+    personaje.vida = Math.trunc(Number(e.target.value) || 0);
     actualizarTodo();
 });
 
@@ -1392,11 +1411,54 @@ const ETIQUETAS_MANO = { manoIzquierda: "Mano izquierda", manoDerecha: "Mano der
 /* Gasta las acciones necesarias ("todas" = el turno entero); si no se puede, pregunta si hacerlo
    igualmente (p. ej. una reacción o una excepción del máster) */
 function gastarAccionesOConfirmar(partes, descripcion) {
-    if (partes === "todas" ? gastarTodas(personaje) : gastarVarias(personaje, partes)) return true;
-    const motivo = estaIncapacitado(personaje)
-        ? "No puedes actuar (paralizado o dormido)."
-        : "No te quedan acciones para hacerlo.";
-    return confirm(`${motivo}\n¿${descripcion} igualmente?`);
+    if (!(partes === "todas" ? gastarTodas(personaje) : gastarVarias(personaje, partes))) {
+        const motivo = estaIncapacitado(personaje)
+            ? "No puedes actuar (paralizado o dormido)."
+            : "No te quedan acciones para hacerlo.";
+        if (!confirm(`${motivo}\n¿${descripcion} igualmente?`)) return false;
+    }
+    // Borracho: la acción se gasta pero sale mal (devuelve false y quien llama no hace nada más)
+    return !fallaPorEmbriaguez(descripcion);
+}
+
+/* Embriaguez __________________________________________________________________
+ * Con habilidades por debajo de 0, cada acción puede fallar (10 % por habilidad, embriaguez.js).
+ * Las acciones con coste lo tiran en gastarAccionesOConfirmar; las que no gastan (tiradas, comer,
+ * equipar artes) llaman a fallaPorEmbriaguez directamente. falloEmbriaguez avisa a quien llamó de que
+ * el "no" viene de aquí, para no enseñar además el aviso normal de "no se puede". */
+let falloEmbriaguez = false;
+/* Apartado de MENSAJES_BORRACHO de la acción en curso (arte, sigilo, equipo, objeto, ataque o general);
+   lo pone quien inicia la acción, porque gastarAccionesOConfirmar solo recibe la descripción */
+let categoriaAccion = "general";
+
+function fallaPorEmbriaguez(descripcion, categoria = categoriaAccion) {
+    const fallo = tirarFalloEmbriaguez(personaje, categoria);
+    if (!fallo) return false;
+    falloEmbriaguez = true;
+    const nombre = String(personaje.nombre ?? "").trim() || "Alguien";
+    reproducir("mensaje");
+    emitirEvento("borracho", {
+        titulo: `${nombre} ha hecho algo absurdo`,
+        subtitulo: `Embriaguez · intentaba: ${descripcion}`,
+        lineas: [
+            fallo.mensaje,
+            `${Math.round(fallo.probabilidad * 100)} % de fallar (bajo 0: ${fallo.habilidades.join(", ")})`
+        ]
+    });
+    return true;
+}
+
+/* Ejecuta una acción del apartado indicado y dice si ha fallado por la embriaguez */
+function conEmbriaguez(categoria, accion) {
+    falloEmbriaguez = false;
+    categoriaAccion = categoria;
+    try {
+        const resultado = accion();
+        return { resultado, fallo: falloEmbriaguez };
+    } finally {
+        falloEmbriaguez = false;
+        categoriaAccion = "general";
+    }
 }
 
 function usarEquipo(propEquipo) {
@@ -1411,7 +1473,8 @@ function usarEquipo(propEquipo) {
         if (item.enUso) {
             item.enUso = false;
         } else {
-            if (!gastarAccionesOConfirmar(partes, `Usar ${nombre}`)) return;
+            const { resultado: usado } = conEmbriaguez("ataque", () => gastarAccionesOConfirmar(partes, `Usar ${nombre}`));
+            if (!usado) { actualizarTodo(); return; } // borracho: la acción se ha gastado igual
             item.enUso = true;
         }
         personaje.calcularCaracteristicas();
@@ -1422,7 +1485,8 @@ function usarEquipo(propEquipo) {
     const { modos, criticoFacil } = obtenerConfiguracionTirada();
     const ataque = prepararAtaque(personaje, propEquipo, modos);
     if (!ataque) return;
-    if (!gastarAccionesOConfirmar(partes, `Atacar con ${nombre}`)) return;
+    const { resultado: atacado } = conEmbriaguez("ataque", () => gastarAccionesOConfirmar(partes, `Atacar con ${nombre}`));
+    if (!atacado) { actualizarTodo(); return; } // borracho: la acción se ha gastado igual
 
     ejecutarTirada({
         nombreAccion: ataque.nombre,
@@ -1459,8 +1523,9 @@ function actualizarBotonGuardar(boton, ranura) {
 
 function guardarEnInventario(ranura) {
     reproducir("click");
-    const resultado = guardarEquipado(personaje, ranura, gastarAccionesOConfirmar);
+    const { resultado, fallo } = conEmbriaguez("equipo", () => guardarEquipado(personaje, ranura, gastarAccionesOConfirmar));
     actualizarTodo();
+    if (fallo) return;
     mostrarPopupInfo(resultado.ok ? "Guardado en el inventario" : "No se puede guardar", resultado.resumen.map(escaparHtml));
 }
 
@@ -1679,8 +1744,9 @@ function usarHabilidad(ranura, indice) {
     const equipo = equipoDeRanura(personaje, ranura);
     const habilidad = equipo?.reliquia?.habilidades?.[indice];
     if (!habilidad) return;
-    const resultado = usarHabilidadReliquia(personaje, ranura, indice, gastarAccionesOConfirmar);
+    const { resultado, fallo } = conEmbriaguez("general", () => usarHabilidadReliquia(personaje, ranura, indice, gastarAccionesOConfirmar));
     actualizarTodo();
+    if (fallo) return;
     const nombre = habilidad.nombre.trim() || "Habilidad";
     reproducir(resultado.ok ? "mensaje" : "click");
     const titulo = resultado.ok ? `${nombre} · ${equipo.nombre?.trim() || "Reliquia"}` : `No se puede: ${nombre}`;
@@ -1869,6 +1935,7 @@ function inicializarTiradasHabilidades() {
         const nombreAccion = titulo ? titulo.innerText.trim() : habilidadId;
 
         const dispararTirada = () => {
+            if (fallaPorEmbriaguez(`Tirada de ${nombreAccion}`)) return;
             const { modos, criticoFacil } = obtenerConfiguracionTirada();
             // Valor efectivo: incluye modificadores y penalización de armadura (sin bajar de 0)
             const valorHab = Math.max(0, Number(personaje.getGenerico(habilidadId)) || 0);
@@ -1893,6 +1960,7 @@ function inicializarTiradasHabilidades() {
         const nombre = icono.alt || atributo;
         icono.title = `Tirada de ${nombre}`;
         icono.addEventListener('click', () => {
+            if (fallaPorEmbriaguez(`Tirada de ${nombre}`)) return;
             const { modos, criticoFacil } = obtenerConfiguracionTirada();
             ejecutarTirada({
                 nombreAccion: nombre,
@@ -1932,7 +2000,7 @@ function mostrarPopupInfo(titulo, lineas) {
 /* Botón de turno en cada zona: icono (imgs/), texto y lo que hace */
 const BOTON_TURNO_POR_ZONA = {
     noSegura: { icono: "turno", titulo: "Inicio de turno", ayuda: "Iniciar turno: aplica estados y resetea las acciones", accion: iniciarTurno },
-    segura: { icono: "descanso", titulo: "Descanso corto", ayuda: "Descanso corto: termina la comida y los estados y modificadores por turnos (no recarga PA)", accion: descansoCorto },
+    segura: { icono: "descanso", titulo: "Descanso corto", ayuda: "Descanso corto: cura 5 turnos de regeneración, termina la comida y los estados y modificadores por turnos (no recarga PA)", accion: descansoCorto },
     base: { icono: "cama", titulo: "Descanso largo", ayuda: "Descanso largo: descanso corto, cura los estados negativos (también oscuridad) y recarga PA y PV", accion: descansoLargo }
 };
 
@@ -1965,12 +2033,17 @@ function inicializarTurno() {
         });
     });
 
+    // Borracho: la acción de piernas se gasta igual, pero no llega a moverse
     document.getElementById("btnMover").addEventListener("click", () => {
-        if (gastarAccion(personaje, "pies")) actualizarTodo();
+        if (!gastarAccion(personaje, "pies")) return;
+        fallaPorEmbriaguez("Moverse", "movimiento");
+        actualizarTodo();
     });
 
     document.getElementById("btnCorrer").addEventListener("click", () => {
-        if (correr(personaje)) actualizarTodo();
+        if (!correr(personaje)) return;
+        fallaPorEmbriaguez("Correr", "movimiento");
+        actualizarTodo();
     });
 
     document.getElementById("btnSigilo").addEventListener("click", () => {
@@ -1985,6 +2058,7 @@ function inicializarTurno() {
             return;
         }
         if (!puedeEntrarEnSigilo(personaje)) return;
+        if (fallaPorEmbriaguez("Entrar en sigilo", "sigilo")) return;
 
         // El dado depende de la armadura; el modo elegido en el panel cuenta como otra fuente
         const { modos, criticoFacil } = obtenerConfiguracionTirada();
@@ -2236,8 +2310,9 @@ setAplicadorDanno(recibirGolpe);
 
 /* Comida o poción que te ofrece otro jugador (pop-up "oferta"): gasta la boca y avisa a toda la sala */
 function consumirOferta(datosObjeto, { autor }) {
-    const resultado = consumirOfrecido(personaje, datosObjeto, gastarAccionesOConfirmar);
+    const { resultado, fallo } = conEmbriaguez("objeto", () => consumirOfrecido(personaje, datosObjeto, gastarAccionesOConfirmar));
     actualizarTodo();
+    if (fallo) return true; // la oferta se pierde: se la ha tirado por encima
     if (!resultado.ok) {
         mostrarPopupInfo("No puedes consumirlo", resultado.resumen.map(escaparHtml));
         return false;
@@ -2783,13 +2858,21 @@ function alPulsarArte(e) {
     reproducir("click");
     switch (boton.dataset.accion) {
         case "usar": {
-            const resultado = usarArte(personaje, arte, gastarAccionesOConfirmar);
+            // Las artes que no gastan acciones (combo, uso "ninguna"...) no pasan por gastarAccionesOConfirmar:
+            // la embriaguez se tira aparte, después de gastar los PA (se pierden, como las acciones de las demás)
+            const sinAcciones = partesDeArte(personaje, arte).length === 0;
+            const { resultado, fallo } = conEmbriaguez("arte", () => {
+                const usado = usarArte(personaje, arte, gastarAccionesOConfirmar);
+                if (usado.ok && sinAcciones) fallaPorEmbriaguez(`Usar ${arte.nombre}`);
+                return usado;
+            });
             actualizarTodo();
-            mostrarPopupArte(arte, resultado);
+            if (!fallo) mostrarPopupArte(arte, resultado);
             return;
         }
         case "equipar":
         case "desequipar": {
+            if (fallaPorEmbriaguez(`${boton.dataset.accion === "equipar" ? "Equipar" : "Desequipar"} ${arte.nombre}`, "arte")) return;
             const resultado = (boton.dataset.accion === "equipar" ? equiparArte : desequiparArte)(personaje, arte);
             actualizarTodo();
             if (!resultado.ok) mostrarPopupInfo("No se puede", resultado.resumen.map(escaparHtml));
@@ -3103,7 +3186,7 @@ function filaRequisitoArte(req, i) {
     } else if (req.tipo === "caracteristica" || req.tipo === "habilidad") {
         const lista = req.tipo === "caracteristica" ? ETIQUETAS_CARACTERISTICA : ETIQUETAS_HABILIDAD;
         campos = `<select class="req-clave" aria-label="Cuál">${opciones(lista, req.clave)}</select>
-            <input type="number" class="req-valor" min="0" step="${req.clave === "aguante" ? "0.5" : "1"}" value="${req.valor}" aria-label="Mínimo">`;
+            <input type="number" class="req-valor" min="0" ${req.clave === "aguante" ? 'step="0.5" data-decimal' : 'step="1"'} value="${req.valor}" aria-label="Mínimo">`;
     } else {
         campos = `<span class="casillas-tipos">${casillasTipos(OPCIONES_TIPOS_REQUISITO[req.tipo], req.tipos, "req-tipos")}</span>`;
         if (req.tipo === "arma") {
@@ -3842,33 +3925,40 @@ function confirmarDescarte(objeto) {
 function ejecutarUso(indice, opcion) {
     const objeto = personaje.inventario[indice];
     const gastar = gastarAccionesOConfirmar;
-    let resultado;
     let titulo = objeto.nombre;
+    // Apartado de los mensajes de borracho: equipar es equipo, lanzar una arrojadiza es un ataque
+    const categoria = { equipar: "equipo", lanzar: "ataque" }[opcion.accion] ?? "objeto";
 
-    switch (opcion.accion) {
-        case "comer":
-            resultado = comer(personaje, indice);
-            if (resultado.ok && objeto.modificadores.length) resultado.resumen.splice(1, 0, textoModificadores(objeto.modificadores));
-            break;
-        case "beber": resultado = beberPocion(personaje, indice, gastar); break;
-        case "aplicar": resultado = aplicarPocionAArma(personaje, indice, opcion.mano, gastar); break;
-        case "equipar": resultado = equipar(personaje, indice, opcion.mano, gastar); break;
-        case "cristal":
-            resultado = usarCristal(personaje, indice, gastar);
-            if (resultado.ok) reproducir("cristal");
-            break;
-        case "lanzar":
-            resultado = lanzarArrojadiza(personaje, indice, gastar);
-            if (resultado.ok) lanzar(resultado.objeto, resultado.mano);
-            break;
-        case "ofrecer":
-            resultado = ofrecerObjeto(personaje, indice, gastar, opcion.destino.nombre);
-            break;
-        default: return;
-    }
+    const { resultado, fallo } = conEmbriaguez(categoria, () => {
+        let resultado;
+        switch (opcion.accion) {
+            case "comer":
+                // Comer no gasta acciones: la embriaguez se tira aparte (y la comida no se pierde)
+                if (fallaPorEmbriaguez(`Comer ${objeto.nombre}`)) return { ok: false, resumen: [] };
+                resultado = comer(personaje, indice);
+                if (resultado.ok && objeto.modificadores.length) resultado.resumen.splice(1, 0, textoModificadores(objeto.modificadores));
+                return resultado;
+            case "beber": return beberPocion(personaje, indice, gastar);
+            case "aplicar": return aplicarPocionAArma(personaje, indice, opcion.mano, gastar);
+            case "equipar": return equipar(personaje, indice, opcion.mano, gastar);
+            case "cristal":
+                resultado = usarCristal(personaje, indice, gastar);
+                if (resultado.ok) reproducir("cristal");
+                return resultado;
+            case "lanzar":
+                resultado = lanzarArrojadiza(personaje, indice, gastar);
+                if (resultado.ok) lanzar(resultado.objeto, resultado.mano);
+                return resultado;
+            case "ofrecer":
+                return ofrecerObjeto(personaje, indice, gastar, opcion.destino.nombre);
+            default: return null;
+        }
+    });
+    if (!resultado) return;
 
     eleccionUso = null;
     actualizarTodo();
+    if (fallo) return; // ya se ha avisado de lo absurdo que ha hecho
     if (opcion.accion === "ofrecer" && resultado.ok) {
         // Lo ven todos; solo el destinatario puede consumirlo desde el pop-up
         const nombre = String(personaje.nombre ?? "").trim() || "Alguien";

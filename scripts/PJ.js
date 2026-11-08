@@ -6,10 +6,16 @@ import { cargarArtes, modificadorArtes } from "./artes.js";
 
 export { TAMANO_INVENTARIO };
 
-const HABILIDADES_LISTA = [
+export const HABILIDADES_LISTA = [
     'atletismo', 'combate', 'percepcion', 'subterfugio',
     'comunicacion', 'cultura', 'profesion', 'sacro'
 ];
+
+/* Embriaguez: por cada punto de potencia, +3 Carisma y −1 al resto de habilidades mientras está activa.
+   Sacro no cuenta: es especial, casi todos lo tienen a 0 y no se usa en tiradas. */
+export const EMBRIAGUEZ_CARISMA = 3;
+export const EMBRIAGUEZ_RESTO = -1;
+export const HABILIDADES_EMBRIAGUEZ = HABILIDADES_LISTA.filter(hab => hab !== 'comunicacion' && hab !== 'sacro');
 
 /* Estados alterados. Cada uno es { valor, turnos }; turnos = TURNOS_PERMANENTE (-1) es permanente.
    - Los que controla la ficha usan valor como cantidad: PV por turno (veneno, regeneración),
@@ -166,8 +172,8 @@ export default class PJ {
         // Sin memoria de artes hasta el nivel 16
         this.espaciosArte = (this.nivel >= 16 ? 4 + Math.floor(this.cultura / 10) : 0) + this.getModificador("espacios");
         this.aguante = this.fortaleza + (this.voluntad / 2) + this.getModificador("aguante");;
-        // La oscuridad resta PV máximos hasta un descanso largo
-        this.vidaMax = this.aguante * (Math.floor((this.nivel - 1) / 5) + 1) + this.getModificador("vidaMax")
+        // La oscuridad resta PV máximos hasta un descanso largo. Los PV son enteros aunque el Aguante tenga ,5
+        this.vidaMax = Math.floor(this.aguante * (Math.floor((this.nivel - 1) / 5) + 1)) + this.getModificador("vidaMax")
             - (Number(this.estados?.oscuridad?.valor) || 0);
         this.armadura = (Number(this.equipoArmadura?.armadura) || 0) + this.getModificador("armadura");
         this.defensa = (5 + this.reflejos) + this.getGenerico("atletismo") + this.getModificador("defensa") + this.getDefensaEscudos();
@@ -318,11 +324,18 @@ export default class PJ {
 
     /* Lo que restan los estados a un atributo (una sola vez, no cada turno):
        quemadura → Combate (si queda por debajo de 0, el sobrante daña PV al iniciar turno),
-       electrocutado → Atletismo, deslumbrado → Percepción. */
+       electrocutado → Atletismo, deslumbrado → Percepción.
+       Embriaguez: +3 Carisma y −1 al resto de habilidades (salvo Sacro). */
     getModificadorEstados(atributo) {
         const estadoQueResta = { combate: "quemadura", atletismo: "electrocutado", percepcion: "deslumbrado" }[atributo];
-        return estadoQueResta ? -(Number(this.estados?.[estadoQueResta]?.valor) || 0) : 0;
-
+        let total = estadoQueResta ? -(Number(this.estados?.[estadoQueResta]?.valor) || 0) : 0;
+        // La potencia multiplica el efecto (como cervezas acumuladas)
+        const potencia = Math.max(0, Math.trunc(Number(this.estados?.embriaguez?.valor) || 0));
+        if (potencia > 0) {
+            if (atributo === 'comunicacion') total += EMBRIAGUEZ_CARISMA * potencia;
+            else if (HABILIDADES_EMBRIAGUEZ.includes(atributo)) total += EMBRIAGUEZ_RESTO * potencia;
+        }
+        return total;
     }
 
     guardarJSON() {
@@ -346,6 +359,10 @@ export default class PJ {
         this.cor = Math.max(0, Math.floor(Number(this.cor) || 0));
         this.desbloqueosArteExtra = Math.trunc(Number(this.desbloqueosArteExtra) || 0);
         this.desbloqueosArteGastados = Math.max(0, Math.trunc(Number(this.desbloqueosArteGastados) || 0));
+        // Solo el Aguante y la Iniciativa (derivados, no se guardan) pueden tener decimales
+        for (const campo of ["nivel", "vida", "experiencia", "puntosArte"]) {
+            if (campo in this) this[campo] = Math.trunc(Number(this[campo]) || 0);
+        }
 
         /* Estados */
         this.estados = crearEstadosVacios();
@@ -353,8 +370,8 @@ export default class PJ {
             const guardado = jsonObject.estados?.[estado];
             if (!guardado) continue;
             this.estados[estado] = {
-                valor: Number(guardado.valor) || 0,
-                turnos: Number(guardado.turnos) || 0
+                valor: Math.trunc(Number(guardado.valor) || 0),
+                turnos: Math.trunc(Number(guardado.turnos) || 0)
             };
             // Marcado para quitarse con el descanso corto (solo se guarda si es true)
             if (guardado.descansoCorto) this.estados[estado].descansoCorto = true;

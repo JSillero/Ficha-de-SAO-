@@ -38,7 +38,8 @@ export default class Modificador {
 export function cargarModificador(datos) {
     const mod = Object.assign(new Modificador(), datos || {});
     // Las fichas antiguas guardaban turnos = 0 en modificadores que en la práctica eran permanentes
-    const turnos = Number(mod.turnos);
+    const turnos = Math.trunc(Number(mod.turnos));
     mod.turnos = (!Number.isFinite(turnos) || turnos <= 0) ? TURNOS_PERMANENTE : turnos;
+    mod.numero = Math.trunc(Number(mod.numero) || 0);
     return mod;
 }

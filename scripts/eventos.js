@@ -212,8 +212,9 @@ function pintarLista({ titulo = "", subtitulo = "", lineas = [] }) {
     return { popup, titulo: String(titulo), tipoPopup: "info" };
 }
 /* "recibido": un jugador ha recibido daño (de un pop-up ajeno o del botón Daño).
-   "consumido": un jugador ha consumido la comida o poción que le ofrecieron. */
-["arte", "pasiva", "objeto", "reliquia", "recibido", "consumido"].forEach(tipo => registrarPintor(tipo, pintarLista));
+   "consumido": un jugador ha consumido la comida o poción que le ofrecieron.
+   "borracho": una acción ha fallado por la embriaguez y el personaje ha hecho algo absurdo. */
+["arte", "pasiva", "objeto", "reliquia", "recibido", "consumido", "borracho"].forEach(tipo => registrarPintor(tipo, pintarLista));
 
 /* Ofrecer comida o pociones ___________________________________________________
  * "oferta": { titulo, subtitulo, lineas, para (instancia del personaje destinatario), objeto }. Todos ven quién
