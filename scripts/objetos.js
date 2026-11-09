@@ -3,9 +3,9 @@
 // No toca el DOM: recibe el personaje, lo modifica y devuelve lo que ha pasado.
 
 import Modificador, { cargarModificador, TURNOS_PERMANENTE } from "./modificador.js";
-import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, cargarEquipamiento, estaLanzada } from "./equipamiento.js";
+import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, cargarEquipamiento } from "./equipamiento.js";
 import { activarEstado, quitarEstado, aplicarDanno, ESTADOS_INFO, TIPOS_DANNO } from "./estados.js";
-import { MANOS, gastarVarias, gastarTodas, partesDeMano, parteDeMano, manoVacia, manoSinUso, puedeGastar } from "./turno.js";
+import { MANOS, gastarVarias, gastarTodas, partesDeMano, parteDeMano, manoVacia, puedeGastar } from "./turno.js";
 import { esZonaSegura } from "./zonas.js";
 import { cargarEfectos } from "./efectosEquipo.js";
 
@@ -276,7 +276,7 @@ export function gastarCor(pj, cantidad) {
 
 /** Mano vacía para usar algo (prefiere una con la acción disponible). null si las dos están ocupadas. */
 export function manoParaUsar(pj) {
-    const vacias = MANOS.filter(mano => manoSinUso(pj, mano));
+    const vacias = MANOS.filter(mano => manoVacia(pj, mano));
     return vacias.find(mano => puedeGastar(pj, parteDeMano(mano))) ?? vacias[0] ?? null;
 }
 
@@ -522,7 +522,6 @@ export function ranuraAccesorioLibre(pj) {
 export function motivoNoEquiparEnMano(pj, tipo, mano) {
     const otra = mano === "manoIzquierda" ? "manoDerecha" : "manoIzquierda";
     const tipoOtra = pj[otra]?.tipo || "";
-    if (estaLanzada(pj[mano])) return "Ahí está el arma que has lanzado: recógela antes.";
     if (!manoVacia(pj, mano)) return "Esa mano no está vacía.";
     if (TIPOS_DOS_MANOS.includes(tipo) && tipoOtra) return "Un arma a dos manos necesita las dos manos vacías.";
     if (tipo === "estoque" && tipoOtra && tipoOtra !== "escudo") return "El estoque solo se lleva con la otra mano vacía o con escudo.";
@@ -618,32 +617,74 @@ export function ranuraTieneEquipo(pj, ranura) {
 }
 
 /* Armas lanzadas (lanza, cuchillo) _________________________________________ */
-// Al lanzarla queda en su mano con `lanzada`: sin ataque ni efecto hasta recogerla (la tirada y el daño
-// están en ataque.js y la interfaz). Recoger gasta la acción de esa mano (las dos si es a dos manos).
+// Al lanzarla sale de la mano (que queda vacía) a pj.armasLanzadas = [{ mano, equipo }]. La tirada y el
+// daño están en ataque.js y la interfaz. Recoger: vuelve a su mano si está libre (gasta la acción de esa
+// mano, o las dos si es a dos manos); si no, al inventario (gasta la acción de una mano libre).
+// Las que no se recogen se pierden con el descanso (descansoCorto en zonas.js).
+
+/** Armas lanzadas guardadas: solo lanzables y en una mano válida */
+export function cargarArmasLanzadas(datos) {
+    return (Array.isArray(datos) ? datos : [])
+        .map(arma => ({ mano: MANOS.includes(arma?.mano) ? arma.mano : "manoDerecha", equipo: cargarEquipo(arma?.equipo) }))
+        .filter(({ equipo }) => ARMAS[equipo.tipo]?.lanzable);
+}
 
 /** Motivo por el que no se puede lanzar el arma de esa mano, o null */
 export function motivoNoLanzar(pj, mano) {
-    const equipo = pj[mano];
-    if (!ARMAS[equipo?.tipo]?.lanzable) return "Solo se pueden lanzar lanzas y cuchillos.";
-    if (estaLanzada(equipo)) return "Ya está lanzada: recógela primero.";
+    if (!ARMAS[pj[mano]?.tipo]?.lanzable) return "Solo se pueden lanzar lanzas y cuchillos.";
     return null;
 }
 
-/** Recoge el arma lanzada de esa mano */
-export function recogerArma(pj, mano, gastar = gastarEstricto(pj)) {
+/** Saca el arma de la mano a las armas lanzadas (después de la tirada, que la interfaz hace antes) */
+export function lanzarArma(pj, mano) {
+    const motivo = motivoNoLanzar(pj, mano);
+    if (motivo) return fallo(motivo);
     const equipo = pj[mano];
-    if (!estaLanzada(equipo)) return fallo("No hay ningún arma lanzada en esa mano.");
-    const nombre = equipo.nombre?.trim() || ARMAS[equipo.tipo].etiqueta;
-    if (!gastar(partesDeMano(mano, TIPOS_DOS_MANOS.includes(equipo.tipo)), `Recoger ${nombre}`)) return fallo("Sin acción en esa mano.");
-    equipo.lanzada = false;
+    equipo.enUso = false;
+    equipo.pocionAplicada = null; // se ha gastado en el golpe
+    pj.armasLanzadas.push({ mano, equipo });
+    pj[mano] = new Equipamiento("", "", "");
     pj.calcularCaracteristicas();
-    return exito(`Recoges ${nombre}`);
+    return exito(`Lanzas ${equipo.nombre?.trim() || ARMAS[equipo.tipo].etiqueta}`);
+}
+
+/** A dónde iría al recogerla: "mano" (la suya, si está libre), "inventario" o null si no cabe */
+export function destinoRecoger(pj, indice) {
+    const arma = pj.armasLanzadas?.[indice];
+    if (!arma) return null;
+    if (!motivoNoEquiparEnMano(pj, arma.equipo.tipo, arma.mano)) return "mano";
+    return hayHuecoLibre(pj) ? "inventario" : null;
+}
+
+export function motivoNoRecoger(pj, indice) {
+    if (!pj.armasLanzadas?.[indice]) return "Esa arma no está lanzada.";
+    const destino = destinoRecoger(pj, indice);
+    if (!destino) return "Su mano está ocupada y el inventario está lleno.";
+    if (destino === "inventario" && !manoParaUsar(pj)) return "Necesitas una mano libre para recogerla.";
+    return null;
+}
+
+/** Recoge un arma lanzada (a su mano o al inventario, ver destinoRecoger) */
+export function recogerArma(pj, indice, gastar = gastarEstricto(pj)) {
+    const motivo = motivoNoRecoger(pj, indice);
+    if (motivo) return fallo(motivo);
+    const { mano, equipo } = pj.armasLanzadas[indice];
+    const nombre = equipo.nombre?.trim() || ARMAS[equipo.tipo].etiqueta;
+    if (destinoRecoger(pj, indice) === "mano") {
+        if (!gastar(partesDeMano(mano, TIPOS_DOS_MANOS.includes(equipo.tipo)), `Recoger ${nombre}`)) return fallo("Sin acción en esa mano.");
+        pj[mano] = equipo;
+    } else {
+        if (!gastar([parteDeMano(manoParaUsar(pj))], `Recoger ${nombre}`)) return fallo("Sin acción en la mano libre.");
+        anadirAInventario(pj, cargarObjeto({ tipo: "equipo", nombre, descripcion: equipo.descripcion || "", cantidad: 1, equipo: JSON.parse(JSON.stringify(equipo)) }));
+    }
+    pj.armasLanzadas.splice(indice, 1);
+    pj.calcularCaracteristicas();
+    return exito(pj[mano] === equipo ? `Recoges ${nombre} (${mano === "manoIzquierda" ? "mano izquierda" : "mano derecha"})` : `Recoges ${nombre} → inventario`);
 }
 
 /** Motivo por el que no se puede guardar lo equipado en esa ranura, o null. */
 export function motivoNoGuardar(pj, ranura) {
     if (!ranuraTieneEquipo(pj, ranura)) return "No hay nada equipado.";
-    if (estaLanzada(equipoEnRanura(pj, ranura))) return "Está lanzada: recógela antes.";
     if (!hayHuecoLibre(pj)) return "El inventario está lleno.";
     if (ranura === "equipoArmadura" && pj.accesorios.some(acc => !accesorioVacio(acc))) {
         return "Guarda antes los accesorios: sin armadura no hay ranuras.";

@@ -91,6 +91,7 @@ export function crearPersonajePrueba() {
     objetos.forEach((objeto, i) => { pj.inventario[i] = objeto; });
     pj.baul = objetos.map(objeto => cargarObjeto({ ...objeto, cantidad: 7 }));
     pj.objetosClave = [{ nombre: "llave", descripcion: "abre la puerta" }, { nombre: "mapa", descripcion: "" }];
+    pj.armasLanzadas = [{ mano: "manoIzquierda", equipo: crearEquipo("cuchillo lanzado", "cuchillo") }];
 
     pj.manoDerecha = crearEquipo("espada", "espada");
     pj.manoDerecha.pocionAplicada = { ...pocion, cantidad: 1 };

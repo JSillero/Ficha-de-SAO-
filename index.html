@@ -250,7 +250,8 @@
                 <!-- Columna 2: Equipamiento, Modificadores y Habilidades -->
                 <div class="columnaCentral">
                     <div id="divEquipamiento">
-                        <h2>Equipamiento</h2>
+                        <!-- A la derecha del título, un botón por arma lanzada para recogerla (pintarArmasLanzadas), como el + de Modificadores -->
+                        <h2 class="h2-con-boton">Equipamiento <span id="armasLanzadas" class="armas-lanzadas" hidden></span></h2>
 
                         <div class="equipamiento-manos-grid">
                             <!-- Generado dinámicamente mediante templateManoEquipamiento -->
@@ -291,12 +292,12 @@
                                             <label>Defensa:</label>
                                             <input type="number" class="inputDefensaEquipo" min="0" value="0">
                                         </div>
-                                        <button type="button" class="btn-usar-equipo" title="Usar">Usar</button>
-                                        <!-- Lanzas y cuchillos: lanzar (daño a distancia) y recoger (actualizarBotonesLanzar) -->
-                                        <button type="button" class="btn-lanzar-equipo" hidden>Lanzar</button>
-                                        <button type="button" class="btn-recoger-equipo" hidden>Recoger</button>
+                                        <!-- Atacar y, en lanzas y cuchillos, lanzar (actualizarBotonLanzar): siempre juntos -->
+                                        <span class="acciones-arma">
+                                            <button type="button" class="btn-usar-equipo" title="Usar">Usar</button>
+                                            <button type="button" class="btn-lanzar-equipo" hidden></button>
+                                        </span>
                                     </div>
-                                    <p class="equipamiento-lanzada" hidden>Lanzada: no ataca ni aporta nada hasta recogerla.</p>
                                     <!-- Daño elemental del arma: solo se ven los elementos que tiene -->
                                     <div class="bloque-elemental" data-elemental="dannoElemental" title="Se suma a cada ataque, aparte del daño físico">
                                         <span class="subtitulo-elemental">Daño elemental:</span>
@@ -580,28 +581,15 @@
         </div>
     </div>
 
-    <!-- Inventario: huecos de personaje.inventario (actualizarObjetos en interfaz.js) y pestaña de objetos clave -->
+    <!-- Inventario: huecos de personaje.inventario (actualizarObjetos en interfaz.js) -->
     <div class="modal fade modal-sao" id="modalInventario" tabindex="-1" aria-labelledby="modalInventarioLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="modalInventarioLabel">Inventario <span id="contadorInventario" class="contador-objetos"></span></h5>
-                    <button type="button" class="btn-crear-objeto" data-destino="inventario" data-pestana-panel="objetos">+ Crear objeto</button>
+                    <button type="button" class="btn-crear-objeto" data-destino="inventario">+ Crear objeto</button>
                 </div>
                 <div class="modal-body">
-                    <!-- Pestañas: objetos (con huecos) y objetos clave (sin hueco); inicializarPestanasInventario -->
-                    <div class="pestanas-inventario" role="tablist">
-                        <button type="button" class="pestana-inventario activa" role="tab" aria-selected="true" data-pestana="objetos">Objetos</button>
-                        <button type="button" class="pestana-inventario" role="tab" aria-selected="false" data-pestana="clave">Objetos clave <span id="contadorObjetosClave" class="contador-objetos"></span></button>
-                    </div>
-                    <div data-pestana-panel="clave" hidden>
-                        <div class="cabecera-objetos-clave">
-                            <p class="pista-form">No ocupan hueco ni se usan.</p>
-                            <button type="button" id="btnCrearObjetoClave" class="btn-sao">+ Crear objeto clave</button>
-                        </div>
-                        <div id="listaObjetosClave" class="lista-objetos"></div>
-                    </div>
-                    <div data-pestana-panel="objetos">
                     <!-- Cor: monedas, no ocupan hueco (anadirCor/gastarCor en objetos.js) -->
                     <div class="barra-cor">
                         <span class="cor-icono" aria-hidden="true"></span>
@@ -612,7 +600,6 @@
                     </div>
                     <p id="avisoSobrantesInventario" class="aviso-sobrantes" hidden></p>
                     <div id="listaInventario" class="lista-objetos"></div>
-                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
@@ -621,7 +608,25 @@
         </div>
     </div>
 
-    <!-- Crear o editar un objeto clave (se abre desde la pestaña del inventario) -->
+    <!-- Objetos clave: no ocupan hueco ni se usan (desde el menú del inventario, como el baúl) -->
+    <div class="modal fade modal-sao" id="modalObjetosClave" tabindex="-1" aria-labelledby="modalObjetosClaveLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalObjetosClaveLabel">Objetos clave <span id="contadorObjetosClave" class="contador-objetos"></span></h5>
+                    <button type="button" id="btnCrearObjetoClave" class="btn-crear-objeto">+ Crear objeto clave</button>
+                </div>
+                <div class="modal-body">
+                    <div id="listaObjetosClave" class="lista-objetos"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Crear o editar un objeto clave (se abre desde #modalObjetosClave) -->
     <div class="modal fade modal-sao" id="modalObjetoClave" tabindex="-1" aria-labelledby="modalObjetoClaveLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">

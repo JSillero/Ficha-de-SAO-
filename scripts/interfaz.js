@@ -1,4 +1,4 @@
-import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ESCUDO, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, ELEMENTOS, cargarValoresElementales, estaLanzada } from "./equipamiento.js";
+import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ESCUDO, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, ELEMENTOS, cargarValoresElementales } from "./equipamiento.js";
 import { esReliquia, usarHabilidadReliquia, motivoNoUsarHabilidad, cargarHabilidadReliquia, equipoDeRanura } from "./reliquias.js";
 import { partesDeEfecto, motivoNoUsarEfecto, usarEfectoEquipo, pasivasDeEquipo, cargarEfectos } from "./efectosEquipo.js";
 import Modificador, { TURNOS_PERMANENTE } from "./modificador.js";
@@ -13,7 +13,7 @@ import {
     usarCristal, lanzarArrojadiza, manoParaUsar, categoriaEquipo, manosParaEquipar, motivoNoEquipar, equipar,
     motivoNoGuardar, motivoNoBeber, guardarEquipado, ranuraTieneEquipo, getCantidadAccesoriosPorArmadura, cabenEnInventario,
     anadirCor, gastarCor, aplicarEfectoEnObjetivo, ofrecerObjeto, consumirOfrecido,
-    capacidadInventario, ajustarInventario, cargarObjetosClave, motivoNoLanzar, recogerArma
+    capacidadInventario, ajustarInventario, cargarObjetosClave, motivoNoLanzar, lanzarArma, recogerArma, motivoNoRecoger, destinoRecoger
 } from "./objetos.js";
 import {
     puedeGastarVarias, gastarVarias, gastarTodas, partesDeMano, estaIncapacitado,
@@ -337,6 +337,7 @@ function actualizarTodo() {
     parseModificadoresEquipo();
     pintarHabilidadesReliquia();
     pintarEfectosEquipo();
+    pintarArmasLanzadas();
     actualizarObjetos();
     actualizarArtes();
     actualizarArtesPasivas();
@@ -1106,7 +1107,6 @@ function inicializarEquipamiento() {
             btnUsar.addEventListener("click", () => usarEquipo(propEquipo));
         }
         elemento.querySelector(".btn-lanzar-equipo")?.addEventListener("click", () => lanzarEquipo(propEquipo));
-        elemento.querySelector(".btn-recoger-equipo")?.addEventListener("click", () => recogerEquipo(propEquipo));
 
     });
 }
@@ -1244,7 +1244,7 @@ function actualizarEquipamiento() {
             inputDefensa.value = item.defensa ?? 0;
         }
         if (btnUsar) actualizarBotonUsar(btnUsar, propEquipo);
-        actualizarBotonesLanzar(elemento, propEquipo);
+        actualizarBotonLanzar(elemento, propEquipo);
 
         if (select) {
             select.value = item.tipo || "";
@@ -1449,10 +1449,6 @@ function usarEquipo(propEquipo) {
     const item = personaje[propEquipo];
     const arma = ARMAS[item?.tipo];
     if (!arma) return;
-    if (estaLanzada(item)) {
-        mostrarPopupInfo("No se puede atacar", ["El arma está lanzada: recógela primero."]);
-        return;
-    }
     const partes = partesDeMano(propEquipo, arma.manos === 2);
     const nombre = item.nombre?.trim() || arma.etiqueta;
 
@@ -1496,7 +1492,8 @@ function usarEquipo(propEquipo) {
 }
 
 /* Lanzar una lanza o un cuchillo: misma tirada que el ataque, daño con el bonificador a distancia.
-   Gasta la acción de esa mano (las dos si es a dos manos) y el arma queda lanzada hasta recogerla. */
+   Gasta la acción de esa mano (las dos si es a dos manos); el arma sale de la mano a personaje.armasLanzadas
+   y se recoge con su icono junto al título de Equipamiento (pintarArmasLanzadas). */
 function lanzarEquipo(propEquipo) {
     const item = personaje[propEquipo];
     const arma = ARMAS[item?.tipo];
@@ -1514,8 +1511,8 @@ function lanzarEquipo(propEquipo) {
     // Borracho: la acción se ha gastado, pero el arma no sale de la mano
     if (!lanzado || fallo) { actualizarTodo(); return; }
 
-    // El daño se calcula con el arma antes de marcarla como lanzada (la poción va en el golpe)
-    const conPocion = { ...item };
+    // El daño se calcula con el arma tal como está (la poción aplicada va en el golpe)
+    const lanzada = { ...item };
     ejecutarTirada({
         nombreAccion: ataque.nombre,
         subtitulo: `Lanzamiento de ${arma.etiqueta.toLowerCase()} · ${arma.manos === 2 ? "Dos manos" : ETIQUETAS_MANO[propEquipo]}`,
@@ -1528,40 +1525,73 @@ function lanzarEquipo(propEquipo) {
         bonificador: ataque.bonificador,
         etiquetaBonificador: ataque.bonificador > 0 ? "Ventaja extra" : "Desventaja extra",
         etiquetaTotal: "ATAQUE",
-        calcularDanno: (resultado) => calcularDannoLanzamientoArma(personaje, conPocion, esCritico(resultado))
+        calcularDanno: (resultado) => calcularDannoLanzamientoArma(personaje, lanzada, esCritico(resultado))
     });
-    item.pocionAplicada = null;
-    item.lanzada = true;
-    personaje.calcularCaracteristicas(); // sus modificadores dejan de contar
+    lanzarArma(personaje, propEquipo);
     actualizarTodo();
 }
 
-function recogerEquipo(propEquipo) {
-    reproducir("click");
-    const { resultado, fallo } = conEmbriaguez("equipo", () => recogerArma(personaje, propEquipo, gastarAccionesOConfirmar));
-    actualizarTodo();
-    if (!fallo && !resultado.ok) mostrarPopupInfo("No se puede recoger", resultado.resumen.map(escaparHtml));
-}
+/* Icono de lanzar de la tarjeta de una mano (solo lanzas y cuchillos; distinto para cada uno) */
+const ICONO_LANZAR = { cuchillo: "lanzarCuchillo", lanza: "lanzarLanza" };
+const ICONO_RECOGER = { cuchillo: "recogerCuchillo", lanza: "recogerLanza" };
 
-/* Botones Lanzar y Recoger de la tarjeta de una mano (solo lanzas y cuchillos) */
-function actualizarBotonesLanzar(tarjeta, propEquipo) {
+function actualizarBotonLanzar(tarjeta, propEquipo) {
+    const boton = tarjeta.querySelector(".btn-lanzar-equipo");
+    if (!boton) return;
     const item = personaje[propEquipo];
     const lanzable = Boolean(ARMAS[item?.tipo]?.lanzable);
-    const lanzada = estaLanzada(item);
-    const btnLanzar = tarjeta.querySelector(".btn-lanzar-equipo");
-    const btnRecoger = tarjeta.querySelector(".btn-recoger-equipo");
-    if (!btnLanzar || !btnRecoger) return;
-    btnLanzar.hidden = !lanzable || lanzada;
-    btnRecoger.hidden = !lanzada;
-    tarjeta.querySelector(".equipamiento-lanzada").hidden = !lanzada;
-    tarjeta.classList.toggle("lanzada", lanzada);
+    boton.hidden = !lanzable;
     if (!lanzable) return;
+    if (boton.dataset.icono !== item.tipo) {
+        boton.dataset.icono = item.tipo;
+        boton.innerHTML = iconoSao(ICONO_LANZAR[item.tipo] ?? "lanzarCuchillo");
+    }
     const partes = partesDeMano(propEquipo, ARMAS[item.tipo].manos === 2);
-    const sinAccion = !puedeGastarVarias(personaje, partes) ? " · Sin acciones disponibles" : "";
-    btnLanzar.title = `Lanzar (daño ${Number(item.danno) || 0} + ${Math.max(0, personaje.dDistancia)} a distancia; queda lanzada hasta recogerla)${sinAccion}`;
-    btnRecoger.title = `Recoger el arma (gasta la acción de esa mano)${sinAccion}`;
-    btnLanzar.classList.toggle("sin-accion", Boolean(sinAccion));
-    btnRecoger.classList.toggle("sin-accion", Boolean(sinAccion));
+    const sinAccion = !puedeGastarVarias(personaje, partes);
+    const nombre = item.nombre?.trim() || ARMAS[item.tipo].etiqueta;
+    boton.title = `Lanzar ${nombre} (daño ${Number(item.danno) || 0} + ${Math.max(0, personaje.dDistancia)} a distancia; queda en el suelo hasta recogerla)`
+        + (sinAccion ? " · Sin acciones disponibles" : "");
+    boton.setAttribute("aria-label", boton.title);
+    boton.classList.toggle("sin-accion", sinAccion);
+}
+
+/* Iconos de recoger, a la derecha del título de Equipamiento: uno por arma lanzada */
+function pintarArmasLanzadas() {
+    const caja = document.getElementById("armasLanzadas");
+    const armas = personaje.armasLanzadas;
+    caja.hidden = !armas.length;
+    const html = armas.map(({ mano, equipo }, i) => {
+        const nombre = equipo.nombre?.trim() || ARMAS[equipo.tipo].etiqueta;
+        const motivo = motivoNoRecoger(personaje, i);
+        const destino = destinoRecoger(personaje, i) === "mano" ? `a la ${ETIQUETAS_MANO[mano].toLowerCase()}` : "al inventario";
+        const titulo = motivo ? `${nombre} (lanzada): ${motivo}` : `Recoger ${nombre} (va ${destino})`;
+        return `<button type="button" class="btn-recoger-arma${motivo ? " sin-accion" : ""}" data-index="${i}"
+            title="${escaparHtml(titulo)}" aria-label="${escaparHtml(titulo)}">${iconoSao(ICONO_RECOGER[equipo.tipo] ?? "recogerCuchillo")}</button>`;
+    }).join("");
+    if (caja.dataset.html !== html) {
+        caja.dataset.html = html;
+        caja.innerHTML = html;
+    }
+}
+
+function inicializarArmasLanzadas() {
+    document.getElementById("armasLanzadas").addEventListener("click", (e) => {
+        const boton = e.target.closest(".btn-recoger-arma");
+        if (!boton) return;
+        reproducir("click");
+        const indice = Number(boton.dataset.index);
+        const { resultado, fallo } = conEmbriaguez("equipo", () => recogerArma(personaje, indice, gastarAccionesOConfirmar));
+        actualizarTodo();
+        if (!fallo && !resultado.ok) mostrarPopupInfo("No se puede recoger", resultado.resumen.map(escaparHtml));
+    });
+}
+
+/** Antes de un descanso: si hay armas lanzadas sin recoger, avisa de que se pierden. false = no descansar */
+function confirmarPerderArmasLanzadas() {
+    const armas = personaje.armasLanzadas;
+    if (!armas.length) return true;
+    const nombres = armas.map(({ equipo }) => equipo.nombre?.trim() || ARMAS[equipo.tipo].etiqueta).join(", ");
+    return confirm(`Si descansas sin recogerlas, pierdes: ${nombres}. ¿Descansar igualmente?`);
 }
 
 /* Botón Guardar de cada tarjeta: lleva lo equipado al inventario */
@@ -1884,7 +1914,7 @@ function textoCosteEfecto(ranura, efecto) {
 
 /* Línea de un efecto: modificadores (pasivas) o coste y daño (activas) */
 function detalleEfecto(efecto) {
-    if (efecto.tipo === "pasiva") return textoModificadores(efecto.modificadores) || "Sin modificadores";
+    if (efecto.tipo === "pasiva") return textoModificadores(efecto.modificadores) || "";
     const partes = [`${efecto.costePA} PA`];
     if (efecto.haceDanno) {
         if (efecto.danno > 0) partes.push(`Daño +${efecto.danno}`);
@@ -1897,17 +1927,20 @@ function detalleEfecto(efecto) {
 
 function filaEfectoEquipo(ranura, efecto, i) {
     const detalle = escaparHtml(detalleEfecto(efecto));
+    // Descripción: hasta dos líneas (el resto se corta con …); entera al pasar el ratón
+    const descripcion = efecto.descripcion?.trim()
+        ? `<span class="efecto-descripcion" title="${escaparHtml(efecto.descripcion)}">${escaparHtml(efecto.descripcion)}</span>` : "";
     if (efecto.tipo === "pasiva") {
         return `<li class="efecto-equipo pasiva" data-index="${i}" role="button" tabindex="0" title="Ver detalle">
             <span class="efecto-icono">${iconoSao("artePasiva")}</span>
-            <span class="efecto-texto"><b>${escaparHtml(efecto.nombre)}</b><small>${detalle}</small></span>
+            <span class="efecto-texto"><b>${escaparHtml(efecto.nombre)}</b><small>${detalle}</small>${descripcion}</span>
         </li>`;
     }
     const motivo = motivoNoUsarEfecto(personaje, ranura, i);
     const titulo = motivo ?? `Usar ${efecto.nombre}: gasta ${textoCosteEfecto(ranura, efecto)}`;
     return `<li class="efecto-equipo activa" data-index="${i}">
         <span class="efecto-icono">${iconoSao("arteActiva")}</span>
-        <span class="efecto-texto"><b>${escaparHtml(efecto.nombre)}</b><small>${detalle}</small></span>
+        <span class="efecto-texto"><b>${escaparHtml(efecto.nombre)}<small> - ${detalle}</small></b>${descripcion}</span>
         <button type="button" class="btn-usar-efecto" ${motivo ? "disabled" : ""} title="${escaparHtml(titulo)}" aria-label="${escaparHtml(titulo)}">Usar</button>
     </li>`;
 }
@@ -2180,6 +2213,9 @@ function inicializarTurno() {
     document.getElementById("btnIniciarTurno").addEventListener("click", () => {
         reproducir("click");
         const boton = BOTON_TURNO_POR_ZONA[personaje.zona] ?? BOTON_TURNO_POR_ZONA.noSegura;
+        // Descansar con armas lanzadas sin recoger las pierde: se pide confirmación
+        const esDescanso = boton.accion === descansoCorto || boton.accion === descansoLargo;
+        if (esDescanso && !confirmarPerderArmasLanzadas()) return;
         const resumen = boton.accion(personaje);
         actualizarTodo();
         mostrarPopupInfo(boton.titulo, resumen.map(escaparHtml));
@@ -2948,12 +2984,13 @@ function actualizarZona() {
 
 /* Menú del inventario: inventario o baúl de la base ________________________ */
 function inicializarMenuInventario() {
-    const ventanas = { inventario: "modalInventario", baul: "modalBaul" };
+    const ventanas = { inventario: "modalInventario", objetosClave: "modalObjetosClave", baul: "modalBaul" };
     crearMenuSao({
         boton: document.getElementById("btnInventario"),
         menu: document.getElementById("menuInventario"),
         opciones: () => [
             { clave: "inventario", etiqueta: "Inventario", icono: "inventario" },
+            { clave: "objetosClave", etiqueta: `Objetos clave (${personaje.objetosClave.length})`, icono: "llave" },
             { clave: "baul", etiqueta: "Baúl de la base", icono: "baul" }
         ],
         alElegir: (clave, menu) => {
@@ -4252,7 +4289,8 @@ function actualizarObjetos() {
 }
 
 /* Objetos clave (pestaña del inventario) ___________________________________ */
-// No ocupan hueco ni se usan: solo se crean, editan y descartan.
+// Ventana propia (#modalObjetosClave, desde el menú del inventario). No ocupan hueco ni se usan:
+// solo se crean, editan y descartan.
 
 const listaObjetosClaveEl = document.getElementById("listaObjetosClave");
 /** Abre el formulario de un objeto clave (índice, o null para crear); se asigna en inicializarObjetosClave */
@@ -4274,24 +4312,7 @@ function actualizarObjetosClave() {
     pintarLista(listaObjetosClaveEl, lista.length
         ? lista.map(filaObjetoClave).join("")
         : `<p class="lista-vacia">No tienes objetos clave.</p>`);
-    document.getElementById("contadorObjetosClave").textContent = lista.length ? `(${lista.length})` : "";
-}
-
-/* Pestañas del inventario: objetos (con huecos) y objetos clave */
-function inicializarPestanasInventario() {
-    const modalEl = document.getElementById("modalInventario");
-    const pestanas = modalEl.querySelectorAll(".pestana-inventario");
-    pestanas.forEach(pestana => pestana.addEventListener("click", () => {
-        reproducir("click");
-        pestanas.forEach(p => {
-            const activa = p === pestana;
-            p.classList.toggle("activa", activa);
-            p.setAttribute("aria-selected", String(activa));
-        });
-        modalEl.querySelectorAll("[data-pestana-panel]").forEach(panel => {
-            panel.hidden = panel.dataset.pestanaPanel !== pestana.dataset.pestana;
-        });
-    }));
+    document.getElementById("contadorObjetosClave").textContent = `(${lista.length})`;
 }
 
 function inicializarObjetosClave() {
@@ -4312,7 +4333,7 @@ function inicializarObjetosClave() {
         campo("modalObjetoClaveLabel").textContent = objeto ? "Editar objeto clave" : "Crear objeto clave";
         campo("btnGuardarObjetoClave").title = texto;
         campo("btnGuardarObjetoClave").setAttribute("aria-label", texto);
-        ventana.abrirDesde(document.getElementById("modalInventario"));
+        ventana.abrirDesde(document.getElementById("modalObjetosClave"));
     };
 
     const guardar = () => {
@@ -4870,7 +4891,7 @@ function inicializarCrearObjeto() {
         bootstrap.Modal.getOrCreateInstance(modalOrigen).hide();
     };
 
-    document.querySelectorAll(".btn-crear-objeto").forEach(boton => {
+    document.querySelectorAll(".btn-crear-objeto:not(#btnCrearObjetoClave)").forEach(boton => {
         boton.addEventListener("click", () => {
             reproducir("click");
             destino = boton.dataset.destino;
@@ -4995,6 +5016,7 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarModsEquipo();
     inicializarHabilidadesReliquia();
     inicializarEfectosEquipo();
+    inicializarArmasLanzadas();
     actualizarModificadores();
     parseModificadoresEquipo();
     actualizarTodo();
@@ -5009,7 +5031,6 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarCatalogoArtes();
     inicializarObjetos();
     inicializarCor();
-    inicializarPestanasInventario();
     inicializarObjetosClave();
     inicializarPerfil();
     precargarSonidos();

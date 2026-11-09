@@ -152,12 +152,11 @@ export function descansoCorto(pj) {
 
     resumen.push(...reiniciarEnfriamientos(pj));
 
-    // Las armas lanzadas se recogen
-    for (const mano of ["manoIzquierda", "manoDerecha"]) {
-        if (!pj[mano]?.lanzada) continue;
-        pj[mano].lanzada = false;
-        resumen.push(`Recoges ${pj[mano].nombre?.trim() || "el arma lanzada"}`);
+    // Las armas lanzadas que no se han recogido se pierden (la interfaz pide confirmación antes)
+    for (const { equipo } of pj.armasLanzadas ?? []) {
+        resumen.push(`Pierdes ${equipo.nombre?.trim() || "el arma lanzada"} (no la recogiste)`);
     }
+    pj.armasLanzadas = [];
     pj.calcularCaracteristicas();
     if (!resumen.length) resumen.push("Sin cambios");
     return resumen;

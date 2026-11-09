@@ -6,7 +6,7 @@
 // Ciclos de módulos: PJ.js importa este módulo y este importa zonas.js, objetos.js, ataque.js...
 // Es seguro porque nada de lo importado se usa al cargarse, solo dentro de funciones.
 
-import { ARMAS, TIPOS_DOS_MANOS, ELEMENTOS, cargarValoresElementales, equipoActivo } from "./equipamiento.js";
+import { ARMAS, TIPOS_DOS_MANOS, ELEMENTOS, cargarValoresElementales } from "./equipamiento.js";
 import { MANOS, partesDeMano } from "./turno.js";
 import { esZonaSegura, MOTIVOS_ZONA } from "./zonas.js";
 import { gastarEstricto } from "./objetos.js";
@@ -378,8 +378,7 @@ export function desequiparArte(pj, arte) {
 /** Mano con la que se usa un arte de arma (null si no hay arma de esos tipos) */
 export function manoDeArte(pj, arte) {
     if (arte.uso?.tipo !== "arma") return null;
-    // Un arma lanzada no cuenta hasta recogerla
-    const tiene = (mano) => arte.uso.armas.includes(pj[mano]?.tipo) && equipoActivo(pj[mano]);
+    const tiene = (mano) => arte.uso.armas.includes(pj[mano]?.tipo);
     if (arte.uso.ambasManos) return MANOS.every(tiene) ? "manoDerecha" : null;
     return MANOS.find(tiene) ?? null;
 }

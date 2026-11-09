@@ -50,7 +50,6 @@ export function motivoNoUsarHabilidad(pj, ranura, indice) {
     const habilidad = equipo?.reliquia?.habilidades?.[indice];
     if (!habilidad) return "Esa habilidad no existe.";
     if (!equipo.tipo) return "La reliquia no está equipada.";
-    if (!equipoActivo(equipo)) return "Está lanzada: recógela primero.";
     if (habilidad.restante > 0) {
         return `En enfriamiento: ${habilidad.restante} turno${habilidad.restante === 1 ? "" : "s"}.`;
     }

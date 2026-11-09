@@ -3,7 +3,7 @@
 // No toca el DOM: recibe el personaje, lo modifica y devuelve lo que ha pasado.
 
 import { TURNOS_PERMANENTE } from "./modificador.js";
-import { TIPOS_DOS_MANOS, estaLanzada } from "./equipamiento.js";
+import { TIPOS_DOS_MANOS } from "./equipamiento.js";
 import { esZonaSegura } from "./zonas.js";
 import { avanzarEnfriamientos } from "./reliquias.js";
 
@@ -95,17 +95,9 @@ export function manoVacia(pj, propMano) {
     return !pj[propMano]?.tipo && !TIPOS_DOS_MANOS.includes(pj[otra]?.tipo);
 }
 
-/** Mano sin nada que usar: vacía, o con un arma lanzada (sigue en su ranura pero la mano está libre) */
-export function manoSinUso(pj, propMano) {
-    const otra = propMano === "manoIzquierda" ? "manoDerecha" : "manoIzquierda";
-    const propia = pj[propMano];
-    const otraOcupaDos = TIPOS_DOS_MANOS.includes(pj[otra]?.tipo) && !estaLanzada(pj[otra]);
-    return (!propia?.tipo || estaLanzada(propia)) && !otraOcupaDos;
-}
-
-/** Mano libre: sin nada que usar y con su acción disponible. Devuelve la primera (o null). */
+/** Mano libre: vacía y con su acción disponible. Devuelve la primera (o null). */
 export function manoLibre(pj) {
-    return MANOS.find(mano => manoSinUso(pj, mano) && puedeGastar(pj, parteDeMano(mano))) ?? null;
+    return MANOS.find(mano => manoVacia(pj, mano) && puedeGastar(pj, parteDeMano(mano))) ?? null;
 }
 
 /** Devuelve una acción gastada (para corregir un clic por error). */

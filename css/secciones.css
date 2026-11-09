@@ -594,7 +594,7 @@
 
 .inputNombreEquipo {
     flex: 2;
-    min-width: 100px;
+    min-width: 70px;
     padding: 4px 8px;
     font-size: 13px;
     border: 1px solid #ccc;
@@ -718,8 +718,9 @@
     border-radius: 5px;
 }
 
-/* Botón Usar: icono del arma o escudo (scripts/iconos.js) */
-.btn-usar-equipo {
+/* Botón Usar: icono del arma o escudo (scripts/iconos.js). Lanzar (lanzas y cuchillos) es igual */
+.btn-usar-equipo,
+.btn-lanzar-equipo {
     width: 40px;
     height: 40px;
     flex-shrink: 0;
@@ -731,16 +732,20 @@
     transition: transform 0.1s, opacity 0.2s;
 }
 
-.btn-usar-equipo:hover {
+.btn-usar-equipo:hover,
+.btn-lanzar-equipo:hover {
     transform: scale(1.08);
 }
 
-.btn-usar-equipo:active {
+.btn-usar-equipo:active,
+.btn-lanzar-equipo:active {
     transform: scale(0.96);
 }
 
 .btn-usar-equipo:hover .icono-sao,
-.btn-usar-equipo:focus-visible .icono-sao {
+.btn-usar-equipo:focus-visible .icono-sao,
+.btn-lanzar-equipo:hover .icono-sao,
+.btn-lanzar-equipo:focus-visible .icono-sao {
     --fondo: #FBFBFB;
     --glifo: #EBA601;
 }
@@ -752,8 +757,57 @@
 }
 
 /* Sin acciones disponibles: se puede pulsar igualmente (pide confirmación) */
-.btn-usar-equipo.sin-accion {
+.btn-usar-equipo.sin-accion,
+.btn-lanzar-equipo.sin-accion {
     opacity: 0.45;
+}
+
+.btn-lanzar-equipo[hidden] {
+    display: none;
+}
+
+/* Atacar y lanzar van juntos al final de la fila de la tarjeta */
+.acciones-arma {
+    display: flex;
+    gap: 6px;
+    flex: none;
+    margin-left: auto;
+}
+
+/* Recoger armas lanzadas: dentro del h2 de Equipamiento, como el + de Modificadores (.btn-h2) */
+.armas-lanzadas {
+    display: flex;
+    gap: 6px;
+}
+
+.btn-recoger-arma {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    background: #fbfbfb;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.1s, background 0.2s;
+}
+
+.btn-recoger-arma:hover {
+    background: #ffffff;
+    transform: scale(1.1);
+}
+
+.btn-recoger-arma .icono-sao {
+    --fondo: transparent;
+    --glifo: #d1ab52;
+    filter: none;
+}
+
+.btn-recoger-arma.sin-accion {
+    opacity: 0.55;
+}
+
+.armas-lanzadas[hidden] {
+    display: none;
 }
 
 .equipamiento-mods-header {
@@ -1609,49 +1663,6 @@
     padding-left: 18px;
 }
 
-/* Pestañas del inventario: objetos y objetos clave */
-.pestanas-inventario {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 10px;
-    border-bottom: 2px solid #d1ab52;
-}
-
-.pestana-inventario {
-    padding: 6px 14px;
-    border: none;
-    border-radius: 6px 6px 0 0;
-    background: #e4e4e4;
-    color: #555;
-    font-weight: bold;
-    cursor: pointer;
-}
-
-.pestana-inventario.activa {
-    background: #d1ab52;
-    color: #fff;
-}
-
-.pestana-inventario.activa .contador-objetos {
-    color: #fff;
-}
-
-[data-pestana-panel][hidden] {
-    display: none !important;
-}
-
-.cabecera-objetos-clave {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 8px;
-}
-
-.cabecera-objetos-clave .pista-form {
-    margin: 0;
-}
-
 /* Objetos que no caben en la capacidad del inventario */
 .modal-sao .fila-objeto.sobrante {
     border-color: #c0392b;
@@ -2315,52 +2326,6 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
     color: #6c3483;
 }
 
-/* Lanzas y cuchillos: lanzar y recoger; la tarjeta del arma lanzada sale atenuada */
-.btn-lanzar-equipo,
-.btn-recoger-equipo {
-    flex: none;
-    padding: 4px 12px;
-    border: none;
-    border-radius: 12px;
-    background: #3478bf;
-    color: #fff;
-    font-size: 13px;
-    font-weight: bold;
-    cursor: pointer;
-}
-
-.btn-recoger-equipo {
-    background: #d1ab52;
-}
-
-.btn-lanzar-equipo[hidden],
-.btn-recoger-equipo[hidden],
-.equipamiento-lanzada[hidden] {
-    display: none;
-}
-
-.btn-lanzar-equipo.sin-accion,
-.btn-recoger-equipo.sin-accion {
-    opacity: 0.6;
-}
-
-.equipamiento-lanzada {
-    margin: 0;
-    padding: 3px 8px;
-    border-left: 3px solid #7f8c8d;
-    border-radius: 4px;
-    background: rgba(127, 140, 141, 0.12);
-    font-size: 12px;
-    font-weight: bold;
-    color: #5d6d6e;
-}
-
-.equipamiento.lanzada .btn-usar-equipo,
-.equipamiento.lanzada .mods-equipo,
-.equipamiento.lanzada .efectos-equipo {
-    opacity: 0.45;
-}
-
 .equipamiento-descripcion {
     margin: 0;
     font-size: 12px;
@@ -2698,6 +2663,17 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
 
 .efecto-texto small {
     color: #666;
+}
+
+/* Descripción del efecto en la tarjeta: dos líneas como mucho */
+.efecto-descripcion {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    font-style: italic;
+    color: #555;
 }
 
 .btn-usar-efecto,

@@ -67,7 +67,6 @@ export function motivoNoUsarEfecto(pj, ranura, indice) {
     const efecto = equipo?.efectos?.[indice];
     if (!efecto) return "Ese efecto no existe.";
     if (!equipo.tipo) return "El equipo no está puesto.";
-    if (!equipoActivo(equipo)) return "Está lanzada: recógela primero.";
     if (efecto.tipo === "pasiva") return "Los efectos pasivos no se usan: están siempre activos.";
     if ((Number(pj.puntosArte) || 0) < efecto.costePA) return `Faltan PA: cuesta ${efecto.costePA} y tienes ${pj.puntosArte}.`;
     return null;

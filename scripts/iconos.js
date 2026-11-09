@@ -433,6 +433,19 @@ export function tieneIconoSao(clave) {
     return Boolean(GLIFOS[clave]);
 }
 
+/* Lanzar un arma (botón Lanzar de la tarjeta): el arma volando arriba a la derecha y, detrás, su trayectoria
+   en arco de puntos que sale de abajo a la izquierda */
+const lanzando = (arma) => `<g transform="translate(63 37) scale(0.74) translate(-50 -50)">${arma}</g>
+    <path class="t" style="stroke-width:6;stroke-dasharray:0.1 10" d="M15 86Q16 62 36 59"/>`;
+/* Recoger un arma lanzada (iconos del título de Equipamiento): el arma y una flecha que vuelve */
+const recogiendo = (arma) => `<g transform="translate(42 44) scale(0.8) translate(-50 -50)">${arma}</g>
+    <path class="t" style="stroke-width:7" d="M84 58A20 20 0 0 1 60 84"/>
+    <polygon class="p" points="52,84 64,74 66,92"/>`;
+GLIFOS.lanzarCuchillo = lanzando(GLIFOS.cuchillo);
+GLIFOS.lanzarLanza = lanzando(GLIFOS.lanza);
+GLIFOS.recogerCuchillo = recogiendo(GLIFOS.cuchillo);
+GLIFOS.recogerLanza = recogiendo(GLIFOS.lanza);
+
 export function iconoSao(clave) {
     const glifo = GLIFOS[clave] ?? GLIFOS.elemental;
     return `<svg class="icono-sao" viewBox="0 0 100 100" aria-hidden="true" focusable="false">

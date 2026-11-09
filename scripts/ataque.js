@@ -84,15 +84,17 @@ export function calcularDannoAtaque(pj, item, critico) {
 /**
  * Daño al lanzar una lanza o un cuchillo equipado (la tirada es la del ataque normal, prepararAtaque):
  * daño del arma + bonificador a distancia. Crítico y sigilo multiplican el bonificador como en el
- * cuerpo a cuerpo; el cuchillo lanzado no duplica su daño (como las dagas arrojadizas, 09 §5 #36).
+ * cuerpo a cuerpo, y en sigilo el cuchillo también duplica su daño, como al atacar con él.
  * El daño elemental del arma va aparte y la poción aplicada se lleva en el golpe.
  */
 export function calcularDannoLanzamientoArma(pj, item, critico) {
     const dannoArma = Math.max(0, Number(item?.danno) || 0);
     const bono = Math.max(0, Number(pj.dDistancia) || 0);
+    let multArma = 1;
     let multBono = critico ? 2 : 1;
     const notas = ["Arma lanzada: queda en el suelo hasta recogerla."];
     if (pj.enSigilo) {
+        multArma = item?.tipo === "cuchillo" ? 2 : 1;
         multBono = critico ? 4 : 2;
         notas.push("Ataque desde el sigilo. Si el objetivo no muere, sales del sigilo.");
     }
@@ -100,8 +102,8 @@ export function calcularDannoLanzamientoArma(pj, item, critico) {
     if (item?.pocionAplicada) notas.push(`Poción aplicada: ${describirEfecto(item.pocionAplicada)}`);
 
     return {
-        total: dannoArma + bono * multBono,
-        desglose: [`${dannoArma} (Arma)`, `${conMult(bono, multBono)} (Bonif. distancia)`],
+        total: dannoArma * multArma + bono * multBono,
+        desglose: [`${conMult(dannoArma, multArma)} (Arma)`, `${conMult(bono, multBono)} (Bonif. distancia)`],
         elemental: dannoElementalArma(item),
         efecto: efectoDeObjeto(item?.pocionAplicada),
         notas

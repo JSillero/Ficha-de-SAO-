@@ -1,6 +1,6 @@
-import Equipamiento, { estaLanzada } from "./equipamiento.js";
+import Equipamiento from "./equipamiento.js";
 import Modificador, { TURNOS_PERMANENTE, cargarModificador } from "./modificador.js";
-import { TAMANO_INVENTARIO, crearInventarioVacio, ajustarInventario, cargarObjeto, cargarBaul, cargarObjetosClave, cargarEquipo } from "./objetos.js";
+import { TAMANO_INVENTARIO, crearInventarioVacio, ajustarInventario, cargarObjeto, cargarBaul, cargarObjetosClave, cargarArmasLanzadas, cargarEquipo } from "./objetos.js";
 import { ZONAS, ZONA_POR_DEFECTO } from "./zonas.js";
 import { cargarArtes, modificadorArtes } from "./artes.js";
 import { modificadorEfectosEquipo } from "./efectosEquipo.js";
@@ -104,6 +104,7 @@ export default class PJ {
         this.inventario = crearInventarioVacio();
         this.baul = [];
         this.objetosClave = []; // [{ nombre, descripcion }]: no ocupan hueco ni se usan
+        this.armasLanzadas = []; // [{ mano, equipo }]: lanzas y cuchillos lanzados sin recoger (objetos.js)
         this.comidaActiva = ""; // nombre de la comida cuyo efecto está activo (sus modificadores llevan origen "comida")
         this.cor = 0; // monedas: no ocupan hueco, sin límite, nunca negativas
 
@@ -299,8 +300,8 @@ export default class PJ {
             return acc + ((obj['modificado'] == atributo) ? obj.numero : 0);
         }, 0));
 
-        /* Saca los modificadores del equipamiento (un arma lanzada no aporta nada hasta recogerla) */
-        [this.manoDerecha, this.manoIzquierda].filter(mano => !estaLanzada(mano)).forEach(mano => {
+        /* Saca los modificadores del equipamiento */
+        [this.manoDerecha, this.manoIzquierda].forEach(mano => {
             acumulado += Number(mano.modificadores.reduce(function (acc, obj) {
                 return acc + ((obj['modificado'] == atributo) ? obj.numero : 0);
             }, 0));
@@ -394,6 +395,9 @@ export default class PJ {
         /* Objetos clave (las fichas antiguas no tienen: lista vacía) */
         this.objetosClave = cargarObjetosClave(jsonObject.objetosClave);
 
+        /* Lanzas y cuchillos lanzados sin recoger */
+        this.armasLanzadas = cargarArmasLanzadas(jsonObject.armasLanzadas);
+
         /* Equipo (con la poción aplicada, si la hay) */
         this.equipoArmadura = cargarEquipo(jsonObject.equipoArmadura);
         this.manoDerecha = cargarEquipo(jsonObject.manoDerecha);
@@ -454,6 +458,7 @@ export default class PJ {
             inventario: this.inventario, // null en los huecos vacíos
             baul: this.baul,
             objetosClave: this.objetosClave,
+            armasLanzadas: this.armasLanzadas,
 
             /* Equipo */
             equipoArmadura: this.equipoArmadura,
