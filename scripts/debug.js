@@ -144,8 +144,15 @@ export function crearPersonajePrueba() {
         cargarArte({
             id: "prueba-pasiva", idCatalogo: null, equipada: false, nombre: "pasiva", tipo: "pasiva", grupo: "propia",
             descripcion: "regenera", requisitos: [], modificadores: [{ modificado: "regeneracion", numero: 2 }]
+        }),
+        // Habilidad onírica (Underworld): equipada, sin memoria ni requisitos (el diario va debajo)
+        cargarArte({
+            id: "prueba-onirica", onirica: true, nombre: "sueño", tipo: "pasiva", descripcion: "onírica",
+            modificadores: [{ modificado: "percepcion", numero: 1 }]
         })
     ];
+    // Diario: varias páginas con formato (ya saneadas, para que la ida y vuelta las deje igual)
+    pj.diario = ["<b>Día 1</b><div>texto <i>en cursiva</i></div>", "<ul><li>uno</li><li><u>dos</u></li></ul>", ""];
     pj.calcularCaracteristicas();
     return pj;
 }
@@ -222,6 +229,9 @@ export function validarFicha(pj) {
         .forEach(hab => {
             if (pj[hab] > maxHab) avisos.push(`${hab} = ${pj[hab]} supera el máximo de su nivel (${maxHab}).`);
         });
+    if (!pj.esUnderworld && pj.sacro > 0) avisos.push(`Sacro = ${pj.sacro} sin la casilla Underworld (debería ser 0).`);
+    if (!Array.isArray(pj.diario) || pj.diario.length === 0) avisos.push("El diario no tiene ninguna página (debería tener al menos una).");
+    if (!pj.esUnderworld && pj.dMagico !== 0) avisos.push(`Daño mágico = ${pj.dMagico} sin la casilla Underworld (debería ser 0).`);
 
     const penalizacion = Number(pj.equipoArmadura?.penalizacionAtletismo) || 0;
     if (penalizacion > pj.atletismo) {

@@ -5,6 +5,7 @@ import Modificador, { TURNOS_PERMANENTE } from "./modificador.js";
 import PJ from "./PJ.js";
 import { VALORES_COMBATE, PROFESIONES, crearResumenFicha } from "./resumenFicha.js";
 import { tirarFalloEmbriaguez } from "./embriaguez.js";
+import { sanearHtmlDiario, paginaLlena, anadirPagina, borrarPagina, motivoNoAnadirPagina, MAX_CARACTERES_PAGINA, ETIQUETA_TITULO_DIARIO } from "./diario.js";
 import { ejecutarTirada, combinarModos, esCritico, mostrarPopupDanno } from "./dados.js";
 import { prepararAtaque, calcularDannoAtaque, prepararLanzamiento, calcularDannoLanzamiento, calcularDannoLanzamientoArma, describirEfecto } from "./ataque.js";
 import {
@@ -43,6 +44,7 @@ import {
     equiparArte, desequiparArte, motivoNoEquiparArte, motivoNoDesequiparArte, usarArte, motivoNoUsarArte, partesDeArte,
     cargarArte, cargarRequisito, cumpleRequisitos, ajustarMemoriaArtes, GRUPOS_ARTE, TIPOS_REQUISITO,
     desbloqueosDisponibles, desbloqueosNaturales, anadirDesbloqueos, quitarDesbloqueos, motivoNoConseguirArte, conseguirArte,
+    motivoInactiva, crearOnirica, motivoNoCrearOnirica,
     ETIQUETAS_CARACTERISTICA, ETIQUETAS_HABILIDAD, ETIQUETAS_ARMADURA as ETIQUETAS_TIPO_ARMADURA
 } from "./artes.js";
 
@@ -109,7 +111,7 @@ for (const element of inputs) {
 
         // Si es un input de habilidad, aplicar restricciones de límite máximo y puntos disponibles
         if (element.closest('#habilidadesDiv')) {
-            if (!puedeRepartirHabilidades(personaje)) {
+            if (!puedeRepartirHabilidades(personaje) || !personaje.puedeUsarHabilidad(element.id)) {
                 element.value = personaje[element.id];
                 return;
             }
@@ -560,6 +562,8 @@ function actualizarHabilidades() {
     culturaInp.value = personaje.cultura;
     profesionInp.value = personaje.profesion;
     sacroInp.value = personaje.sacro;
+    // Sacro solo se ve en los personajes del Underworld (casilla del perfil)
+    document.getElementById("habSacro").hidden = !personaje.esUnderworld;
 
     // 2. Actualizar el contador superior
     const disponibles = personaje.getPuntosHabilidadDisponibles();
@@ -648,6 +652,9 @@ function actuaizarTextos() {
     for (const textarea of textareas) {
         textarea.value = personaje[textarea.id];
     }
+    // Los protagonistas no ven el apartado de notas (Notas y Perfil psicológico): usan el diario.
+    // Los textos no se borran: vuelven a verse si se quita la casilla
+    document.getElementById("seccionNotas").hidden = Boolean(personaje.protagonista);
 }
 
 /* Valores de combate (VALORES_COMBATE en resumenFicha.js) ____________________ */
@@ -675,9 +682,10 @@ function formatearNumero(valor) {
 function actualizarCaracteristicas() {
     if (!valoresCombateDiv.children.length) construirValoresCombate();
 
-    VALORES_COMBATE.forEach(({ clave, unidad }) => {
+    VALORES_COMBATE.forEach(({ clave, unidad, soloUnderworld }) => {
         const tarjeta = valoresCombateDiv.querySelector(`[data-valor="${clave}"]`);
         if (!tarjeta) return;
+        tarjeta.hidden = Boolean(soloUnderworld) && !personaje.esUnderworld;
         tarjeta.querySelector(".valor-numero").innerHTML =
             formatearNumero(personaje[clave]) + (unidad ? ` <small>${unidad}</small>` : "");
 
@@ -3011,6 +3019,7 @@ function inicializarMenuInventario() {
 
 const listaArtesEquipadasEl = document.getElementById("listaArtesEquipadas");
 const listaArtesSinEquiparEl = document.getElementById("listaArtesSinEquipar");
+const listaOniricasEl = document.getElementById("listaOniricas");
 
 function inicializarArtes() {
     const ventanas = { equipadas: "modalArtesEquipadas", sinEquipar: "modalArtesSinEquipar" };
@@ -3031,7 +3040,17 @@ function inicializarArtes() {
         }
     });
 
-    [listaArtesEquipadasEl, listaArtesSinEquiparEl].forEach(lista => lista.addEventListener("click", alPulsarArte));
+    [listaArtesEquipadasEl, listaArtesSinEquiparEl, listaOniricasEl].forEach(lista => lista.addEventListener("click", alPulsarArte));
+    // Habilidades oníricas (Underworld): se crean desde las artes equipadas, sin catálogo
+    document.getElementById("btnCrearOnirica").addEventListener("click", (e) => {
+        const motivo = motivoNoCrearOnirica(personaje);
+        if (motivo) {
+            mostrarPopupInfo("No se puede", [escaparHtml(motivo)]);
+            return;
+        }
+        reproducir("click");
+        abrirEditorOnirica(null, e.target.closest(".modal"));
+    });
     inicializarDesbloqueos();
 
     // Tarjetas de "Artes pasivas" (columna derecha): clic o Enter/Espacio abre su detalle
@@ -3047,7 +3066,7 @@ function inicializarArtes() {
         }
         const arte = personaje.artes[Number(tarjeta?.dataset.index)];
         // Las inactivas (requisitos sin cumplir) no abren notificación
-        if (!arte || motivoRequisitos(personaje, arte)) return;
+        if (!arte || motivoInactiva(personaje, arte)) return;
         reproducir("click");
         mostrarDetalleArte(arte);
     };
@@ -3059,7 +3078,7 @@ function inicializarArtes() {
     });
 }
 
-function alPulsarArte(e) {
+async function alPulsarArte(e) {
     const boton = e.target.closest("button[data-accion]");
     const arte = personaje.artes[Number(boton?.closest(".fila-objeto")?.dataset.index)];
     if (!boton || boton.disabled || !arte) return;
@@ -3089,12 +3108,15 @@ function alPulsarArte(e) {
         case "editar":
             abrirEditorArte(arte, boton.closest(".modal"));
             return;
-        case "borrar":
-            if (!confirm(`¿Borrar el arte ${arte.nombre}? No se puede deshacer.`)) return;
+        case "borrar": {
+            const cosa = arte.onirica ? "la habilidad onírica" : "el arte";
+            const ok = await confirmarSao({ titulo: "Borrar", texto: `¿Borrar ${cosa} ${arte.nombre}? No se puede deshacer.` });
+            if (!ok || !personaje.artes.includes(arte)) return;
             personaje.artes.splice(personaje.artes.indexOf(arte), 1);
             personaje.calcularCaracteristicas();
             actualizarTodo();
             return;
+        }
     }
 }
 
@@ -3158,11 +3180,18 @@ function requisitosArteHtml(arte) {
  */
 function filaArte(arte, indice, { enCatalogo = false, motivoAnadir = null, autor = null, quitable = false } = {}) {
     const activa = arte.tipo === "activa";
-    const inactiva = arte.equipada && motivoRequisitos(personaje, arte);
-    const coste = [activa ? `${arte.costePA} PA` : "Pasiva", `${arte.ranuras} ranura${arte.ranuras === 1 ? "" : "s"}`].join(" · ");
+    const inactiva = arte.equipada && motivoInactiva(personaje, arte);
+    const coste = [activa ? `${arte.costePA} PA` : "Pasiva",
+        arte.onirica ? "Onírica" : `${arte.ranuras} ranura${arte.ranuras === 1 ? "" : "s"}`].join(" · ");
 
     let botones;
-    if (enCatalogo) {
+    if (arte.onirica) {
+        // Onírica: siempre equipada (no se desequipa); se edita, se borra y, si es activa, se usa
+        const motivoUsar = activa ? motivoNoUsarArte(personaje, arte) : null;
+        botones = botonObjeto("editar", "editar", "Editar")
+            + botonObjeto("borrar", "descartar", "Borrar")
+            + (activa ? botonObjeto("usar", "usar", motivoUsar || `Usar (${arte.costePA} PA)`, Boolean(motivoUsar)) : "");
+    } else if (enCatalogo) {
         botones = (quitable ? botonObjeto("quitarSala", "descartar", "Quitar del catálogo de la sala") : "")
             + botonObjeto("anadir", "artesSinEquipar", motivoAnadir || "Añadir a las artes sin equipar (gasta 1 desbloqueo de arte)", Boolean(motivoAnadir));
     } else if (arte.equipada) {
@@ -3179,9 +3208,11 @@ function filaArte(arte, indice, { enCatalogo = false, motivoAnadir = null, autor
     }
 
     // Equipada, ocupa tantos huecos como ranuras (grid-row: span N en la lista de equipadas)
-    const huecos = arte.equipada && arte.ranuras > 1 ? ` style="--ranuras:${arte.ranuras}"` : "";
+    const huecos = arte.equipada && !arte.onirica && arte.ranuras > 1 ? ` style="--ranuras:${arte.ranuras}"` : "";
+    const tipoTexto = `${arte.onirica ? "Onírica " : ""}${activa ? "activa" : "pasiva"}`;
+    const icono = arte.onirica ? "onirica" : activa ? "arteActiva" : "artePasiva";
     return `<div class="fila-objeto fila-arte${inactiva ? " inactiva" : ""}" data-index="${indice}"${huecos}>
-        <span class="objeto-icono" title="${activa ? "Activa" : "Pasiva"}">${iconoSao(activa ? "arteActiva" : "artePasiva")}</span>
+        <span class="objeto-icono" title="${tipoTexto[0].toUpperCase() + tipoTexto.slice(1)}">${iconoSao(icono)}</span>
         <div class="objeto-info">
             <div class="objeto-cabecera">
                 <span class="objeto-nombre">${escaparHtml(arte.nombre)}</span>
@@ -3199,8 +3230,17 @@ function filaArte(arte, indice, { enCatalogo = false, motivoAnadir = null, autor
 
 function actualizarArtes() {
     const conIndice = personaje.artes.map((arte, i) => ({ arte, i }));
-    const equipadas = conIndice.filter(({ arte }) => arte.equipada);
-    const sinEquipar = conIndice.filter(({ arte }) => !arte.equipada);
+    const oniricas = conIndice.filter(({ arte }) => arte.onirica);
+    const equipadas = conIndice.filter(({ arte }) => arte.equipada && !arte.onirica);
+    const sinEquipar = conIndice.filter(({ arte }) => !arte.equipada && !arte.onirica);
+
+    // Habilidades oníricas: solo con Underworld (si no, se guardan pero no se ven)
+    const conUnderworld = Boolean(personaje.esUnderworld);
+    document.getElementById("bloqueOniricas").hidden = !conUnderworld;
+    document.getElementById("btnCrearOnirica").hidden = !conUnderworld;
+    pintarLista(listaOniricasEl, !conUnderworld ? "" : oniricas.length
+        ? oniricas.map(({ arte, i }) => filaArte(arte, i)).join("")
+        : `<p class="lista-vacia">Sin habilidades oníricas. Créalas con el botón de arriba: no ocupan memoria ni gastan desbloqueos.</p>`);
 
     // Equipadas: las artes y después un hueco libre por cada ranura de memoria que quede
     const usadas = ranurasUsadas(personaje);
@@ -3289,9 +3329,10 @@ function comprobarMemoriaArtes() {
 const listaArtesPasivasEl = document.getElementById("listaArtesPasivas");
 
 function actualizarArtesPasivas() {
+    // Las oníricas solo salen con Underworld
     const pasivas = personaje.artes
         .map((arte, indice) => ({ arte, indice }))
-        .filter(({ arte }) => arte.equipada && arte.tipo === "pasiva");
+        .filter(({ arte }) => arte.equipada && arte.tipo === "pasiva" && (!arte.onirica || personaje.esUnderworld));
     // Las pasivas del equipo puesto también (siempre activas mientras se lleva)
     const deEquipo = pasivasDeEquipo(personaje);
     const visible = pasivas.length + deEquipo.length > 0;
@@ -3318,7 +3359,7 @@ function actualizarArtesPasivas() {
     }).join("");
 
     pintarLista(listaArtesPasivasEl, htmlEquipo + pasivas.map(({ arte, indice }) => {
-        const motivo = motivoRequisitos(personaje, arte);
+        const motivo = motivoInactiva(personaje, arte);
         const modificadores = arte.modificadores.map(mod => {
             const numero = Number(mod.numero) || 0;
             return `<span class="chip-mod-pasiva ${numero < 0 ? "negativo" : "positivo"}">${conSigno(numero)} ${escaparHtml(ETIQUETAS_ATRIBUTO[mod.modificado] ?? mod.modificado)}</span>`;
@@ -3327,9 +3368,10 @@ function actualizarArtesPasivas() {
         const pulsable = motivo ? "" : ` role="button" tabindex="0" title="Ver detalle" aria-label="${escaparHtml(arte.nombre)}: ver detalle"`;
         return `<div class="arte-pasiva${motivo ? " inactiva" : ""}" data-index="${indice}"${pulsable}>
             <div class="arte-pasiva-cabecera">
-                <span class="arte-pasiva-icono">${iconoSao("artePasiva")}</span>
+                <span class="arte-pasiva-icono">${iconoSao(arte.onirica ? "onirica" : "artePasiva")}</span>
                 <span class="arte-pasiva-nombre">${escaparHtml(arte.nombre)}</span>
-                ${motivo ? `<span class="arte-pasiva-estado" title="${escaparHtml(motivo)}">Inactiva</span>` : ""}
+                ${motivo ? `<span class="arte-pasiva-estado" title="${escaparHtml(motivo)}">Inactiva</span>`
+                    : arte.onirica ? `<span class="arte-pasiva-estado" title="Habilidad onírica">Onírica</span>` : ""}
             </div>
             ${modificadores ? `<div class="arte-pasiva-mods">${modificadores}</div>` : ""}
             ${arte.descripcion ? `<div class="arte-pasiva-descripcion">${escaparHtml(arte.descripcion)}</div>` : ""}
@@ -3386,12 +3428,54 @@ function crearVentanaHija(modalEl) {
     };
 }
 
+/* Confirmación SAO (#modalConfirmar), en lugar de confirm() ____________________
+   Si hay otra ventana abierta, se oculta mientras se pregunta y se vuelve a ella. */
+let ventanaConfirmar = null;
+let resolverConfirmar = null;
+
+function inicializarConfirmar() {
+    const modalEl = document.getElementById("modalConfirmar");
+    ventanaConfirmar = crearVentanaHija(modalEl);
+    let aceptado = false;
+    modalEl.addEventListener("show.bs.modal", () => { aceptado = false; });
+    document.getElementById("btnAceptarConfirmar").addEventListener("click", () => {
+        aceptado = true;
+        reproducir("click");
+        ventanaConfirmar.cerrar();
+    });
+    // Se responde al terminar de cerrarse (después de que crearVentanaHija vuelva a la ventana de origen)
+    modalEl.addEventListener("hidden.bs.modal", () => {
+        const resolver = resolverConfirmar;
+        resolverConfirmar = null;
+        resolver?.(aceptado);
+    });
+}
+
+/**
+ * Pregunta sí / no con una ventana SAO.
+ * @returns {Promise<boolean>} true si se acepta
+ */
+function confirmarSao({ titulo = "Confirmar", texto }) {
+    const modalEl = document.getElementById("modalConfirmar");
+    resolverConfirmar?.(false); // una pregunta anterior sin responder cuenta como cancelada
+    document.getElementById("modalConfirmarLabel").textContent = titulo;
+    document.getElementById("textoConfirmar").textContent = texto;
+    return new Promise(resolve => {
+        resolverConfirmar = resolve;
+        const origen = document.querySelector(".modal.show");
+        if (origen && origen !== modalEl) ventanaConfirmar.abrirDesde(origen);
+        else bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    });
+}
+
 /* Crear o editar un arte ______________________________________________________ */
 
 /** Abre el formulario para editar un arte (o para crear una si arte es null); se asigna en inicializarFormularioArte */
 let abrirEditorArte = () => {};
 /** Abre el mismo formulario para un efecto de equipo (efecto o null, ventana de origen, alGuardar(efecto)) */
 let abrirEditorEfecto = () => {};
+/** Abre el mismo formulario para una habilidad onírica (arte o null para crear, ventana de origen) */
+let abrirEditorOnirica = () => {};
 
 const ETIQUETAS_TIPO_REQUISITO = {
     nivel: "Nivel", caracteristica: "Característica", habilidad: "Habilidad",
@@ -3470,6 +3554,8 @@ function inicializarFormularioArte() {
     let edicion = null;
     /* Modo efecto de equipo: función que recibe el efecto guardado (sin requisitos, memoria ni uso), o null */
     let alGuardarEfecto = null;
+    /* Modo habilidad onírica: sin requisitos, memoria ni compartir; no gasta desbloqueo */
+    let modoOnirica = false;
 
     // Desplegables y casillas fijas
     campo("arteUsoParte").innerHTML = Object.entries(PARTES_USO_ARTE)
@@ -3581,9 +3667,10 @@ function inicializarFormularioArte() {
         pintarMods();
         actualizarCampos();
         const textoBoton = arte ? "Guardar" : "Crear";
-        const nombreTipo = alGuardarEfecto ? "efecto" : "arte";
+        const nombreTipo = alGuardarEfecto ? "efecto" : modoOnirica ? "habilidad onírica" : "arte";
         campo("modalCrearArteLabel").textContent = `${arte ? "Editar" : "Crear"} ${nombreTipo}`;
         modalEl.classList.toggle("modo-efecto", Boolean(alGuardarEfecto));
+        modalEl.classList.toggle("modo-onirica", modoOnirica);
         campo("btnGuardarArte").title = textoBoton;
         campo("btnGuardarArte").setAttribute("aria-label", textoBoton);
     };
@@ -3591,12 +3678,13 @@ function inicializarFormularioArte() {
     const guardar = () => {
         const nombre = campo("arteNombre").value.trim();
         if (!nombre) {
-            aviso.textContent = alGuardarEfecto ? "Ponle un nombre al efecto." : "Ponle un nombre al arte.";
+            aviso.textContent = alGuardarEfecto ? "Ponle un nombre al efecto."
+                : modoOnirica ? "Ponle un nombre a la habilidad onírica." : "Ponle un nombre al arte.";
             campo("arteNombre").focus();
             return;
         }
-        // Un requisito de equipo sin ningún tipo marcado no tendría sentido
-        if (requisitos.some(req => req.tipos && req.tipos.length === 0)) {
+        // Un requisito de equipo sin ningún tipo marcado no tendría sentido (las oníricas no tienen requisitos)
+        if (!modoOnirica && requisitos.some(req => req.tipos && req.tipos.length === 0)) {
             aviso.textContent = "Marca al menos un tipo en cada requisito de armadura, arma o escudo.";
             return;
         }
@@ -3634,9 +3722,17 @@ function inicializarFormularioArte() {
             ventana.cerrar();
             return;
         }
+        if (modoOnirica) datos.onirica = true; // cargarArte quita requisitos y memoria
         const arte = cargarArte(datos);
         if (edicion) {
             personaje.artes[personaje.artes.indexOf(edicion)] = arte;
+        } else if (modoOnirica) {
+            // Las oníricas no gastan desbloqueos de arte
+            const resultado = crearOnirica(personaje, arte);
+            if (!resultado.ok) {
+                aviso.textContent = resultado.resumen.join(" ");
+                return;
+            }
         } else {
             // Crear un arte nueva gasta un desbloqueo de arte (editar no)
             const resultado = conseguirArte(personaje, arte);
@@ -3649,7 +3745,7 @@ function inicializarFormularioArte() {
         reproducir("click");
         actualizarTodo();
         ventana.cerrar();
-        if (campo("arteCompartir").checked && getEstadoOnline().sala) {
+        if (!modoOnirica && campo("arteCompartir").checked && getEstadoOnline().sala) {
             // La copia de la ficha pasa a apuntar al arte compartida ("Ya la tienes" en el catálogo)
             compartirArte(arte, artesSala).then(id => {
                 if (!id) return;
@@ -3668,12 +3764,21 @@ function inicializarFormularioArte() {
     abrirEditorArte = (arte, origen) => {
         edicion = arte;
         alGuardarEfecto = null;
+        modoOnirica = Boolean(arte?.onirica);
+        rellenar(arte);
+        ventana.abrirDesde(origen);
+    };
+    abrirEditorOnirica = (arte, origen) => {
+        edicion = arte;
+        alGuardarEfecto = null;
+        modoOnirica = true;
         rellenar(arte);
         ventana.abrirDesde(origen);
     };
     abrirEditorEfecto = (efecto, origen, alGuardar) => {
         edicion = efecto;
         alGuardarEfecto = alGuardar;
+        modoOnirica = false;
         rellenar(efecto);
         ventana.abrirDesde(origen);
     };
@@ -3905,11 +4010,14 @@ function inicializarSocial() {
                 { clave: "verAmigos", etiqueta: `Ver amigos (${personaje.amigos.length})`, icono: "amigos" },
                 { clave: "anadirAmigo", etiqueta: "Añadir amigo", icono: "anadirAmigo" }
             ] },
-            { clave: "grupo", etiqueta: "Grupo", icono: "grupo", submenu: opcionesGrupo }
+            { clave: "grupo", etiqueta: "Grupo", icono: "grupo", submenu: opcionesGrupo },
+            // Solo los protagonistas tienen diario (casilla del perfil)
+            ...(personaje.protagonista ? [{ clave: "diario", etiqueta: "Diario", icono: "diario" }] : [])
         ],
         alElegir: (clave, menu) => {
             const acciones = {
                 perfil: abrirPerfil,
+                diario: abrirDiario,
                 verAmigos: abrirAmigos,
                 anadirAmigo: abrirAnadirAmigo,
                 crearGrupo,
@@ -3922,6 +4030,147 @@ function inicializarSocial() {
             menu.cerrar({ sonido: false });
             acciones[clave]();
         }
+    });
+}
+
+/* Diario del protagonista (#modalDiario; reglas en diario.js) ________________
+   Una página a la vista en un div contenteditable. El formato se aplica con document.execCommand
+   (sin dependencias) y cada cambio se guarda saneado en personaje.diario[paginaDiario]; el aviso
+   de cambios sin guardar ya escucha los eventos input del documento. */
+let paginaDiario = 0;
+const editorDiario = document.getElementById("editorDiario");
+
+function abrirDiario() {
+    const modalEl = document.getElementById("modalDiario");
+    modalEl.dataset.sinSonidoAbrir = "1"; // como el resto de opciones del menú: solo suena el click
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+}
+
+/* Pinta la página actual, el número y el estado de los botones */
+function pintarDiario() {
+    paginaDiario = Math.min(Math.max(0, paginaDiario), personaje.diario.length - 1);
+    editorDiario.innerHTML = personaje.diario[paginaDiario];
+    const total = personaje.diario.length;
+    document.getElementById("numeroPaginaDiario").textContent = `Página ${paginaDiario + 1} de ${total}`;
+    document.getElementById("btnPaginaAnterior").disabled = paginaDiario === 0;
+    document.getElementById("btnPaginaSiguiente").disabled = paginaDiario >= total - 1;
+    const botonAnadir = document.getElementById("btnAnadirPaginaDiario");
+    const motivo = motivoNoAnadirPagina(personaje);
+    botonAnadir.disabled = Boolean(motivo);
+    botonAnadir.title = motivo || "Añadir una página detrás de esta";
+    document.getElementById("btnBorrarPaginaDiario").title = total > 1 ? "Borrar página" : "Vaciar página";
+    document.getElementById("avisoDiario").textContent = "";
+    actualizarBotonesFormato();
+}
+
+/* ¿El cursor está en una línea de título? */
+function enTituloDiario() {
+    try {
+        return document.queryCommandValue("formatBlock").toLowerCase().replace(/[<>]/g, "") === ETIQUETA_TITULO_DIARIO;
+    } catch {
+        return false;
+    }
+}
+
+/* Marca los botones de formato que están activos donde está el cursor */
+function actualizarBotonesFormato() {
+    const enEditor = document.activeElement === editorDiario;
+    document.querySelectorAll(".barra-diario [data-formato]").forEach(boton => {
+        let activo = false;
+        try {
+            activo = enEditor && (boton.dataset.formato === "titulo" ? enTituloDiario() : document.queryCommandState(boton.dataset.formato));
+        } catch { /* sin soporte */ }
+        boton.classList.toggle("activo", activo);
+    });
+}
+
+/* Aplica un formato de la barra. El título convierte la línea en <h3> (o la devuelve a texto normal) */
+function aplicarFormatoDiario(formato) {
+    if (formato === "titulo") {
+        document.execCommand("formatBlock", false, enTituloDiario() ? "<div>" : `<${ETIQUETA_TITULO_DIARIO}>`);
+    } else {
+        document.execCommand(formato, false, null);
+    }
+}
+
+function guardarPaginaDiario() {
+    personaje.diario[paginaDiario] = sanearHtmlDiario(editorDiario.innerHTML);
+}
+
+function avisoPaginaLlena() {
+    document.getElementById("avisoDiario").textContent =
+        `La página está llena (máximo ${MAX_CARACTERES_PAGINA.toLocaleString("es-ES")} caracteres). Sigue en otra página.`;
+}
+
+function inicializarDiario() {
+    const modalEl = document.getElementById("modalDiario");
+    modalEl.querySelectorAll("[data-icono]").forEach(boton => { boton.innerHTML = iconoSao(boton.dataset.icono); });
+    modalEl.addEventListener("show.bs.modal", pintarDiario);
+    modalEl.addEventListener("shown.bs.modal", () => editorDiario.focus());
+
+    // Formato: mousedown sin foco para no perder la selección del editor
+    const barra = modalEl.querySelector(".barra-diario");
+    barra.addEventListener("mousedown", (e) => { if (e.target.closest("[data-formato]")) e.preventDefault(); });
+    barra.addEventListener("click", (e) => {
+        const boton = e.target.closest("[data-formato]");
+        if (!boton) return;
+        editorDiario.focus();
+        aplicarFormatoDiario(boton.dataset.formato); // dispara input: se guarda solo
+        actualizarBotonesFormato();
+    });
+    document.addEventListener("selectionchange", () => {
+        if (modalEl.classList.contains("show")) actualizarBotonesFormato();
+    });
+
+    editorDiario.addEventListener("input", guardarPaginaDiario);
+    // Página llena: no se escribe más (borrar sí)
+    editorDiario.addEventListener("beforeinput", (e) => {
+        if (e.inputType.startsWith("insert") && paginaLlena(editorDiario.innerHTML)) {
+            e.preventDefault();
+            avisoPaginaLlena();
+        }
+    });
+    // Pegar: solo el formato permitido (o texto plano)
+    editorDiario.addEventListener("paste", (e) => {
+        e.preventDefault();
+        const html = e.clipboardData.getData("text/html");
+        const texto = e.clipboardData.getData("text/plain");
+        const pegado = html ? sanearHtmlDiario(html) : escaparHtml(texto).replace(/\n/g, "<br>");
+        if (editorDiario.innerHTML.length + pegado.length > MAX_CARACTERES_PAGINA) {
+            avisoPaginaLlena();
+            return;
+        }
+        document.execCommand("insertHTML", false, pegado);
+    });
+
+    const irA = (pagina) => {
+        reproducir("click");
+        paginaDiario = pagina;
+        pintarDiario();
+        editorDiario.focus();
+    };
+    document.getElementById("btnPaginaAnterior").addEventListener("click", () => irA(paginaDiario - 1));
+    document.getElementById("btnPaginaSiguiente").addEventListener("click", () => irA(paginaDiario + 1));
+    document.getElementById("btnAnadirPaginaDiario").addEventListener("click", () => {
+        const resultado = anadirPagina(personaje, paginaDiario);
+        if (!resultado.ok) {
+            mostrarPopupInfo("Diario", resultado.resumen.map(escaparHtml));
+            return;
+        }
+        comprobarCambios();
+        irA(resultado.indice);
+    });
+    document.getElementById("btnBorrarPaginaDiario").addEventListener("click", async () => {
+        reproducir("click");
+        const unica = personaje.diario.length <= 1;
+        const ok = await confirmarSao({
+            titulo: unica ? "Vaciar página" : "Borrar página",
+            texto: unica ? "¿Vaciar la página? Su texto se perderá." : `¿Borrar la página ${paginaDiario + 1}? Su texto se perderá.`
+        });
+        if (!ok) return; // al volver de la confirmación la ventana se repinta sola (show.bs.modal)
+        paginaDiario = borrarPagina(personaje, paginaDiario);
+        comprobarCambios();
+        pintarDiario();
     });
 }
 
@@ -4046,9 +4295,18 @@ function htmlFichaResumen(resumen, { perfil = false } = {}) {
             <select class="select-profesion-perfil" aria-label="Profesión">${Object.entries(PROFESIONES).map(([clave, etiqueta]) =>
                 `<option value="${clave}" ${clave === resumen.profesion ? "selected" : ""}>${etiqueta}</option>`).join("")}</select></label>`
         : `<span class="resumen-profesion">${e(PROFESIONES[resumen.profesion] ?? "Sin profesión")}</span>`;
+    // Casillas del perfil (se leen del personaje: no viajan en el resumen)
+    const casillas = perfil
+        ? `<span class="resumen-casillas-perfil">
+            <label class="casilla-tipo" title="Personaje del Underworld: Sacro, daño mágico y habilidades oníricas">
+                <input type="checkbox" class="check-perfil" data-campo="esUnderworld" ${personaje.esUnderworld ? "checked" : ""}> Underworld</label>
+            <label class="casilla-tipo" title="Protagonista: tiene diario (menú Social)">
+                <input type="checkbox" class="check-perfil" data-campo="protagonista" ${personaje.protagonista ? "checked" : ""}> Protagonista</label>
+        </span>`
+        : "";
 
     return `
-        <div class="resumen-cabecera"><b>${e(resumen.nombre || "Sin nombre")}</b> <span>LV ${resumen.nivel}</span>${profesion}</div>
+        <div class="resumen-cabecera"><b>${e(resumen.nombre || "Sin nombre")}</b> <span>LV ${resumen.nivel}</span>${profesion}${casillas}</div>
         ${perfil ? htmlDatosPerfil() : ""}
         <h6 class="titulo-online">Habilidades</h6><div class="resumen-rejilla">${habilidades}</div>
         <h6 class="titulo-online">Valores de combate</h6><div class="resumen-rejilla">${combate}</div>
@@ -4091,22 +4349,49 @@ function abrirPerfil() {
     mostrarFichaResumen("Tu perfil", resumenPropio(), { perfil: true });
 }
 
+/* Preguntas al marcar o desmarcar las casillas del perfil */
+const PREGUNTAS_CASILLA_PERFIL = {
+    esUnderworld: {
+        activar: { titulo: "Underworld", texto: "¿Marcar el personaje como del Underworld? Podrá usar Sacro, el daño mágico y las habilidades oníricas." },
+        desactivar: { titulo: "Underworld", texto: "¿Quitar Underworld? Sacro volverá a 0 y sus puntos quedarán libres. Las habilidades oníricas se guardan y vuelven si lo activas de nuevo." }
+    },
+    protagonista: {
+        activar: { titulo: "Protagonista", texto: "¿Marcar el personaje como protagonista? Tendrá un diario en el menú Social." },
+        desactivar: { titulo: "Protagonista", texto: "¿Quitar Protagonista? El diario se guarda y vuelve si lo activas de nuevo." }
+    }
+};
+
 function inicializarPerfil() {
     const contenido = document.getElementById("contenidoFichaResumen");
-    contenido.addEventListener("change", (e) => {
+    contenido.addEventListener("change", async (e) => {
+        if (!fichaResumenAbierta?.perfil) return;
         const select = e.target.closest(".select-profesion-perfil");
-        if (!select || !fichaResumenAbierta?.perfil) return;
-        const nueva = select.value;
-        if (nueva === personaje.tipoProfesion) return;
-        // Solo se puede tener una profesión
-        if (!confirm(`¿Cambiar tu profesión de ${PROFESIONES[personaje.tipoProfesion] ?? "ninguna"} a ${PROFESIONES[nueva]}? Solo se puede tener una.`)) {
-            select.value = personaje.tipoProfesion;
+        if (select) {
+            const nueva = select.value;
+            if (nueva === personaje.tipoProfesion) return;
+            // Solo se puede tener una profesión
+            const ok = await confirmarSao({
+                titulo: "Cambiar profesión",
+                texto: `¿Cambiar tu profesión de ${PROFESIONES[personaje.tipoProfesion] ?? "ninguna"} a ${PROFESIONES[nueva]}? Solo se puede tener una.`
+            });
+            if (ok) {
+                personaje.tipoProfesion = nueva;
+                actualizarTodo();
+            }
+            abrirPerfil();
             return;
         }
-        reproducir("click");
-        personaje.tipoProfesion = nueva;
-        actualizarTodo();
-        abrirPerfil();
+        const casilla = e.target.closest(".check-perfil");
+        if (!casilla || !PREGUNTAS_CASILLA_PERFIL[casilla.dataset.campo]) return;
+        const campo = casilla.dataset.campo;
+        const activar = casilla.checked;
+        const ok = await confirmarSao(PREGUNTAS_CASILLA_PERFIL[campo][activar ? "activar" : "desactivar"]);
+        if (ok) {
+            if (campo === "esUnderworld") personaje.setUnderworld(activar);
+            else personaje[campo] = activar;
+            actualizarTodo();
+        }
+        abrirPerfil(); // repinta el perfil (si se cancela, la casilla vuelve a como estaba)
     });
     document.getElementById("modalFichaResumen").addEventListener("hidden.bs.modal", () => { fichaResumenAbierta = null; });
 }
@@ -4891,7 +5176,9 @@ function inicializarCrearObjeto() {
         bootstrap.Modal.getOrCreateInstance(modalOrigen).hide();
     };
 
-    document.querySelectorAll(".btn-crear-objeto:not(#btnCrearObjetoClave)").forEach(boton => {
+    // Solo los "+ Crear objeto" del inventario y del baúl (llevan data-destino): otras ventanas usan la misma
+    // clase para sus botones de cabecera (objeto clave, habilidad onírica, página del diario...)
+    document.querySelectorAll(".btn-crear-objeto[data-destino]").forEach(boton => {
         boton.addEventListener("click", () => {
             reproducir("click");
             destino = boton.dataset.destino;
@@ -5032,7 +5319,9 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarObjetos();
     inicializarCor();
     inicializarObjetosClave();
+    inicializarConfirmar();
     inicializarPerfil();
+    inicializarDiario();
     precargarSonidos();
     inicializarOpciones();
     inicializarSocial();

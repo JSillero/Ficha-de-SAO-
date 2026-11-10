@@ -4,6 +4,7 @@ import { TAMANO_INVENTARIO, crearInventarioVacio, ajustarInventario, cargarObjet
 import { ZONAS, ZONA_POR_DEFECTO } from "./zonas.js";
 import { cargarArtes, modificadorArtes } from "./artes.js";
 import { modificadorEfectosEquipo } from "./efectosEquipo.js";
+import { cargarDiario } from "./diario.js";
 
 export { TAMANO_INVENTARIO };
 
@@ -38,7 +39,7 @@ const CAMPOS_SIMPLES = [
     'puntosArte', 'vida',
     'numeroAcciones', 'izquierda', 'derecha', 'cabeza', 'pies', 'reaccionGuardada',
     'enSigilo', 'valorSigilo',
-    'comidaActiva', 'tipoProfesion', 'zona', 'cor',
+    'comidaActiva', 'tipoProfesion', 'esUnderworld', 'protagonista', 'zona', 'cor',
     'desbloqueosArteExtra', 'desbloqueosArteGastados',
     'notas', 'listadoArtes', 'listaDeAmigos', 'recetasProfesion'
 ];
@@ -71,6 +72,8 @@ export default class PJ {
         this.profesion = 0;
         this.tipoProfesion = "herrero"; // oficio: herrero, armero, cocinero o alquimista
         this.sacro = 0;
+        this.esUnderworld = false; // perfil: habilita Sacro, daño mágico y habilidades oníricas
+        this.protagonista = false; // perfil: tiene diario
 
         /*Atributos  */
         this.puntosArteMax = 3;
@@ -133,7 +136,10 @@ export default class PJ {
         this.notas = ""; /* String, como todos */
         this.listadoArtes = "";
         this.listaDeAmigos = ""; // notas antiguas de amigos: ya no se muestran, se conservan
-        this.recetasProfesion = "";
+        this.recetasProfesion = ""; // se muestra como "Perfil psicológico" (el nombre del campo se conserva)
+
+        /* Diario del protagonista (diario.js): una cadena HTML saneada por página, al menos una */
+        this.diario = [""];
 
         /* Amigos (sistema social online): [{ jugador (uid), nombre (del personaje) }], mutuos */
         this.amigos = [];
@@ -185,7 +191,10 @@ export default class PJ {
         const habilidadAtaque = this.getGenerico(this.getHabilidadAtaque());
         this.dFisico = Math.floor((habilidadAtaque + this.fortaleza) / 4) + this.getModificador("dFisico");
         this.dDistancia = Math.floor(habilidadAtaque / 4) + this.getModificador("dDistancia");
-        this.dMagico = Math.floor((this.getGenerico("sacro") + this.inteligencia) / 4) + this.getModificador("dMagico");
+        // El daño mágico solo existe para los personajes del Underworld
+        this.dMagico = this.esUnderworld
+            ? Math.floor((this.getGenerico("sacro") + this.inteligencia) / 4) + this.getModificador("dMagico")
+            : 0;
         this.iniciativa = (this.reflejos + this.inteligencia / 2) + this.getModificador("iniciativa");;
         this.vMovimiento = 3 + Math.floor(this.getGenerico("atletismo") / 5) + this.getModificador("vMovimiento");;
         // Las tiradas para manipular tus emociones deben igualar o superar la Perspicacia
@@ -218,7 +227,21 @@ export default class PJ {
         return this.enSigilo ? "subterfugio" : "combate";
     }
 
+    /* Sacro solo existe para los personajes del Underworld */
+    puedeUsarHabilidad(nombreHab) {
+        return nombreHab !== 'sacro' || Boolean(this.esUnderworld);
+    }
+
+    /* Casilla Underworld del perfil. Al quitarla, Sacro vuelve a 0 (sus puntos quedan libres) */
+    setUnderworld(valor) {
+        this.esUnderworld = Boolean(valor);
+        if (!this.esUnderworld) this.sacro = 0;
+        this.calcularCaracteristicas();
+    }
+
     getGenerico(atributo) {
+        // Sin Underworld, Sacro es 0 (tampoco cuentan sus modificadores)
+        if (!this.puedeUsarHabilidad(atributo)) return 0;
         let penalizacion = (atributo === 'atletismo') ? (Number(this.equipoArmadura?.penalizacionAtletismo) || 0) : 0;
         const valor = parseInt(this[atributo]) + parseInt(this.getModificador(atributo)) - penalizacion;
         // El Atletismo efectivo no baja de 0. Combate sí puede (la quemadura sobrante daña PV).
@@ -270,6 +293,7 @@ export default class PJ {
     }
 
     subirHabilidad(nombreHab) {
+        if (!this.puedeUsarHabilidad(nombreHab)) return false;
         if (this.getPuntosHabilidadDisponibles() > 0 && this[nombreHab] < this.getMaxHabilidad()) {
             this[nombreHab]++;
             this.calcularCaracteristicas();
@@ -361,6 +385,10 @@ export default class PJ {
             if (this[campo] === "vacio") this[campo] = "";
         }
         if (!ZONAS[this.zona]) this.zona = ZONA_POR_DEFECTO;
+        // Fichas anteriores a la casilla Underworld: si tenían Sacro, lo eran
+        this.esUnderworld = jsonObject.esUnderworld === undefined ? Number(this.sacro) > 0 : Boolean(this.esUnderworld);
+        if (!this.esUnderworld) this.sacro = 0;
+        this.protagonista = Boolean(this.protagonista);
         this.cor = Math.max(0, Math.floor(Number(this.cor) || 0));
         this.desbloqueosArteExtra = Math.trunc(Number(this.desbloqueosArteExtra) || 0);
         this.desbloqueosArteGastados = Math.max(0, Math.trunc(Number(this.desbloqueosArteGastados) || 0));
@@ -411,6 +439,9 @@ export default class PJ {
         this.artes = cargarArtes(jsonObject.artes);
 
         /* Amigos: solo las entradas válidas, sin repetir */
+        /* Diario (las fichas antiguas no tienen: una página en blanco) */
+        this.diario = cargarDiario(jsonObject.diario);
+
         this.amigos = [];
         (Array.isArray(jsonObject.amigos) ? jsonObject.amigos : []).forEach(amigo => {
             const jugador = String(amigo?.jugador ?? "");
@@ -470,7 +501,9 @@ export default class PJ {
 
             artes: this.artes,
 
-            amigos: this.amigos
+            amigos: this.amigos,
+
+            diario: this.diario
         });
     }
 

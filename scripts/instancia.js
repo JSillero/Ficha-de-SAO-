@@ -23,6 +23,8 @@ if (!instancia) {
 
 let canal = null;
 try { canal = new BroadcastChannel(CANAL); } catch { /* navegador sin BroadcastChannel */ }
+// En Node (pruebas sueltas de los módulos) el canal abierto impediría que el proceso termine; los navegadores no tienen unref
+canal?.unref?.();
 
 /** Promesa que se resuelve cuando la instancia es definitiva (ya comprobado que no es de otra pestaña) */
 export const instanciaLista = new Promise(resolver => {

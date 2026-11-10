@@ -148,6 +148,7 @@
         "id": { "description": "Estable, en kebab-case. En la ficha, id propio de esa copia.", "type": "string", "pattern": "^[a-z0-9-]+$" },
         "idCatalogo": { "description": "Solo en la ficha: id del arte del catálogo de la que salió, o null si es propia.", "type": ["string", "null"] },
         "equipada": { "description": "Solo en la ficha.", "type": "boolean", "default": false },
+        "onirica": { "description": "Solo en la ficha: habilidad onírica (personajes del Underworld). Siempre equipada, sin requisitos ni memoria de artes y no gasta desbloqueos. Se omite si no lo es.", "type": "boolean", "default": false },
         "nombre": { "type": "string", "minLength": 1 },
         "tipo": { "enum": ["activa", "pasiva"] },
         "grupo": {

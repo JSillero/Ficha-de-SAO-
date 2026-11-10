@@ -457,7 +457,8 @@
                             </div>
                             <span class="hab-efectivo" data-hab="comunicacion" aria-live="polite"></span>
                         </div>
-                        <div>
+                        <!-- Solo para personajes del Underworld (actualizarHabilidades) -->
+                        <div id="habSacro">
                             <img src="./imgs/sacro.svg" onmouseover="this.src='./imgs/sacro_on.svg'"
                                 onmouseout="this.src='./imgs/sacro.svg'">
                             <h3>Sacro</h3>
@@ -491,7 +492,8 @@
                 <div id="valoresCombateDiv" class="valores-combate"></div>
             </div>
         </div>
-        <div class="seccion-notas">
+        <!-- Oculto en los protagonistas, que usan el diario (actuaizarTextos en interfaz.js) -->
+        <div class="seccion-notas" id="seccionNotas">
             <h2>Notas</h2>
             <div class="seccion-notas-grid">
                 <div>
@@ -499,7 +501,8 @@
                     <textarea name="" id="notas"></textarea>
                 </div>
                 <div>
-                    <h3>Recetas</h3>
+                    <!-- El campo sigue siendo recetasProfesion para que las fichas guardadas carguen igual -->
+                    <h3>Perfil psicológico</h3>
                     <textarea name="" id="recetasProfesion"></textarea>
                 </div>
             </div>
@@ -877,6 +880,58 @@
         </div>
     </div>
 
+    <!-- Diario del protagonista (inicializarDiario en interfaz.js, reglas en diario.js): una página a la vista -->
+    <div class="modal fade modal-sao" id="modalDiario" tabindex="-1" aria-labelledby="modalDiarioLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalDiarioLabel">Diario</h5>
+                    <button type="button" id="btnAnadirPaginaDiario" class="btn-crear-objeto">+ Añadir página</button>
+                </div>
+                <div class="modal-body">
+                    <div class="barra-diario" role="toolbar" aria-label="Formato">
+                        <button type="button" class="btn-objeto" data-formato="titulo" title="Título (letra más grande en esa línea)" aria-label="Título" data-icono="titulo"></button>
+                        <button type="button" class="btn-objeto" data-formato="bold" title="Negrita" aria-label="Negrita" data-icono="negrita"></button>
+                        <button type="button" class="btn-objeto" data-formato="italic" title="Cursiva" aria-label="Cursiva" data-icono="cursiva"></button>
+                        <button type="button" class="btn-objeto" data-formato="underline" title="Subrayado" aria-label="Subrayado" data-icono="subrayado"></button>
+                        <button type="button" class="btn-objeto" data-formato="insertUnorderedList" title="Lista" aria-label="Lista" data-icono="lista"></button>
+                        <button type="button" class="btn-objeto" data-formato="insertOrderedList" title="Lista numerada" aria-label="Lista numerada" data-icono="listaNumerada"></button>
+                    </div>
+                    <div id="editorDiario" class="editor-diario" contenteditable="true" role="textbox" aria-multiline="true"
+                        aria-label="Página del diario" spellcheck="true"></div>
+                    <p id="avisoDiario" class="aviso-objeto" role="alert"></p>
+                    <div class="navegacion-diario">
+                        <button type="button" id="btnPaginaAnterior" class="btn-objeto" title="Página anterior" aria-label="Página anterior" data-icono="anterior"></button>
+                        <span id="numeroPaginaDiario" class="numero-pagina-diario" aria-live="polite"></span>
+                        <button type="button" id="btnPaginaSiguiente" class="btn-objeto" title="Página siguiente" aria-label="Página siguiente" data-icono="siguiente"></button>
+                        <button type="button" id="btnBorrarPaginaDiario" class="btn-objeto" data-accion="descartar" title="Borrar página" aria-label="Borrar página" data-icono="descartar"></button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmación genérica (confirmarSao en interfaz.js): sustituye a confirm() -->
+    <div class="modal fade modal-sao" id="modalConfirmar" tabindex="-1" aria-labelledby="modalConfirmarLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalConfirmarLabel">Confirmar</h5>
+                </div>
+                <div class="modal-body">
+                    <p id="textoConfirmar" class="texto-solicitud"></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao aceptar" id="btnAceptarConfirmar" title="Aceptar" aria-label="Aceptar"></button>
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cancelar" aria-label="Cancelar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Artes equipadas: un hueco por cada ranura de memoria; un arte de N ranuras ocupa N huecos
          (generado desde personaje.artes en actualizarArtes, interfaz.js) -->
     <div class="modal fade modal-sao" id="modalArtesEquipadas" tabindex="-1" aria-labelledby="modalArtesEquipadasLabel" aria-hidden="true">
@@ -884,9 +939,17 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="modalArtesEquipadasLabel">Artes equipadas <span id="memoriaArtes" class="contador-objetos" title="Memoria de artes usada / total"></span></h5>
+                    <!-- Solo Underworld: no gasta desbloqueos ni memoria -->
+                    <button type="button" id="btnCrearOnirica" class="btn-crear-objeto" hidden>+ Crear habilidad onírica</button>
                 </div>
                 <div class="modal-body">
                     <p id="avisoArtesEquipadas" class="aviso-zona" hidden></p>
+                    <!-- Habilidades oníricas (solo Underworld): no ocupan memoria ni se desequipan -->
+                    <div id="bloqueOniricas" hidden>
+                        <h6 class="grupo-catalogo">Habilidades oníricas</h6>
+                        <div id="listaOniricas" class="lista-objetos"></div>
+                        <h6 class="grupo-catalogo">Memoria de artes</h6>
+                    </div>
                     <div id="listaArtesEquipadas" class="lista-objetos lista-ranuras-artes"></div>
                 </div>
                 <div class="modal-footer">
@@ -950,7 +1013,7 @@
                                     <option value="pasiva">Pasiva</option>
                                 </select>
                             </label>
-                            <label class="solo-arte" title="Memoria de artes que ocupa">Ranuras <input type="number" id="arteRanuras" min="1" value="1"></label>
+                            <label class="solo-arte no-onirica" title="Memoria de artes que ocupa">Ranuras <input type="number" id="arteRanuras" min="1" value="1"></label>
                         </div>
                         <div class="campo-objeto">
                             <label for="arteDescripcion">Descripción (sale en la notificación al usarla)</label>
@@ -958,7 +1021,7 @@
                         </div>
 
                         <!-- Requisitos: obligatorios y alternativos (basta con cumplir uno de los alternativos) -->
-                        <div class="campo-objeto solo-arte">
+                        <div class="campo-objeto solo-arte no-onirica">
                             <div class="equipamiento-mods-header">
                                 <span>Requisitos:</span>
                                 <button type="button" id="btnAnadirRequisitoArte" class="btn-anadir-mod-objeto" title="Añadir requisito" aria-label="Añadir requisito">+</button>
@@ -966,7 +1029,7 @@
                             <ul id="listaRequisitosArte" class="lista-requisitos-arte"></ul>
                             <p class="pista-form">Hay que cumplir todos los requisitos obligatorios y, si hay alternativos, al menos uno de ellos. Habilidades y características se comparan con su valor base.</p>
                         </div>
-                        <div class="campo-objeto solo-arte">
+                        <div class="campo-objeto solo-arte no-onirica">
                             <label for="arteNotaRequisitos">Otros requisitos (no se comprueban: hazañas, artes previas, profesión…)</label>
                             <input type="text" id="arteNotaRequisitos">
                         </div>
@@ -1009,7 +1072,7 @@
                                 <div id="arteDannoElemental" class="valores-elementales"></div>
                             </details>
                         </div>
-                        <label id="filaCompartirArte" class="solo-arte" hidden title="Los demás jugadores de la sala la verán en su catálogo"><input type="checkbox" id="arteCompartir"> Compartir en el catálogo de la sala</label>
+                        <label id="filaCompartirArte" class="solo-arte no-onirica" hidden title="Los demás jugadores de la sala la verán en su catálogo"><input type="checkbox" id="arteCompartir"> Compartir en el catálogo de la sala</label>
                         <p id="avisoCrearArte" class="aviso-objeto" role="alert"></p>
                     </form>
                 </div>

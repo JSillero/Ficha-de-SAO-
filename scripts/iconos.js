@@ -325,6 +325,37 @@ const GLIFOS = {
         <circle class="t o" cx="50" cy="50" r="31"/>
         <circle class="t" style="stroke-width:5" cx="50" cy="50" r="22" stroke-dasharray="8 6"/>
         ${estrella(50, 50, 14)}`,
+    /* Habilidad onírica (Underworld): luna creciente con una estrella */
+    onirica: `
+        <path class="p" d="M58 14A36 36 0 1 0 86 62A28 28 0 1 1 58 14Z"/>
+        ${estrella(70, 34, 9, "s")}`,
+    /* Diario del protagonista: libro con páginas */
+    diario: `
+        <path class="p" d="M30 20H70V80H36A6 6 0 0 1 30 74Z"/>
+        <path class="tf" style="stroke-width:4" d="M30 70A6 6 0 0 1 36 66H70"/>
+        <path class="tf" style="stroke-width:4" d="M42 34H60M42 44H60"/>`,
+    /* Formato del diario: título (T grande con una línea pequeña), negrita, cursiva, subrayado y listas */
+    titulo: `
+        <path class="t" style="stroke-width:9" d="M28 28H62M45 28V72"/>
+        <path class="t o" style="stroke-width:5" d="M64 52H76M70 52V72"/>`,
+    negrita: `
+        <path class="t" style="stroke-width:8;fill:none" d="M37 27V73M37 27H53A10 10 0 0 1 53 48H37M37 48H56A12.5 12.5 0 0 1 56 73H37"/>`,
+    cursiva: `
+        <path class="t" style="stroke-width:7" d="M46 27H66M34 73H54M56 27L44 73"/>`,
+    subrayado: `
+        <path class="t" style="stroke-width:7;fill:none" d="M37 24V48A13 13 0 0 0 63 48V24"/>
+        <path class="t" style="stroke-width:6" d="M31 76H69"/>`,
+    lista: `
+        <circle class="p" cx="31" cy="33" r="5"/><circle class="p" cx="31" cy="50" r="5"/><circle class="p" cx="31" cy="67" r="5"/>
+        <path class="t" style="stroke-width:6" d="M43 33H72M43 50H72M43 67H72"/>`,
+    listaNumerada: `
+        <path class="t" style="stroke-width:4;fill:none" d="M28 27L32 25V39M26 46H34L26 55H34M26 62H33L29 67A4 4 0 1 1 25 73"/>
+        <path class="t" style="stroke-width:6" d="M43 32H72M43 50H72M43 68H72"/>`,
+    /* Pasar página */
+    anterior: `
+        <path class="t" style="stroke-width:10;fill:none" d="M58 28L36 50L58 72"/>`,
+    siguiente: `
+        <path class="t" style="stroke-width:10;fill:none" d="M42 28L64 50L42 72"/>`,
     artesSinEquipar: `
         <g class="t" style="stroke-width:5">${estrella(48, 54, 28, "")}</g>
         ${estrella(78, 22, 9, "s")}

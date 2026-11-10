@@ -19,6 +19,11 @@
     width: 100%;
 }
 
+/* Sacro sin Underworld (actualizarHabilidades) */
+#habilidadesDiv > div[hidden] {
+    display: none;
+}
+
 
 #habilidadesDiv > div img {
     width: 50px;

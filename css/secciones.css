@@ -921,7 +921,6 @@
     display: flex;
     flex-direction: column;
 }
-
 .seccion-notas-grid h3 {
     background: #d1ab52;
     color: #fbfbfb !important;
@@ -1602,6 +1601,14 @@
     align-items: center;
     gap: 6px;
     font-size: 13px;
+}
+
+/* Casillas Underworld y Protagonista del perfil (htmlFichaResumen en interfaz.js) */
+.ficha-resumen .resumen-casillas-perfil {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    color: #5a5a5a;
 }
 
 .ficha-resumen .select-profesion-perfil {
@@ -2487,6 +2494,11 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
     cursor: help;
 }
 
+/* Daño mágico sin Underworld (actualizarCaracteristicas) */
+.valor-combate[hidden] {
+    display: none;
+}
+
 .valor-icono {
     width: 38px;
     height: 38px;
@@ -2697,6 +2709,23 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
 #modalCrearArte:not(.modo-efecto) .solo-efecto,
 #modalCrearArte.modo-efecto .solo-arte {
     display: none !important;
+}
+
+/* Formulario de artes abierto para una habilidad onírica (abrirEditorOnirica): sin memoria, requisitos ni compartir */
+#modalCrearArte.modo-onirica .no-onirica {
+    display: none !important;
+}
+
+/* Habilidades oníricas en Artes equipadas (actualizarArtes en interfaz.js): encima de la memoria de artes */
+#bloqueOniricas {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+#bloqueOniricas[hidden] {
+    display: none;
 }
 
 .habilidad-reliquia {
@@ -2957,4 +2986,88 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
 .arte-autor {
     font-size: 12px;
     color: #8a6d2a;
+}
+
+/* Diario del protagonista (inicializarDiario en interfaz.js): barra de formato, página editable y paso de página */
+.barra-diario {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+/* Formato activo donde está el cursor */
+.barra-diario .btn-objeto.activo .icono-sao {
+    --fondo: #FBFBFB;
+    --glifo: #EBA601;
+}
+
+.editor-diario {
+    min-height: 50vh;
+    padding: 16px 18px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    font-size: 15px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    outline: none;
+}
+
+.editor-diario:focus-visible {
+    box-shadow: 0 0 0 2px #EBA601;
+}
+
+.editor-diario:empty::before {
+    content: "Escribe aquí…";
+    color: #888;
+}
+
+.editor-diario ul,
+.editor-diario ol {
+    margin: 0 0 0 1.4em;
+    padding: 0;
+}
+
+.editor-diario p {
+    margin: 0;
+}
+
+/* Líneas de título (botón Título): solo letra más grande */
+.editor-diario h3 {
+    margin: 0.3em 0 0.1em;
+    font-size: 22px;
+    font-weight: normal;
+    color: #4D4D4D;
+}
+
+.navegacion-diario {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 6px;
+}
+
+.numero-pagina-diario {
+    min-width: 120px;
+    text-align: center;
+    color: #5a5a5a;
+    font-size: 13px;
+}
+
+/* El borrar página va aparte, a la derecha */
+.navegacion-diario #btnBorrarPaginaDiario {
+    margin-left: auto;
+}
+
+.navegacion-diario #btnPaginaAnterior {
+    margin-left: auto;
+}
+
+@media (max-width: 600px) {
+    .editor-diario {
+        min-height: 45vh;
+        padding: 12px;
+    }
 }

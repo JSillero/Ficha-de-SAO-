@@ -115,6 +115,8 @@ export function cargarArte(datos = {}) {
         requisitos: (Array.isArray(datos.requisitos) ? datos.requisitos : []).map(cargarRequisito).filter(Boolean),
         notaRequisitos: texto(datos.notaRequisitos)
     };
+    // Habilidad onírica (Underworld): siempre equipada, sin requisitos ni memoria
+    if (datos.onirica) Object.assign(arte, { onirica: true, equipada: true, requisitos: [], notaRequisitos: "", ranuras: 1 });
     if (tipo === "pasiva") {
         arte.modificadores = (Array.isArray(datos.modificadores) ? datos.modificadores : [])
             .filter(mod => mod && mod.modificado)
@@ -216,6 +218,24 @@ export function conseguirArte(pj, arte) {
     return { ok: true, resumen: [`${arte.nombre} está en las artes sin equipar.`, `Desbloqueos de arte: ${desbloqueosDisponibles(pj)}`] };
 }
 
+/* Habilidades oníricas (Underworld) ____________________________________________
+   Artes activas o pasivas con onirica: true. No gastan desbloqueos ni memoria, no tienen requisitos
+   ni catálogo, están siempre equipadas (no se desequipan) y solo cuentan con la casilla Underworld. */
+
+export function motivoNoCrearOnirica(pj) {
+    return pj.esUnderworld ? null : "Solo los personajes del Underworld tienen habilidades oníricas.";
+}
+
+/** Añade una habilidad onírica (ya equipada) sin gastar desbloqueos */
+export function crearOnirica(pj, datos) {
+    const motivo = motivoNoCrearOnirica(pj);
+    if (motivo) return { ok: false, resumen: [motivo] };
+    const arte = cargarArte({ ...datos, onirica: true });
+    pj.artes.push(arte);
+    pj.calcularCaracteristicas(); // sus modificadores (pasivas) cuentan desde ya
+    return { ok: true, arte, resumen: [`${arte.nombre} añadida a las habilidades oníricas.`] };
+}
+
 /* Requisitos ___________________________________________________________________ */
 // Las características y habilidades se comparan con su valor base (sin modificadores).
 // Así los modificadores de las propias artes no pueden activar ni desactivar otras.
@@ -290,9 +310,15 @@ export function motivoRequisitos(pj, arte) {
     return `Requisitos no cumplidos: ${faltan.join(", ")}`;
 }
 
+/** Por qué un arte equipada está inactiva, o null. Las oníricas solo dependen de la casilla Underworld */
+export function motivoInactiva(pj, arte) {
+    if (arte.onirica) return pj.esUnderworld ? null : "Solo los personajes del Underworld pueden usar habilidades oníricas";
+    return motivoRequisitos(pj, arte);
+}
+
 /** Un arte equipada está activa si cumple sus requisitos; si no, queda inactiva pero sigue equipada */
 export function arteActiva(pj, arte) {
-    return Boolean(arte?.equipada) && cumpleRequisitos(pj, arte);
+    return Boolean(arte?.equipada) && !motivoInactiva(pj, arte);
 }
 
 /** Modificadores que aportan las artes pasivas equipadas y activas a un atributo (lo usa PJ.getModificador) */
@@ -309,8 +335,13 @@ export function artesEquipadas(pj) {
     return (pj.artes || []).filter(arte => arte.equipada);
 }
 
+/** Equipadas que ocupan memoria de artes (todas menos las oníricas) */
+export function artesEnMemoria(pj) {
+    return artesEquipadas(pj).filter(arte => !arte.onirica);
+}
+
 export function ranurasUsadas(pj) {
-    return artesEquipadas(pj).reduce((suma, arte) => suma + arte.ranuras, 0);
+    return artesEnMemoria(pj).reduce((suma, arte) => suma + arte.ranuras, 0);
 }
 
 export function ranurasLibres(pj) {
@@ -338,7 +369,7 @@ export function ajustarMemoriaArtes(pj) {
     const desequipadas = [];
     // Desequipar una pasiva puede quitar memoria (modificador "espacios"): se recalcula cada vez
     while (ranurasUsadas(pj) > (Number(pj.espaciosArte) || 0)) {
-        const ultima = artesEquipadas(pj).at(-1);
+        const ultima = artesEnMemoria(pj).at(-1);
         if (!ultima) break;
         ultima.equipada = false;
         desequipadas.push(ultima);
@@ -348,6 +379,7 @@ export function ajustarMemoriaArtes(pj) {
 }
 
 export function motivoNoDesequiparArte(pj, arte) {
+    if (arte.onirica) return "Las habilidades oníricas no se pueden desequipar.";
     if (!arte.equipada) return "No está equipada.";
     if (!esZonaSegura(pj)) return MOTIVOS_ZONA.artes + ".";
     return null;
@@ -397,8 +429,8 @@ export function partesDeArte(pj, arte) {
 export function motivoNoUsarArte(pj, arte) {
     if (arte.tipo === "pasiva") return "Las artes pasivas no se usan: su efecto está siempre activo.";
     if (!arte.equipada) return "Equípala para poder usarla.";
-    const requisitos = motivoRequisitos(pj, arte);
-    if (requisitos) return `Inactiva. ${requisitos}.`;
+    const inactiva = motivoInactiva(pj, arte);
+    if (inactiva) return `Inactiva. ${inactiva}.`;
     if (arte.uso.tipo === "arma" && !manoDeArte(pj, arte)) {
         return `Necesitas ${unirConO(arte.uso.armas.map(etiquetaArma))}${arte.uso.ambasManos ? " en las dos manos" : " equipado"}.`;
     }

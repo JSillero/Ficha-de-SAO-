@@ -25,7 +25,7 @@ export const VALORES_COMBATE = [
         ayuda: "(Fortaleza + Combate) / 4, hacia abajo. En sigilo usa Sigilo en lugar de Combate." },
     { clave: "dDistancia", etiqueta: "Daño a distancia", icono: "distancia",
         ayuda: "Combate / 4, hacia abajo. En sigilo usa Sigilo en lugar de Combate." },
-    { clave: "dMagico", etiqueta: "Daño mágico", icono: "magia",
+    { clave: "dMagico", etiqueta: "Daño mágico", icono: "magia", soloUnderworld: true,
         ayuda: "(Inteligencia + Sacro) / 4, hacia abajo." },
     { clave: "aguante", etiqueta: "Aguante", icono: "aguante",
         ayuda: "Fortaleza + Voluntad / 2. PV que ganas cada 5 niveles y resistencia al frío." },
@@ -77,10 +77,15 @@ export function crearResumenFicha(pj, textos) {
         nombre: pj.nombre,
         nivel: pj.nivel,
         profesion: pj.tipoProfesion,
-        habilidades: HABILIDADES_LISTA.map(clave => ({ clave, base: pj[clave], efectivo: pj.getGenerico(clave) })),
-        combate: VALORES_COMBATE.map(({ clave }) => ({ clave, valor: pj[clave] })),
-        artes: (pj.artes || []).filter(arte => arte.equipada).map(arte => ({
-            nombre: arte.nombre, tipo: arte.tipo, descripcion: arte.descripcion, detalle: textos.detalleArte(arte)
+        // Sin Underworld no se envían Sacro ni el daño mágico
+        habilidades: HABILIDADES_LISTA.filter(clave => pj.puedeUsarHabilidad(clave))
+            .map(clave => ({ clave, base: pj[clave], efectivo: pj.getGenerico(clave) })),
+        combate: VALORES_COMBATE.filter(({ soloUnderworld }) => !soloUnderworld || pj.esUnderworld)
+            .map(({ clave }) => ({ clave, valor: pj[clave] })),
+        // Las habilidades oníricas solo con Underworld
+        artes: (pj.artes || []).filter(arte => arte.equipada && (!arte.onirica || pj.esUnderworld)).map(arte => ({
+            nombre: arte.nombre, tipo: arte.tipo, descripcion: arte.descripcion,
+            detalle: (arte.onirica ? "Onírica · " : "") + textos.detalleArte(arte)
         })),
         equipo
     });
