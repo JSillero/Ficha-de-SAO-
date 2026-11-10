@@ -229,6 +229,15 @@ export function transferirAInventario(pj, indice) {
     return exito(`${objeto.nombre} ×${movidos} → inventario` + (resto > 0 ? ` (quedan ${resto} en el baúl)` : ""));
 }
 
+/** Cambia de sitio un elemento de la lista (ordenar arrastrando: inventario, baúl, objetos clave) */
+export function moverEnLista(lista, desde, hasta) {
+    const valido = (i) => Number.isInteger(i) && i >= 0 && i < lista.length;
+    if (!valido(desde) || !valido(hasta) || desde === hasta) return false;
+    const [elemento] = lista.splice(desde, 1);
+    lista.splice(hasta, 0, elemento);
+    return true;
+}
+
 /** Quita una unidad. En el inventario el hueco queda vacío; en el baúl se elimina la fila. */
 export function descartar(lista, indice, huecosFijos) {
     const objeto = lista[indice];

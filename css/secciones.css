@@ -1933,6 +1933,29 @@
     background: none;
 }
 
+/* Ordenar arrastrando (hacerOrdenable en ordenar.js): inventario, baúl y objetos clave */
+.ordenable > .fila-objeto:not(.vacia) {
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+}
+
+.ordenando,
+.ordenando > .fila-objeto:not(.vacia) {
+    cursor: grabbing;
+}
+
+.fila-objeto.arrastrando,
+.modal-sao .fila-objeto.arrastrando {
+    position: relative;
+    z-index: 1;
+    border-color: #EBA601;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transform: scale(1.02);
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+
 .objeto-hueco {
     color: #aaa;
     font-size: 13px;

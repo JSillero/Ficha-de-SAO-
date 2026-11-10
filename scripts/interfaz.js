@@ -14,8 +14,10 @@ import {
     usarCristal, lanzarArrojadiza, manoParaUsar, categoriaEquipo, manosParaEquipar, motivoNoEquipar, equipar,
     motivoNoGuardar, motivoNoBeber, guardarEquipado, ranuraTieneEquipo, getCantidadAccesoriosPorArmadura, cabenEnInventario,
     anadirCor, gastarCor, aplicarEfectoEnObjetivo, ofrecerObjeto, consumirOfrecido,
-    capacidadInventario, ajustarInventario, cargarObjetosClave, motivoNoLanzar, lanzarArma, recogerArma, motivoNoRecoger, destinoRecoger
+    capacidadInventario, ajustarInventario, cargarObjetosClave, motivoNoLanzar, lanzarArma, recogerArma, motivoNoRecoger, destinoRecoger,
+    moverEnLista
 } from "./objetos.js";
+import { hacerOrdenable } from "./ordenar.js";
 import {
     puedeGastarVarias, gastarVarias, gastarTodas, partesDeMano, estaIncapacitado,
     iniciarTurno, gastarAccion, devolverAccion, puedeGastar, accionesRestantes,
@@ -3041,6 +3043,21 @@ function inicializarArtes() {
     });
 
     [listaArtesEquipadasEl, listaArtesSinEquiparEl, listaOniricasEl].forEach(lista => lista.addEventListener("click", alPulsarArte));
+
+    // Ordenar arrastrando. Las tres listas salen de personaje.artes: la posición en pantalla
+    // se traduce a la del arte que ocupa ese sitio en su grupo (los huecos libres no cuentan)
+    const ordenarArtes = (enGrupo) => (desde, hasta) => {
+        const grupo = personaje.artes.map((arte, i) => (enGrupo(arte) ? i : -1)).filter(i => i >= 0);
+        if (!grupo.length || !grupo.includes(desde)) return;
+        const destino = grupo[Math.min(hasta, grupo.length - 1)];
+        if (!moverEnLista(personaje.artes, desde, destino)) return;
+        reproducir("click");
+        actualizarTodo();
+    };
+    const arrastrable = (fila) => !fila.classList.contains("vacia");
+    hacerOrdenable(listaArtesEquipadasEl, { sePuedeArrastrar: arrastrable, alSoltar: ordenarArtes(arte => arte.equipada && !arte.onirica) });
+    hacerOrdenable(listaArtesSinEquiparEl, { alSoltar: ordenarArtes(arte => !arte.equipada && !arte.onirica) });
+    hacerOrdenable(listaOniricasEl, { alSoltar: ordenarArtes(arte => arte.onirica) });
     // Habilidades oníricas (Underworld): se crean desde las artes equipadas, sin catálogo
     document.getElementById("btnCrearOnirica").addEventListener("click", (e) => {
         const motivo = motivoNoCrearOnirica(personaje);
@@ -4657,6 +4674,16 @@ function inicializarObjetosClave() {
             actualizarTodo();
         }
     });
+    hacerOrdenable(listaObjetosClaveEl, { alSoltar: ordenarLista(() => personaje.objetosClave) });
+}
+
+/* Ordenar arrastrando (hacerOrdenable en ordenar.js): mueve el elemento en la lista del modelo y repinta */
+function ordenarLista(obtenerLista) {
+    return (desde, hasta) => {
+        if (!moverEnLista(obtenerLista(), desde, hasta)) return;
+        reproducir("click");
+        actualizarTodo();
+    };
 }
 
 /* Cor: añadir o gastar la cantidad del campo */
@@ -4821,6 +4848,17 @@ function inicializarObjetos() {
         }
         actualizarTodo();
     });
+
+    // Ordenar arrastrando; los huecos libres del inventario no se arrastran, pero se puede soltar entre ellos
+    const ordenarInventario = ordenarLista(() => personaje.inventario);
+    hacerOrdenable(listaInventarioEl, {
+        sePuedeArrastrar: (fila) => !fila.classList.contains("vacia"),
+        alSoltar: (desde, hasta) => {
+            eleccionUso = null;
+            ordenarInventario(desde, hasta);
+        }
+    });
+    hacerOrdenable(listaBaulEl, { alSoltar: ordenarLista(() => personaje.baul) });
 
     // Al cerrar el inventario se olvida la elección de uso pendiente
     document.getElementById("modalInventario").addEventListener("hidden.bs.modal", () => {

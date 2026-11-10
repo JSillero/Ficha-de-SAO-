@@ -389,8 +389,8 @@ export function equiparArte(pj, arte) {
     const motivo = motivoNoEquiparArte(pj, arte);
     if (motivo) return { ok: false, resumen: [motivo] };
     arte.equipada = true;
-    // Al final de la lista: las equipadas quedan en orden de equipado (la última es la primera
-    // que se desequipa si falta memoria, ver ajustarMemoriaArtes)
+    // Al final de la lista: las equipadas quedan en orden de equipado, o en el que elija el jugador
+    // arrastrándolas (la última es la primera que se desequipa si falta memoria, ver ajustarMemoriaArtes)
     const indice = pj.artes.indexOf(arte);
     if (indice !== -1) pj.artes.push(...pj.artes.splice(indice, 1));
     pj.calcularCaracteristicas(); // los modificadores de las pasivas cuentan desde ya
