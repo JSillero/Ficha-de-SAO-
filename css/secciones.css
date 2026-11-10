@@ -3094,3 +3094,70 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
         padding: 12px;
     }
 }
+
+/* Perfil del máster (#modalPerfilMaster, pintarPerfil en interfazMaster.js): mismos campos que crear objeto */
+.perfil-master-puntos {
+    font-weight: normal;
+    color: #888;
+}
+
+.perfil-master .fila-campos label[hidden] {
+    display: none;
+}
+
+.perfil-master .fila-campos input[type="number"] {
+    width: 60px;
+}
+
+/* Título de cada lista del perfil del máster (inventario, baúl, objetos clave) con su "+ Crear" a la derecha */
+.perfil-master-titulo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+/* Nombre editable en tu perfil (Social → Perfil, htmlFichaResumen): el de la cabecera ya no se edita */
+.input-nombre-perfil {
+    min-width: 0;
+    max-width: 220px;
+    padding: 2px 6px;
+    border: 1px solid #bbb;
+    border-radius: 4px;
+    background: #dce8f9;
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: bold;
+}
+
+/* Modo lectura del máster (#avisoLectura, pintarAvisoLectura en interfaz.js): franja bajo la cabecera */
+.aviso-lectura {
+    padding: 6px 16px;
+    background: #4D4D4D;
+    border-bottom: 3px solid #EBA601;
+    color: #FBFBFB;
+    font-size: 13px;
+    text-align: center;
+}
+
+.aviso-lectura[hidden] {
+    display: none;
+}
+
+.aviso-lectura-extra {
+    color: #EBA601;
+}
+
+/* En modo lectura no se ven los botones que cambian algo (las acciones ya están bloqueadas en interfaz.js) */
+body.modo-lectura .objeto-acciones,
+body.modo-lectura .objeto-eleccion,
+body.modo-lectura .btn-crear-objeto,
+body.modo-lectura .botones-cabecera-modal,
+body.modo-lectura .btn-h2:not(.hud-master-anadir),
+body.modo-lectura .btn-hab-mas,
+body.modo-lectura .btn-hab-menos,
+body.modo-lectura .btn-arte,
+body.modo-lectura .barra-cor input,
+body.modo-lectura .barra-cor button {
+    display: none !important;
+}

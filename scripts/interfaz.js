@@ -27,18 +27,24 @@ import {
 import { ESTADOS_INFO, TIPOS_DANNO, aplicarDanno, activarEstado, quitarEstado, estaActivo, estiloColor } from "./estados.js";
 import { iconoSao, tieneIconoSao } from "./iconos.js";
 import { mostrarPopup, getHistorialPopups, vaciarHistorialPopups } from "./popups.js";
-import { emitirEvento, configurarOrigen, setAplicadorDanno, setConsumidorOferta } from "./eventos.js";
+import { emitirEvento, emitirPrivado, registrarManejador, PARA_TODOS, configurarOrigen, setAplicadorDanno, setConsumidorOferta, setBloqueoEmision } from "./eventos.js";
 import { escaparHtml } from "./html.js";
+import { getInstancia } from "./instancia.js";
 import { inicializarVentanas, abrirCapa, cerrarCapa } from "./ventanas.js";
 import {
-    inicializarOnline, getEstadoOnline, getPersonajesSala, avisarNombrePersonaje, setIdPersonajeNube,
-    abrirAmigos, abrirAnadirAmigo, abrirGrupo, crearGrupo, salirGrupo, getGrupoSala, avisarEstadoGrupo, abrirCuenta, abrirSala, abrirPersonajesNube,
-    guardarEnNube, compartirArte, quitarArteDeSala
+    inicializarOnline, getEstadoOnline, getPersonajesSala, avisarNombrePersonaje, setIdPersonajeNube, motivoNombreNoDisponible,
+    abrirAmigos, abrirAnadirAmigo, abrirGrupo, crearGrupo, salirGrupo, getGrupoSala, avisarEstadoGrupo, avisarTurno, verTurnoSala, abrirCuenta, abrirSala, abrirPersonajesNube,
+    guardarEnNube, compartirArte, quitarArteDeSala, publicarEstadoDe, estaOcultoEnSala
 } from "./interfazOnline.js";
 import {
     ZONAS, MOTIVOS_ZONA, cambiarZona, esZonaSegura, baulAccesible, puedeRepartirHabilidades, puedeRecibirDanno,
     descansoCorto, descansoLargo
 } from "./zonas.js";
+import { inicializarMaster, restaurarMaster, guardarActivo as guardarActivoMaster, actualizarHudMaster,
+    anadirFichaCargada, abrirPerfilMaster, pendientesDeNube as pendientesMasterDeNube, marcarSubido as marcarSubidoMaster,
+    proveedorSala as proveedorSalaMaster, alCambiarSala as alCambiarSalaMaster, estaEnTurno as estaEnTurnoMaster,
+    alIniciarTurno as alIniciarTurnoMaster, getUltimoTurno as getUltimoTurnoMaster,
+    leerPersonaje as leerPersonajeMaster, conPersonaje as conPersonajeMaster } from "./interfazMaster.js";
 import { reproducir, iniciarBucle, pararBucle, precargarSonidos, estaSilenciado, setSilenciado } from "./sonidos.js";
 import { ejecutarDebug, crearPersonajePrueba, validarFicha } from "./debug.js";
 import {
@@ -183,10 +189,20 @@ for (const textarea of textareas) {
 }
 
 /* Eventos para la barra de vida SAO y datos principales */
-inputNombre.addEventListener('change', (e) => {
-    personaje.nombre = e.target.value;
-    actualizarTodo();
+// El nombre solo se cambia en el perfil (Social → Perfil; en máster, su perfil): pulsarlo lo abre
+inputNombre.readOnly = true;
+inputNombre.title = "Cambia el nombre en tu perfil";
+inputNombre.addEventListener('click', () => {
+    reproducir("click");
+    abrirPerfilSegunModo();
 });
+
+/* Perfil: el tuyo; en modo máster, su perfil editable; en modo lectura, la ficha resumida del jugador */
+function abrirPerfilSegunModo() {
+    if (lectura) mostrarFichaResumen(`Ficha de ${personaje.nombre || "Sin nombre"}`, resumenPropio());
+    else if (MODO_MASTER) abrirPerfilMaster();
+    else abrirPerfil();
+}
 
 selectProfesion.addEventListener('change', (e) => {
     personaje.tipoProfesion = e.target.value;
@@ -328,8 +344,16 @@ function inicializarBotonesModales() {
 
 function actualizarTodo() {
     ajustarInventario(personaje); // la capacidad cambia con el equipo, la comida o los modificadores
-    comprobarMemoriaArtes();
-    comprobarDesbloqueosNaturales();
+    // En modo lectura no se avisa de nada: la ficha no es del máster
+    if (!lectura) {
+        comprobarMemoriaArtes();
+        comprobarDesbloqueosNaturales();
+    }
+    // Fuera de la zona no segura (zona segura, base o tras descansar) no hay turno
+    if (!lectura && personaje.zona !== "noSegura" && turnoDe(personaje.idPersonaje) > 0) {
+        turnos.set(personaje.idPersonaje, 0);
+        avisarTurno(0, personaje.idPersonaje);
+    }
     actualizarInformacion();
     actualizarAtributos();
     actualizarHabilidades();
@@ -350,15 +374,199 @@ function actualizarTodo() {
     actualizarEstados();
     actualizarZona();
     comprobarCambios();
+    // Modo máster: sus personajes en la cabecera, con el de la ficha al día
+    actualizarHudMaster();
+    // Modo lectura: no se publica nada (la ficha es de un jugador) y no se puede tocar nada
+    if (lectura) {
+        actualizarBrilloTurno();
+        aplicarBloqueoLectura();
+        return;
+    }
+    actualizarBrilloTurno();
     // En una sala, la lista de personajes conectados lleva el nombre (solo se envía si cambia)
-    avisarNombrePersonaje(personaje.nombre);
+    avisarNombrePersonaje(personaje.nombre, personaje.idPersonaje);
     // En un grupo, tus compañeros ven tu vida, PA (sin números), nivel y estados (solo se envía si cambia)
     avisarEstadoGrupo({
         vida: personaje.vidaMax > 0 ? personaje.vida / personaje.vidaMax : 0,
         pa: personaje.puntosArteMax > 0 ? personaje.puntosArte / personaje.puntosArteMax : 0,
         nivel: personaje.nivel,
-        estados: Object.keys(ESTADOS_INFO).filter(clave => estaActivo(personaje, clave))
+        iniciativa: personaje.iniciativa, // para el orden en la cabecera del máster
+        estados: Object.keys(ESTADOS_INFO).filter(clave => estaActivo(personaje, clave)),
+        turno: turnoDe(personaje.idPersonaje),
+        id: personaje.idPersonaje // en modo máster, a qué personaje suyo (y su grupo) va
     });
+}
+
+/* Turno ___________________________________________________________________
+   Pulsar Play en zona no segura apunta la hora (turnos: idPersonaje → ms) y se publica al momento (grupo y
+   máster). Parpadea el fondo del HUD (.en-turno) del personaje con el turno más reciente de los que ves: tu grupo
+   (o tú solo); el máster, todos. Quien tenga la misma iniciativa que quien pulsa Play, en cualquier lugar de la
+   sala, empieza a la vez, con la misma hora, si está en zona no segura: Play envía el evento sin pop-up turnoSala
+   a todas las pestañas (alTurnoSala; los personajes del máster que no están en la ficha, alIniciarTurno de
+   interfazMaster.js). Quien empieza así no lo vuelve a enviar.
+   No se guarda en la ficha: es solo de la partida en curso. */
+const turnos = new Map();
+const turnoDe = (id) => turnos.get(id) || 0;
+const mismaIniciativa = (a, b) => Math.round((Number(a) || 0) * 10) === Math.round((Number(b) || 0) * 10);
+
+/* ¿Parpadea el HUD? Tu turno es el más reciente de tu grupo (o estás solo y lo has empezado) */
+let ultimoTurnoVisto = 0; // si quien tenía el turno pasa a zona segura, los anteriores no vuelven a parpadear
+function enTurnoPropio() {
+    const propio = turnoDe(personaje.idPersonaje);
+    const otros = (getGrupoSala()?.miembros ?? []).filter(m => m.instancia !== getInstancia()).map(m => m.turno || 0);
+    ultimoTurnoVisto = Math.max(ultimoTurnoVisto, propio, ...otros);
+    return propio > 0 && propio >= ultimoTurnoVisto;
+}
+
+function actualizarBrilloTurno() {
+    const hud = document.querySelector(".sao-bar-wrapper");
+    hud?.classList.toggle("en-turno", MODO_MASTER ? estaEnTurnoMaster() : enTurnoPropio());
+}
+
+/* Empieza el turno del personaje de la ficha a esa hora (Play, o a la vez que otro con su misma iniciativa) */
+function marcarTurno(turno) {
+    turnos.set(personaje.idPersonaje, turno);
+    avisarTurno(turno, personaje.idPersonaje);
+    actualizarBrilloTurno();
+}
+
+/* El turno de tus compañeros cambia el parpadeo */
+function comprobarTurnoGrupo() {
+    actualizarBrilloTurno();
+}
+
+/* Play en zona no segura: avisa a toda la sala (sin pop-up) para que empiecen a la vez los de la misma iniciativa */
+function enviarTurnoSala(hora) {
+    if (!getEstadoOnline().sala || estaOcultoEnSala(personaje.nombre)) return; // oculto: no provoca el turno de nadie
+    emitirPrivado("turnoSala", { para: PARA_TODOS, turno: hora, iniciativa: personaje.iniciativa, nombre: personaje.nombre })
+        .catch(error => console.warn("No se pudo avisar del turno a la sala:", error));
+}
+
+/* Alguien de la sala ha pulsado Play: si el personaje de la ficha tiene su misma iniciativa y está en zona no
+   segura, empieza a la vez (en modo máster, también sus otros personajes de la sesión) */
+function alTurnoSala(evento) {
+    const { turno, iniciativa, nombre } = evento.datos ?? {};
+    const hora = Math.trunc(Number(turno) || 0);
+    if (!hora) return;
+    const quien = String(nombre ?? "").slice(0, 60) || "otro personaje";
+    // Aunque no sea de tu grupo, su turno apaga los anteriores (el tuyo y los de tus compañeros)
+    ultimoTurnoVisto = Math.max(ultimoTurnoVisto, hora);
+    verTurnoSala(hora);
+    if (MODO_MASTER) alIniciarTurnoMaster(hora, iniciativa, quien);
+    if (lectura || personaje.zona !== "noSegura" || turnoDe(personaje.idPersonaje) === hora
+        || !mismaIniciativa(iniciativa, personaje.iniciativa) || estaOcultoEnSala(personaje.nombre)) {
+        actualizarBrilloTurno();
+        return;
+    }
+    const resumen = iniciarTurno(personaje);
+    turnos.set(personaje.idPersonaje, hora);
+    actualizarTodo();
+    marcarTurno(hora);
+    mostrarPopupInfo("Inicio de turno", [
+        `Empiezas a la vez que ${escaparHtml(quien)} (misma iniciativa).`,
+        ...resumen.map(escaparHtml)
+    ]);
+}
+registrarManejador("turnoSala", alTurnoSala);
+
+/* Modo lectura (modo máster) _________________________________________________
+   El máster mira la ficha de un personaje de un jugador: se carga en la ficha tal y como estaba al pulsarla
+   (o la última copia guardada si no está conectado) y no se puede cambiar nada. Se puede navegar por menús
+   y ventanas para verlo todo. No se guarda en el almacén del máster, no se publica nada en la sala ni se emiten
+   pop-ups. Se sale pulsando uno de sus personajes en la cabecera (abrirFichaMaster). */
+let lectura = null; // { jugador, id, nombre, actualizado (ms), aviso }, o null
+setBloqueoEmision(() => Boolean(lectura));
+
+/* Pulsables que sí funcionan en modo lectura (navegar, cerrar ventanas, la cabecera del máster) */
+const PERMITIDOS_LECTURA = [
+    "#hudMaster", "#hudGrupo", "#avisoLectura", "#nombre", "[data-bs-dismiss]", ".btn-modal-sao.cancelar", "summary",
+    "#contenedor-popups-dados", "#panelDebug", "#btnInventario", "#btnSocial", "#btnArtes", "#btnOpciones",
+    "#btnPaginaAnterior", "#btnPaginaSiguiente", "#listaArtesPasivas"
+].join(", ");
+/* Opciones de los menús de la silueta que cambian algo (las demás solo abren ventanas para mirar) */
+const OPCIONES_BLOQUEADAS_LECTURA = new Set([
+    "cargar", "guardar", "nueva", "guardarNube", "cargarNube", "anadirAmigo", "crearGrupo", "invitarGrupo", "salirGrupo"
+]);
+
+let ultimoAvisoLectura = 0;
+function avisarLectura() {
+    if (Date.now() - ultimoAvisoLectura < 3000) return;
+    ultimoAvisoLectura = Date.now();
+    mostrarPopupInfo("Solo lectura", [`Es la ficha de ${escaparHtml(lectura?.nombre || "un jugador")}: no se puede cambiar nada.`]);
+}
+
+/* Bloquea clics (y arrastrar) en todo lo que no sea navegar. Se avisa solo si lo pulsado parece pulsable. */
+function bloquearEnLectura(e) {
+    if (!lectura || !(e.target instanceof Element)) return;
+    const objetivo = e.target;
+    const opcion = objetivo.closest(".opcion-menu-sao");
+    if (opcion ? !OPCIONES_BLOQUEADAS_LECTURA.has(opcion.dataset.clave) : objetivo.closest(PERMITIDOS_LECTURA)) return;
+    if (objetivo.classList.contains("modal")) return; // fondo de una ventana: la cierra
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    if (e.type === "click" && (objetivo.closest("button, a, label, [data-accion], [role='button']")
+        || getComputedStyle(objetivo).cursor === "pointer")) avisarLectura();
+}
+document.addEventListener("click", bloquearEnLectura, true);
+// Arrastrar (vida, ordenar listas) también cambia la ficha
+for (const tipo of ["pointerdown", "mousedown", "touchstart", "dblclick"]) {
+    document.addEventListener(tipo, (e) => {
+        if (lectura && e.target instanceof Element && e.target.closest("#sao-hp-track, #sao-exp-track, .lista-objetos")) {
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+        }
+    }, { capture: true, passive: true });
+}
+
+/* Desactiva los campos (los que ya lo estaban se quedan así al salir) */
+function aplicarBloqueoLectura() {
+    document.querySelectorAll("input, select, textarea, [contenteditable='true']").forEach(campo => {
+        if (campo.closest("#hudMaster, #panelDebug")) return;
+        if (campo.isContentEditable) {
+            campo.dataset.bloqueoLectura = "editable";
+            campo.contentEditable = "false";
+        } else if (!campo.disabled) {
+            campo.dataset.bloqueoLectura = "campo";
+            campo.disabled = true;
+        }
+    });
+}
+
+function quitarBloqueoLectura() {
+    document.querySelectorAll("[data-bloqueo-lectura]").forEach(campo => {
+        if (campo.dataset.bloqueoLectura === "editable") campo.contentEditable = "true";
+        else campo.disabled = false;
+        delete campo.dataset.bloqueoLectura;
+    });
+}
+
+function pintarAvisoLectura() {
+    const aviso = document.getElementById("avisoLectura");
+    aviso.hidden = !lectura;
+    if (!lectura) return;
+    const hora = lectura.actualizado ? new Intl.DateTimeFormat("es-ES", { dateStyle: "short", timeStyle: "short" }).format(lectura.actualizado) : null;
+    aviso.innerHTML = `<b>Solo lectura:</b> ficha de ${escaparHtml(lectura.nombre || "Sin nombre")}${hora ? ` (versión del ${escaparHtml(hora)})` : ""}.
+        Pulsa uno de tus personajes en la cabecera para volver.${lectura.aviso ? ` <span class="aviso-lectura-extra">${escaparHtml(lectura.aviso)}</span>` : ""}`;
+}
+
+/** Modo máster: pone en la ficha la de un jugador, en modo lectura (json tal y como llega) */
+function abrirFichaLectura(json, info) {
+    comprobarCambios(); // guarda el personaje del máster antes de quitarlo de la ficha
+    lectura = { ...info };
+    document.body.classList.add("modo-lectura");
+    personaje.cargarJSON(JSON.parse(json));
+    desbloqueosNaturalesVistos = null;
+    actualizarTodo();
+    pintarAvisoLectura();
+}
+
+function salirDeLectura() {
+    if (!lectura) return;
+    lectura = null;
+    document.body.classList.remove("modo-lectura");
+    quitarBloqueoLectura();
+    pintarAvisoLectura();
 }
 
 /* Cambios sin guardar ______________________________________________________
@@ -375,7 +583,8 @@ let fichaGuardada = null; // JSON de la ficha tal y como se guardó o cargó por
    pueden tener varios personajes a la vez en pestañas distintas y cada una
    recupera el suyo al recargar), y en localStorage, la última ficha usada, que
    es la que abre una pestaña nueva. En modo master no se usa. Si no hay
-   almacenamiento, la ficha funciona igual. */
+   almacenamiento, la ficha funciona igual.
+   En modo máster la caché es su almacén de personajes (personajesMaster.js): se guarda el de la ficha. */
 const CLAVE_FICHA = "fichaSAO.ficha";
 let cacheEscrita = null; // último texto escrito, para no repetir
 
@@ -391,7 +600,11 @@ function leerCache() {
 }
 
 function escribirCache(ficha) {
-    if (MODO_MASTER || fichaGuardada === null) return; // aún arrancando: no pisar la caché
+    if (fichaGuardada === null) return; // aún arrancando: no pisar la caché
+    if (MODO_MASTER) {
+        guardarActivoMaster(ficha, fichaGuardada);
+        return;
+    }
     const texto = JSON.stringify({ ficha, guardada: fichaGuardada });
     if (texto === cacheEscrita) return;
     cacheEscrita = texto;
@@ -422,6 +635,15 @@ function restaurarCache() {
     }
 }
 
+/* Modo máster: pone en la ficha otro de sus personajes (json) con su última copia guardada */
+function abrirFichaMaster(json, guardada) {
+    salirDeLectura();
+    fichaGuardada = guardada ?? "";
+    personaje.cargarJSON(JSON.parse(json));
+    desbloqueosNaturalesVistos = null; // no avisar de los desbloqueos que ya tenía
+    actualizarTodo();
+}
+
 function marcarGuardado() {
     fichaGuardada = personaje.toJSONString();
     hayCambiosSinGuardar = false;
@@ -429,7 +651,7 @@ function marcarGuardado() {
 }
 
 function comprobarCambios() {
-    if (fichaGuardada === null) return; // aún arrancando
+    if (fichaGuardada === null || lectura) return; // aún arrancando, o mirando la ficha de un jugador
     const ficha = personaje.toJSONString();
     hayCambiosSinGuardar = ficha !== fichaGuardada;
     escribirCache(ficha);
@@ -701,8 +923,10 @@ function actualizarCaracteristicas() {
     });
 }
 
-/* Carga una ficha ya parseada (de un fichero o de la nube) */
-function cargarFicha(jsonData) {
+/* Carga una ficha ya parseada (de un fichero o de la nube). En modo máster se añade a sus personajes
+   (o sustituye al mismo): opciones.idNube es su id en la nube. */
+function cargarFicha(jsonData, opciones = {}) {
+    if (MODO_MASTER) return anadirFichaCargada(jsonData, opciones);
     personaje.cargarJSON(jsonData);
     desbloqueosNaturalesVistos = null; // ficha nueva: no avisar de los desbloqueos que ya tenía
     actualizarTodo();
@@ -718,7 +942,7 @@ document.getElementById('fileInput').addEventListener('change', function (event)
 
         reader.onload = function (e) {
             try {
-                cargarFicha(JSON.parse(e.target.result));
+                Promise.resolve(cargarFicha(JSON.parse(e.target.result))).catch(error => console.error("No se pudo cargar la ficha:", error));
                 setIdPersonajeNube(null); // viene de un fichero, no de la nube
             } catch (error) {
                 console.error('Error parsing JSON:', error);
@@ -2227,6 +2451,13 @@ function inicializarTurno() {
         const esDescanso = boton.accion === descansoCorto || boton.accion === descansoLargo;
         if (esDescanso && !confirmarPerderArmasLanzadas()) return;
         const resumen = boton.accion(personaje);
+        // Inicio de turno: parpadea el HUD y quienes tengan tu misma iniciativa empiezan a la vez
+        if (boton.accion === iniciarTurno) {
+            const hora = Math.max(Date.now(), ultimoTurnoVisto + 1, (MODO_MASTER ? getUltimoTurnoMaster() : 0) + 1);
+            marcarTurno(hora);
+            if (MODO_MASTER && !estaOcultoEnSala(personaje.nombre)) alIniciarTurnoMaster(hora, personaje.iniciativa, personaje.nombre);
+            enviarTurnoSala(hora);
+        }
         actualizarTodo();
         mostrarPopupInfo(boton.titulo, resumen.map(escaparHtml));
     });
@@ -2518,7 +2749,23 @@ function recibirGolpe(golpe, { autor, titulo, tirada = null }) {
 setAplicadorDanno(recibirGolpe);
 
 /* Comida o poción que te ofrece otro jugador (pop-up "oferta"): gasta la boca y avisa a toda la sala */
-function consumirOferta(datosObjeto, { autor }) {
+function consumirOferta(datosObjeto, { autor, para }) {
+    // Modo máster: si va a otro de sus personajes, se le aplica a ese (gasta su boca) y se guarda en local
+    if (!esElDeLaFicha(idDeInstancia(para))) {
+        const resultado = conPersonajeDeInstancia(para, pj => consumirOfrecido(pj, datosObjeto));
+        if (!resultado?.ok) {
+            mostrarPopupInfo("No puede consumirlo", (resultado?.resumen ?? ["No se encuentra el personaje."]).map(escaparHtml));
+            return false;
+        }
+        reproducir("click");
+        const pj = leerPersonajeDeInstancia(para);
+        emitirEvento("consumido", {
+            titulo: `${String(pj.nombre ?? "").trim() || "Alguien"} consume ${resultado.objeto.nombre}`,
+            subtitulo: `Ofrecida por ${autor}`,
+            lineas: resultado.resumen
+        });
+        return true;
+    }
     const { resultado, fallo } = conEmbriaguez("objeto", () => consumirOfrecido(personaje, datosObjeto, gastarAccionesOConfirmar));
     actualizarTodo();
     if (fallo) return true; // la oferta se pierde: se la ha tirado por encima
@@ -3487,7 +3734,8 @@ function confirmarSao({ titulo = "Confirmar", texto }) {
 
 /* Crear o editar un arte ______________________________________________________ */
 
-/** Abre el formulario para editar un arte (o para crear una si arte es null); se asigna en inicializarFormularioArte */
+/** Abre el formulario para editar un arte (o para crear una si arte es null); se asigna en inicializarFormularioArte.
+ *  opciones (perfil del máster): { pj, alTerminar, libre (crear no gasta desbloqueo) } */
 let abrirEditorArte = () => {};
 /** Abre el mismo formulario para un efecto de equipo (efecto o null, ventana de origen, alGuardar(efecto)) */
 let abrirEditorEfecto = () => {};
@@ -3573,6 +3821,12 @@ function inicializarFormularioArte() {
     let alGuardarEfecto = null;
     /* Modo habilidad onírica: sin requisitos, memoria ni compartir; no gasta desbloqueo */
     let modoOnirica = false;
+    /* Personaje al que va el arte: el de la ficha, o el borrador del perfil del máster (libre = no gasta
+       desbloqueo; alTerminar en lugar de actualizarTodo) */
+    let objetivo = { pj: personaje, libre: false, alTerminar: null };
+    const ponerObjetivo = (opciones = {}) => {
+        objetivo = { pj: opciones.pj ?? personaje, libre: Boolean(opciones.libre), alTerminar: opciones.alTerminar ?? null };
+    };
 
     // Desplegables y casillas fijas
     campo("arteUsoParte").innerHTML = Object.entries(PARTES_USO_ARTE)
@@ -3741,26 +3995,30 @@ function inicializarFormularioArte() {
         }
         if (modoOnirica) datos.onirica = true; // cargarArte quita requisitos y memoria
         const arte = cargarArte(datos);
+        const pj = objetivo.pj;
         if (edicion) {
-            personaje.artes[personaje.artes.indexOf(edicion)] = arte;
+            pj.artes[pj.artes.indexOf(edicion)] = arte;
         } else if (modoOnirica) {
             // Las oníricas no gastan desbloqueos de arte
-            const resultado = crearOnirica(personaje, arte);
+            const resultado = crearOnirica(pj, arte);
             if (!resultado.ok) {
                 aviso.textContent = resultado.resumen.join(" ");
                 return;
             }
+        } else if (objetivo.libre) {
+            pj.artes.push(arte); // perfil del máster: sin gastar desbloqueo
         } else {
             // Crear un arte nueva gasta un desbloqueo de arte (editar no)
-            const resultado = conseguirArte(personaje, arte);
+            const resultado = conseguirArte(pj, arte);
             if (!resultado.ok) {
                 aviso.textContent = resultado.resumen.join(" ");
                 return;
             }
         }
-        personaje.calcularCaracteristicas();
+        pj.calcularCaracteristicas();
         reproducir("click");
-        actualizarTodo();
+        if (objetivo.alTerminar) objetivo.alTerminar();
+        else actualizarTodo();
         ventana.cerrar();
         if (!modoOnirica && campo("arteCompartir").checked && getEstadoOnline().sala) {
             // La copia de la ficha pasa a apuntar al arte compartida ("Ya la tienes" en el catálogo)
@@ -3778,14 +4036,16 @@ function inicializarFormularioArte() {
     });
     modalEl.addEventListener("shown.bs.modal", () => campo("arteNombre").focus());
 
-    abrirEditorArte = (arte, origen) => {
+    abrirEditorArte = (arte, origen, opciones) => {
+        ponerObjetivo(opciones);
         edicion = arte;
         alGuardarEfecto = null;
         modoOnirica = Boolean(arte?.onirica);
         rellenar(arte);
         ventana.abrirDesde(origen);
     };
-    abrirEditorOnirica = (arte, origen) => {
+    abrirEditorOnirica = (arte, origen, opciones) => {
+        ponerObjetivo(opciones);
         edicion = arte;
         alGuardarEfecto = null;
         modoOnirica = true;
@@ -3829,13 +4089,21 @@ function alCambiarArtesSala(lista) {
 }
 /* "cargando", "ok" o "error" */
 let estadoCatalogoArtes = "cargando";
+/* Personaje al que se añaden las artes del catálogo: el de la ficha, o el borrador del perfil del máster
+   (libre = sin gastar desbloqueos; alTerminar en lugar de actualizarTodo). Vuelve al de la ficha al cerrar. */
+let objetivoCatalogo = { pj: personaje, libre: false, alTerminar: null };
+/** Abre el catálogo para otro personaje: { pj, origen, alTerminar, libre }; se asigna en inicializarCatalogoArtes */
+let abrirCatalogoEn = () => {};
 
 /* Texto sin tildes ni mayúsculas, para buscar */
 const normalizarTexto = (texto) => String(texto ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
 function actualizarCatalogoArtes() {
-    const disponibles = desbloqueosDisponibles(personaje);
-    document.getElementById("desbloqueosCatalogo").textContent = `(${disponibles} desbloqueo${disponibles === 1 ? "" : "s"})`;
+    const pj = objetivoCatalogo.pj;
+    const disponibles = desbloqueosDisponibles(pj);
+    document.getElementById("desbloqueosCatalogo").textContent = objetivoCatalogo.libre
+        ? "(sin gastar desbloqueos)"
+        : `(${disponibles} desbloqueo${disponibles === 1 ? "" : "s"})`;
     if (estadoCatalogoArtes !== "ok") {
         pintarLista(listaCatalogoArtesEl, `<p class="lista-vacia">${estadoCatalogoArtes === "cargando"
             ? "Cargando el catálogo…"
@@ -3846,13 +4114,13 @@ function actualizarCatalogoArtes() {
     const grupo = document.getElementById("catalogoGrupo").value;
     const tipo = document.getElementById("catalogoTipo").value;
     const soloCumplo = document.getElementById("catalogoSoloCumplo").checked;
-    const tengo = new Set(personaje.artes.map(arte => arte.idCatalogo).filter(Boolean));
-    const sinDesbloqueos = motivoNoConseguirArte(personaje);
+    const tengo = new Set(pj.artes.map(arte => arte.idCatalogo).filter(Boolean));
+    const sinDesbloqueos = objetivoCatalogo.libre ? null : motivoNoConseguirArte(pj);
 
     const visibles = catalogoArtes
         .map((arte, i) => ({ arte, i }))
         .filter(({ arte }) => (!grupo || arte.grupo === grupo) && (!tipo || arte.tipo === tipo)
-            && (!soloCumplo || cumpleRequisitos(personaje, arte))
+            && (!soloCumplo || cumpleRequisitos(pj, arte))
             && (!busqueda || normalizarTexto([arte.nombre, arte.descripcion, ...arte.etiquetas].join(" ")).includes(busqueda)));
 
     const opcionesFila = (arte) => {
@@ -3892,8 +4160,17 @@ function inicializarCatalogoArtes() {
 
     document.getElementById("btnAbrirCatalogoArtes").addEventListener("click", (e) => {
         reproducir("click");
+        objetivoCatalogo = { pj: personaje, libre: false, alTerminar: null };
         actualizarCatalogoArtes();
         ventana.abrirDesde(e.target.closest(".modal"));
+    });
+    abrirCatalogoEn = (opciones) => {
+        objetivoCatalogo = { pj: opciones.pj, libre: Boolean(opciones.libre), alTerminar: opciones.alTerminar ?? null };
+        actualizarCatalogoArtes();
+        ventana.abrirDesde(opciones.origen);
+    };
+    document.getElementById("modalCatalogoArtes").addEventListener("hidden.bs.modal", () => {
+        objetivoCatalogo = { pj: personaje, libre: false, alTerminar: null };
     });
 
     listaCatalogoArtesEl.addEventListener("click", (e) => {
@@ -3905,9 +4182,22 @@ function inicializarCatalogoArtes() {
             if (confirm(`¿Quitar ${arte.nombre} del catálogo de la sala? Quien ya la tenga la conserva.`)) quitarArteDeSala(arte.id, arte.nombre);
             return;
         }
-        // Gasta un desbloqueo de arte
-        const resultado = conseguirArte(personaje, copiarDelCatalogo(arte));
-        actualizarTodo();
+        // Gasta un desbloqueo de arte (en el perfil del máster, no)
+        const { pj, libre, alTerminar } = objetivoCatalogo;
+        const copia = copiarDelCatalogo(arte);
+        let resultado;
+        if (libre) {
+            pj.artes.push(copia);
+            resultado = { ok: true, resumen: [`${copia.nombre} está en las artes sin equipar.`] };
+        } else {
+            resultado = conseguirArte(pj, copia);
+        }
+        if (alTerminar) {
+            alTerminar();
+            actualizarCatalogoArtes();
+        } else {
+            actualizarTodo();
+        }
         mostrarPopupInfo(resultado.ok ? "Arte añadida" : "No se puede añadir", resultado.resumen.map(escaparHtml));
     });
 }
@@ -3976,6 +4266,11 @@ function inicializarOpciones() {
                 case "nueva": {
                     reproducir("click");
                     menu.cerrar({ sonido: false });
+                    // Modo máster: un personaje nuevo más (el actual sigue guardado)
+                    if (MODO_MASTER) {
+                        abrirPerfilMaster({ crear: true });
+                        break;
+                    }
                     comprobarCambios();
                     const pregunta = hayCambiosSinGuardar
                         ? "La ficha actual tiene cambios sin guardar. ¿Empezar una ficha nueva y perderlos?"
@@ -4033,7 +4328,7 @@ function inicializarSocial() {
         ],
         alElegir: (clave, menu) => {
             const acciones = {
-                perfil: abrirPerfil,
+                perfil: abrirPerfilSegunModo,
                 diario: abrirDiario,
                 verAmigos: abrirAmigos,
                 anadirAmigo: abrirAnadirAmigo,
@@ -4276,8 +4571,27 @@ function valoresEquipo(equipo) {
 // La ven los compañeros de grupo (la piden con un evento privado, interfazOnline.js) y tú en tu perfil.
 
 /** Tu ficha resumida, lista para enviar */
-function resumenPropio() {
-    return crearResumenFicha(personaje, { detalleArte, detalleEfecto, etiquetaTipoEquipo, valoresEquipo, textoModificadores });
+function resumenPropio(pj = personaje) {
+    return crearResumenFicha(pj, { detalleArte, detalleEfecto, etiquetaTipoEquipo, valoresEquipo, textoModificadores });
+}
+
+/* Personaje de esta pestaña de una instancia: en modo máster, "m-<id>" es uno de sus personajes, el de la ficha o
+   uno guardado en local (interfazMaster.js). Cualquier otra, el de la ficha. */
+const idDeInstancia = (instancia) => (MODO_MASTER && instancia?.startsWith("m-") ? instancia.slice(2) : null);
+const esElDeLaFicha = (id) => !id || (!lectura && id === personaje.idPersonaje);
+function leerPersonajeDeInstancia(instancia) {
+    const id = idDeInstancia(instancia);
+    return esElDeLaFicha(id) ? personaje : (leerPersonajeMaster(id) ?? personaje);
+}
+/* Aplica un cambio (fn(pj)) al personaje de esa instancia y lo guarda; devuelve lo que devuelva fn */
+function conPersonajeDeInstancia(instancia, fn) {
+    const id = idDeInstancia(instancia);
+    if (esElDeLaFicha(id)) {
+        const resultado = fn(personaje);
+        actualizarTodo();
+        return resultado;
+    }
+    return conPersonajeMaster(id, fn);
 }
 
 /* HTML de la ficha resumida. Todo el texto se escapa: puede venir de otro jugador.
@@ -4323,7 +4637,9 @@ function htmlFichaResumen(resumen, { perfil = false } = {}) {
         : "";
 
     return `
-        <div class="resumen-cabecera"><b>${e(resumen.nombre || "Sin nombre")}</b> <span>LV ${resumen.nivel}</span>${profesion}${casillas}</div>
+        <div class="resumen-cabecera">${perfil
+            ? `<input type="text" class="input-nombre-perfil" maxlength="60" value="${e(personaje.nombre)}" aria-label="Nombre del personaje" title="Nombre del personaje">`
+            : `<b>${e(resumen.nombre || "Sin nombre")}</b>`} <span>LV ${resumen.nivel}</span>${profesion}${casillas}</div>
         ${perfil ? htmlDatosPerfil() : ""}
         <h6 class="titulo-online">Habilidades</h6><div class="resumen-rejilla">${habilidades}</div>
         <h6 class="titulo-online">Valores de combate</h6><div class="resumen-rejilla">${combate}</div>
@@ -4380,8 +4696,26 @@ const PREGUNTAS_CASILLA_PERFIL = {
 
 function inicializarPerfil() {
     const contenido = document.getElementById("contenidoFichaResumen");
+    contenido.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && e.target.closest(".input-nombre-perfil")) e.target.blur(); // dispara change
+    });
     contenido.addEventListener("change", async (e) => {
         if (!fichaResumenAbierta?.perfil) return;
+        const inputNombrePerfil = e.target.closest(".input-nombre-perfil");
+        if (inputNombrePerfil) {
+            const nuevo = inputNombrePerfil.value.trim().slice(0, 60);
+            if (nuevo === personaje.nombre) return;
+            // En una sala el nombre tiene que estar libre (motivoNombreNoDisponible en interfazOnline.js)
+            const motivo = !nuevo ? "Escribe un nombre." : motivoNombreNoDisponible(nuevo);
+            if (motivo) {
+                mostrarPopupInfo("No se puede cambiar el nombre", [escaparHtml(motivo)]);
+            } else if (await confirmarSao({ titulo: "Cambiar nombre", texto: `¿Cambiar el nombre de ${personaje.nombre || "tu personaje"} a ${nuevo}?` })) {
+                personaje.nombre = nuevo;
+                actualizarTodo();
+            }
+            abrirPerfil();
+            return;
+        }
         const select = e.target.closest(".select-profesion-perfil");
         if (select) {
             const nueva = select.value;
@@ -4595,7 +4929,8 @@ function actualizarObjetos() {
 // solo se crean, editan y descartan.
 
 const listaObjetosClaveEl = document.getElementById("listaObjetosClave");
-/** Abre el formulario de un objeto clave (índice, o null para crear); se asigna en inicializarObjetosClave */
+/** Abre el formulario de un objeto clave (índice, o null para crear); se asigna en inicializarObjetosClave.
+ *  opciones (perfil del máster): { pj, origen (ventana a la que volver), alTerminar } */
 let abrirEditorObjetoClave = () => {};
 
 function filaObjetoClave(objeto, indice) {
@@ -4624,10 +4959,13 @@ function inicializarObjetosClave() {
     const aviso = campo("avisoObjetoClave");
     /* Índice del que se edita, o null al crear */
     let edicion = null;
+    /* Personaje al que va: el de la ficha, o el borrador del perfil del máster */
+    let objetivo = { pj: personaje, alTerminar: null };
 
-    abrirEditorObjetoClave = (indice) => {
+    abrirEditorObjetoClave = (indice, opciones = {}) => {
         edicion = indice;
-        const objeto = indice === null ? null : personaje.objetosClave[indice];
+        objetivo = { pj: opciones.pj ?? personaje, alTerminar: opciones.alTerminar ?? null };
+        const objeto = indice === null ? null : objetivo.pj.objetosClave[indice];
         campo("objetoClaveNombre").value = objeto?.nombre ?? "";
         campo("objetoClaveDescripcion").value = objeto?.descripcion ?? "";
         aviso.textContent = "";
@@ -4635,7 +4973,7 @@ function inicializarObjetosClave() {
         campo("modalObjetoClaveLabel").textContent = objeto ? "Editar objeto clave" : "Crear objeto clave";
         campo("btnGuardarObjetoClave").title = texto;
         campo("btnGuardarObjetoClave").setAttribute("aria-label", texto);
-        ventana.abrirDesde(document.getElementById("modalObjetosClave"));
+        ventana.abrirDesde(opciones.origen ?? document.getElementById("modalObjetosClave"));
     };
 
     const guardar = () => {
@@ -4645,10 +4983,11 @@ function inicializarObjetosClave() {
             campo("objetoClaveNombre").focus();
             return;
         }
-        if (edicion === null) personaje.objetosClave.push(objeto);
-        else personaje.objetosClave[edicion] = objeto;
+        if (edicion === null) objetivo.pj.objetosClave.push(objeto);
+        else objetivo.pj.objetosClave[edicion] = objeto;
         reproducir("click");
-        actualizarTodo();
+        if (objetivo.alTerminar) objetivo.alTerminar();
+        else actualizarTodo();
         ventana.cerrar();
     };
     campo("btnGuardarObjetoClave").addEventListener("click", guardar);
@@ -4871,8 +5210,11 @@ function inicializarObjetos() {
 }
 
 /* Ventana de crear y editar objetos ________________________________________ */
-/* Abre la ventana con un objeto del inventario o del baúl; la define inicializarCrearObjeto */
+/* Abre la ventana con un objeto del inventario o del baúl; la define inicializarCrearObjeto.
+   opciones (perfil del máster): { pj, origen (ventana a la que volver), alTerminar, libre (sin restricciones de zona) } */
 let abrirEditorObjeto = () => {};
+/** Abre la ventana para crear un objeto en el inventario o el baúl de otro personaje (mismas opciones) */
+let abrirCrearObjetoEn = () => {};
 
 function inicializarCrearObjeto() {
     const modalEl = document.getElementById("modalCrearObjeto");
@@ -4897,6 +5239,9 @@ function inicializarCrearObjeto() {
     const listaEfectos = campo("listaEfectosObjeto");
     /* Objeto que se está editando: { lista: "inventario" | "baul", indice }, o null al crear */
     let edicion = null;
+    /* Personaje al que va el objeto: el de la ficha, o el borrador del perfil del máster (libre = sin
+       restricciones de zona; alTerminar en lugar de actualizarTodo) */
+    let objetivo = { pj: personaje, libre: false, alTerminar: null };
 
     // Opciones de los desplegables
     selectTipo.innerHTML = Object.entries(TIPOS_OBJETO).map(([clave, info]) => `<option value="${clave}">${info.etiqueta}</option>`).join("");
@@ -5130,7 +5475,7 @@ function inicializarCrearObjeto() {
         }
         if (tipo === "equipo") {
             // Al editar se conserva lo que el formulario no muestra (p. ej. una poción aplicada al arma)
-            const original = edicion ? personaje[edicion.lista][edicion.indice]?.equipo : null;
+            const original = edicion ? objetivo.pj[edicion.lista][edicion.indice]?.equipo : null;
             datos.equipo = {
                 ...(original ? JSON.parse(JSON.stringify(original)) : {}),
                 tipo: selectTipoEquipo.value, nombre, descripcion: datos.descripcion,
@@ -5153,12 +5498,13 @@ function inicializarCrearObjeto() {
         const lineas = [];
 
         // Fuera de la base no se puede usar el baúl: lo que no quepa en el inventario no se crea
-        if (!baulAccesible(personaje)) {
+        const pj = objetivo.pj;
+        if (!objetivo.libre && !baulAccesible(pj)) {
             const pila = objeto.tipo === "equipo" ? 1 : MAX_PILA_INVENTARIO;
             const sobra = edicion?.lista === "inventario" ? objeto.cantidad - pila
                 : edicion ? 0
                 : destino === "baul" ? objeto.cantidad
-                : objeto.cantidad - cabenEnInventario(personaje, objeto);
+                : objeto.cantidad - cabenEnInventario(pj, objeto);
             if (sobra > 0) {
                 aviso.textContent = destino === "baul" && !edicion
                     ? MOTIVOS_ZONA.crearEnBaul + "."
@@ -5174,25 +5520,26 @@ function inicializarCrearObjeto() {
             if (edicion.lista === "inventario" && objeto.cantidad > pila) {
                 const sobra = objeto.cantidad - pila;
                 objeto.cantidad = pila;
-                anadirABaul(personaje, { ...objeto, cantidad: sobra });
+                anadirABaul(pj, { ...objeto, cantidad: sobra });
                 lineas.push(`Solo caben ${pila} por hueco: ${sobra} van al baúl.`);
             }
-            personaje[edicion.lista][edicion.indice] = objeto;
-            personaje.calcularCaracteristicas();
+            pj[edicion.lista][edicion.indice] = objeto;
+            pj.calcularCaracteristicas();
         } else if (destino === "baul") {
-            anadirABaul(personaje, objeto);
+            anadirABaul(pj, objeto);
         } else {
             // Lo que no cabe en el inventario va al baúl, para no perderlo
-            const resto = anadirAInventario(personaje, objeto);
+            const resto = anadirAInventario(pj, objeto);
             if (resto > 0) {
-                anadirABaul(personaje, { ...objeto, cantidad: resto });
+                anadirABaul(pj, { ...objeto, cantidad: resto });
                 lineas.push(`No caben ${resto} en el inventario: van al baúl.`);
             }
         }
         const editado = Boolean(edicion);
         edicion = null;
         modal.hide();
-        actualizarTodo();
+        if (objetivo.alTerminar) objetivo.alTerminar();
+        else actualizarTodo();
         if (lineas.length) mostrarPopupInfo(`${editado ? "Editado" : "Creado"}: ${escaparHtml(nombre)}`, lineas);
     };
 
@@ -5220,20 +5567,28 @@ function inicializarCrearObjeto() {
         boton.addEventListener("click", () => {
             reproducir("click");
             destino = boton.dataset.destino;
+            objetivo = { pj: personaje, libre: false, alTerminar: null };
             reiniciar();
             abrirDesde(boton.closest(".modal"));
         });
     });
 
     // Editar un objeto ya creado (botón de cada fila; el click ya suena en la lista)
-    abrirEditorObjeto = (lista, indice) => {
-        const objeto = personaje[lista][indice];
+    abrirEditorObjeto = (lista, indice, opciones = {}) => {
+        objetivo = { pj: opciones.pj ?? personaje, libre: Boolean(opciones.libre), alTerminar: opciones.alTerminar ?? null };
+        const objeto = objetivo.pj[lista][indice];
         if (!objeto) return;
         reiniciar();
         edicion = { lista, indice };
         ponerModo(true);
         rellenar(objeto);
-        abrirDesde(document.getElementById(lista === "baul" ? "modalBaul" : "modalInventario"));
+        abrirDesde(opciones.origen ?? document.getElementById(lista === "baul" ? "modalBaul" : "modalInventario"));
+    };
+    abrirCrearObjetoEn = (lista, opciones) => {
+        destino = lista;
+        objetivo = { pj: opciones.pj, libre: Boolean(opciones.libre), alTerminar: opciones.alTerminar ?? null };
+        reiniciar();
+        abrirDesde(opciones.origen);
     };
     modalEl.addEventListener("shown.bs.modal", () => campo("objetoNombre").focus());
     // Cerrar esta ventana devuelve al inventario o al baúl, no a la pantalla principal:
@@ -5260,6 +5615,8 @@ function inicializarDebug() {
         personaje, ejecutar: () => ejecutarDebug(personaje), crearPersonajePrueba, validarFicha,
         // Repinta la ficha tras cambiar fichaDebug.personaje a mano
         actualizar: () => actualizarTodo(),
+        // Modo lectura con un JSON cualquiera (modo máster), para probarlo sin sala
+        abrirLectura: (json, info = { nombre: "Prueba" }) => abrirFichaLectura(typeof json === "string" ? json : JSON.stringify(json), info),
         // Artes: el catálogo cargado y los requisitos de cada una para este personaje
         get catalogoArtes() { return catalogoArtes; },
         // Copia un arte del catálogo a las artes sin equipar, p. ej. fichaDebug.anadirArte("golpe-horizontal")
@@ -5368,28 +5725,70 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarVentanas();
     inicializarDebug();
     actualizarTodo();
-    // La ficha de la última visita; si no hay, la vacía de inicio (cerrar sin tocar nada no avisa)
-    if (!restaurarCache()) marcarGuardado();
+    // Modo máster: sus personajes guardados en local, la cabecera y su perfil (interfazMaster.js)
+    if (MODO_MASTER) {
+        inicializarMaster({
+            personaje: () => personaje,
+            abrirFicha: abrirFichaMaster,
+            comprobarCambios,
+            marcarGuardado,
+            actualizar: actualizarTodo,
+            confirmar: confirmarSao,
+            aviso: (titulo, lineas) => mostrarPopupInfo(escaparHtml(titulo), lineas.map(escaparHtml)),
+            // Inventario, baúl y objetos clave del perfil: mismas ventanas que la ficha, sobre el borrador
+            detalleObjeto: (objeto) => `${TIPOS_OBJETO[objeto.tipo]?.etiqueta ?? ""} · ${detalleObjeto(objeto)}`,
+            iconoObjeto,
+            abrirEditorObjeto: (...args) => abrirEditorObjeto(...args),
+            abrirCrearObjeto: (...args) => abrirCrearObjetoEn(...args),
+            abrirEditorObjetoClave: (...args) => abrirEditorObjetoClave(...args),
+            // Artes del perfil: catálogo y formulario de la ficha, sobre el borrador
+            detalleArte,
+            abrirEditorArte: (...args) => abrirEditorArte(...args),
+            abrirEditorOnirica: (...args) => abrirEditorOnirica(...args),
+            abrirCatalogo: (...args) => abrirCatalogoEn(...args),
+            // Turno de sus personajes (el del máster y los que empiezan a la vez)
+            turnoDe,
+            fijarTurno: (id, turno) => turnos.set(id, turno),
+            // Sus personajes en grupos: estado de uno que no está en la ficha
+            publicarEstadoDe,
+            // Ficha de un jugador en modo lectura
+            abrirLectura: abrirFichaLectura,
+            lectura: () => lectura
+        });
+    }
+    // La ficha de la última visita (en máster, su último personaje); si no hay, la vacía de inicio
+    // (cerrar sin tocar nada no avisa)
+    if (!(MODO_MASTER ? restaurarMaster() : restaurarCache())) marcarGuardado();
+    if (MODO_MASTER) actualizarHudMaster(); // el primer personaje se acaba de guardar
     // Online (Firebase): si la última vez se dejó la sesión abierta, se recupera con su sala
     inicializarOnline({
         modoMaster: MODO_MASTER,
         personaje: () => personaje,
         cargarFicha,
         marcarGuardado,
+        confirmar: confirmarSao,
+        master: MODO_MASTER ? { pendientesDeNube: pendientesMasterDeNube, marcarSubido: marcarSubidoMaster, proveedorSala: proveedorSalaMaster } : null,
+        alCambiarEstadosSala: () => actualizarHudMaster(),
         hayCambiosSinGuardar: () => { comprobarCambios(); return hayCambiosSinGuardar; },
         aviso: (titulo, lineas) => mostrarPopupInfo(escaparHtml(titulo), lineas.map(escaparHtml)),
         alCambiarEstado: () => {
             menuOpciones?.actualizar();
+            alCambiarSalaMaster();
             actualizarCatalogoArtes();
         },
         alCambiarArtesSala,
         // Las opciones "Ofrecer a…" del inventario dependen de qué personajes hay en la sala
-        alCambiarPersonajes: () => actualizarObjetos(),
+        alCambiarPersonajes: () => { actualizarObjetos(); actualizarHudMaster(); },
         actualizar: actualizarTodo,
-        // El submenú Grupo cambia según estés en un grupo o seas el líder
-        alCambiarGrupo: () => menuSocial?.actualizar(),
+        // El submenú Grupo cambia según estés en un grupo o seas el líder; el turno de tus compañeros
+        alCambiarGrupo: () => { menuSocial?.actualizar(); comprobarTurnoGrupo(); },
+        turnoPropio: () => turnoDe(personaje.idPersonaje),
         // Ficha resumida: la tuya para enviarla a un compañero y la ventana para ver la suya
         resumenPropio,
-        mostrarFichaResumen
+        mostrarFichaResumen,
+        // Personaje al que va un evento privado (en modo máster, uno de los suyos aunque no esté en la ficha)
+        leerPersonaje: leerPersonajeDeInstancia,
+        conPersonaje: conPersonajeDeInstancia,
+        resumenDe: (instancia) => resumenPropio(leerPersonajeDeInstancia(instancia))
     });
 });

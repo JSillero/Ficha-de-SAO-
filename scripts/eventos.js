@@ -36,8 +36,16 @@ const manejadores = {};
 
 /* Quién emite: jugador (id de usuario) y nombre del personaje. personaje, oculto y esMaster pueden ser
    funciones (cambian con el tiempo). esMaster: si esta ficha es la del máster de la sala (lo ve todo completo).
-   enMiGrupo(instancia): si ese personaje está en tu grupo (ves completas sus tiradas). */
-const origen = { jugador: null, personaje: "", oculto: false, esMaster: false, enMiGrupo: () => false };
+   enMiGrupo(instancia): si ese personaje está en tu grupo (ves completas sus tiradas).
+   instancia(): con la que se emite (la de la pestaña; en modo máster, la del personaje de la ficha, "m-<id>").
+   esPropia(instancia): si es de esta pestaña (no se pinta lo propio y se atienden los privados dirigidos a ella;
+   en modo máster, cualquiera de sus personajes). */
+const origen = {
+    jugador: null, personaje: "", oculto: false, esMaster: false, enMiGrupo: () => false,
+    instancia: () => getInstancia(), esPropia: (instancia) => instancia === getInstancia()
+};
+const instanciaPropia = () => origen.instancia() || getInstancia();
+const esInstanciaPropia = (instancia) => Boolean(instancia) && (instancia === getInstancia() || origen.esPropia(instancia));
 let publicador = null;
 
 const valor = (v) => typeof v === "function" ? v() : v;
@@ -46,12 +54,18 @@ export function registrarPintor(tipo, pintar) {
     pintores[tipo] = pintar;
 }
 
-/** Evento privado: manejar(evento) solo se llama en la pestaña destinataria (evento.datos.para) */
+/** Destinatario de un evento sin pop-up para todas las pestañas de la sala (salvo la que lo emite) */
+export const PARA_TODOS = "*";
+
+/** Evento privado: manejar(evento) solo se llama en la pestaña destinataria (evento.datos.para), o en todas si
+ *  para es PARA_TODOS */
 export function registrarManejador(tipo, manejar) {
     manejadores[tipo] = manejar;
 }
 
-export function configurarOrigen({ jugador, personaje, oculto, esMaster, enMiGrupo } = {}) {
+export function configurarOrigen({ jugador, personaje, oculto, esMaster, enMiGrupo, instancia, esPropia } = {}) {
+    if (instancia !== undefined) origen.instancia = instancia;
+    if (esPropia !== undefined) origen.esPropia = esPropia;
     if (jugador !== undefined) origen.jugador = jugador;
     if (personaje !== undefined) origen.personaje = personaje;
     if (oculto !== undefined) origen.oculto = oculto;
@@ -59,21 +73,23 @@ export function configurarOrigen({ jugador, personaje, oculto, esMaster, enMiGru
     if (enMiGrupo !== undefined) origen.enMiGrupo = enMiGrupo;
 }
 
-const crearEvento = (tipo, datos) => ({
+/* como: { instancia, personaje } para emitir en nombre de otro personaje de esta pestaña (modo máster: el que
+   recibió una solicitud responde como él, aunque no esté en la ficha) */
+const crearEvento = (tipo, datos, como = {}) => ({
     version: VERSION_EVENTO,
     tipo,
     jugador: origen.jugador,
-    instancia: getInstancia(),
-    personaje: String(valor(origen.personaje) ?? ""),
+    instancia: como.instancia || instanciaPropia(),
+    personaje: String(como.personaje ?? valor(origen.personaje) ?? ""),
     oculto: Boolean(valor(origen.oculto)),
     hora: new Date().toISOString(),
     datos
 });
 
 /** Envía un evento privado (sin pintarlo aquí). Devuelve la promesa del envío (falla sin conexión). */
-export async function emitirPrivado(tipo, datos) {
+export async function emitirPrivado(tipo, datos, como = {}) {
     if (!publicador) throw new Error("Entra en una sala primero");
-    await publicador(crearEvento(tipo, datos));
+    await publicador(crearEvento(tipo, datos, como));
 }
 
 /* publicar(evento): lo manda a la sala. null = sin conexión */
@@ -82,7 +98,15 @@ export function setPublicador(publicar) {
 }
 
 /** Crea el evento, lo pinta aquí y lo manda a la sala si hay conexión. */
+/* Modo lectura (el máster mira la ficha de un jugador): no se emite nada en su nombre */
+let emisionBloqueada = () => false;
+/** fn() => true mientras no se deban emitir pop-ups */
+export function setBloqueoEmision(fn) {
+    emisionBloqueada = fn;
+}
+
 export function emitirEvento(tipo, datos) {
+    if (emisionBloqueada()) return null;
     const evento = crearEvento(tipo, datos);
     pintarEvento(evento, true);
     if (publicador) {
@@ -99,10 +123,10 @@ export function emitirEvento(tipo, datos) {
  *  los de otras pestañas del mismo usuario (otro personaje) sí se pintan. */
 export function recibirEvento(evento) {
     if (!evento || typeof evento !== "object" || evento.version !== VERSION_EVENTO) return;
-    if (evento.instancia === getInstancia()) return;
+    if (esInstanciaPropia(evento.instancia)) return;
     // Privados: solo los atiende su destinatario y no se pintan como pop-up
     if (manejadores[evento.tipo]) {
-        if (evento.datos?.para === getInstancia()) {
+        if (esInstanciaPropia(evento.datos?.para) || evento.datos?.para === PARA_TODOS) {
             try { manejadores[evento.tipo](evento); } catch (error) { console.warn("Evento privado mal formado", evento, error); }
         }
         return;
@@ -239,7 +263,7 @@ export function setConsumidorOferta(consumir) {
     consumidorOferta = consumir;
 }
 
-const esParaMi = (datos) => Boolean(datos?.para) && datos.para === getInstancia();
+const esParaMi = (datos) => esInstanciaPropia(datos?.para);
 const esOfertaParaMi = (evento) => evento.tipo === "oferta" && esParaMi(evento.datos);
 
 registrarPintor("oferta", (datos) => {
@@ -257,7 +281,7 @@ function hacerOfertaConsumible(popup, evento, autor) {
     boton.addEventListener("click", (e) => {
         e.stopPropagation(); // no cierra el pop-up
         if (boton.disabled) return;
-        if (!consumidorOferta(evento.datos.objeto, { autor })) return;
+        if (!consumidorOferta(evento.datos.objeto, { autor, para: evento.datos.para })) return;
         boton.disabled = true;
         boton.textContent = "✓ Consumida";
     });

@@ -15,7 +15,10 @@ import { cargarResumenFicha } from "./resumenFicha.js";
  * @typedef {Object} ContextoOnline
  * @property {boolean} [modoMaster]          en master no se recuerda el personaje de la nube abierto
  * @property {() => object} personaje          la instancia de PJ actual
- * @property {(datos: object) => void} cargarFicha  carga un JSON ya parseado (como el de un fichero)
+ * @property {(datos: object, opciones?: { idNube?: string }) => (void|Promise)} cargarFicha  carga un JSON ya parseado
+ *           (como el de un fichero); en modo máster lo añade a sus personajes
+ * @property {(pregunta: { titulo: string, texto: string }) => Promise<boolean>} confirmar  ventana sí / no (confirmarSao)
+ * @property {object} [master]  modo máster (interfazMaster.js): pendientesDeNube() y marcarSubido(id, idNube, json)
  * @property {() => void} marcarGuardado
  * @property {() => boolean} hayCambiosSinGuardar
  * @property {(titulo: string, lineas: string[]) => void} aviso  pop-up informativo (texto plano)
@@ -59,6 +62,7 @@ const MINUTOS_COMPROBAR_INACTIVIDAD = 10;
 /* Cambio de nombre del personaje: se publica en la sala tras este rato sin cambios (una escritura, no una por tecla) */
 const RETARDO_NOMBRE_MS = 3000;
 let temporizadorNombre = null;
+let ultimoIdAvisado = null;
 
 const el = (id) => document.getElementById(id);
 const formatoFecha = new Intl.DateTimeFormat("es-ES", { dateStyle: "short", timeStyle: "short" });
@@ -67,17 +71,64 @@ export const getEstadoOnline = () => servicio.getEstado();
 /** Personajes de la sala a los que se puede ofrecer algo: [{ jugador, instancia, nombre }]
  *  (sin el de esta pestaña ni los ocultos) */
 export const getPersonajesSala = () => servicio.getPersonajesSala()
-    .filter(p => p.instancia !== getInstancia() && !p.oculto);
+    .filter(p => !esDeEstaPestana(p.instancia) && !p.oculto);
+/* ¿Es un personaje de esta pestaña? (en modo máster, cualquiera de los suyos) */
+const esDeEstaPestana = (instancia) => instancia === getInstancia() || servicio.esInstanciaPropia(instancia);
 export const setIdPersonajeNube = (id) => cambiarIdNube(id);
 
-/** La ficha avisa del nombre de su personaje (en cada actualizarTodo); solo se publica si cambia, con retardo */
-export function avisarNombrePersonaje(nombre) {
-    clearTimeout(temporizadorNombre);
-    temporizadorNombre = setTimeout(() => servicio.configurarPersonaje({ nombre }), RETARDO_NOMBRE_MS);
+/**
+ * ¿Se puede usar este nombre en la sala? Devuelve el motivo si no, o null. Los nombres son únicos en la sala:
+ * uno de otro usuario (aunque esté desconectado) no se puede usar; uno tuyo sí (se sobrescribe). Sin sala, libre.
+ */
+export function motivoNombreNoDisponible(nombre) {
+    return servicio.getEstado().sala ? servicio.motivoNombre(nombre) : null;
 }
+
+/** La ficha avisa de su personaje (nombre e idPersonaje, en cada actualizarTodo); solo se publica si cambia, con retardo */
+export function avisarNombrePersonaje(nombre, id) {
+    clearTimeout(temporizadorNombre);
+    // Cambiar de personaje (modo máster) se aplica ya: los eventos y el grupo van con el personaje de la ficha
+    if (id !== ultimoIdAvisado) {
+        ultimoIdAvisado = id;
+        servicio.configurarPersonaje({ id });
+    }
+    temporizadorNombre = setTimeout(() => servicio.configurarPersonaje({ nombre, id }), RETARDO_NOMBRE_MS);
+}
+
+/**
+ * Modo máster en su sala: lo que necesita la cabecera, o null si no lleva la sala como máster.
+ * { uid, registro: { uid: { id: { nombre } } }, estados: { id: {...} }, conectados: Set("uid|id") }
+ */
+export function getSalaMaster() {
+    const { usuario, sala } = servicio.getEstado();
+    if (!ctx?.modoMaster || !usuario || !sala || sala.master !== usuario.uid) return null;
+    return {
+        uid: usuario.uid,
+        registro: servicio.getRegistroSala(),
+        estados: servicio.getEstadosSala(),
+        conectados: new Set(servicio.getPersonajesSala().filter(p => p.id).map(p => `${p.jugador}|${p.id}`)),
+        ocultos: new Set(sala.ocultos ?? [])
+    };
+}
+/** Modo máster: oculta o muestra un personaje (como en la ventana de la sala) */
+export const ocultarPersonajeSala = (jugador, nombre, ocultar) => servicio.cambiarOculto(jugador, nombre, ocultar);
+export const claveOcultoSala = (jugador, nombre) => servicio.claveOculto(jugador, nombre);
+/** ¿El máster ha ocultado a este personaje tuyo (por su nombre)? Los ocultos no empiezan turno a la vez ni lo provocan. */
+export function estaOcultoEnSala(nombre) {
+    const { usuario, sala } = servicio.getEstado();
+    return Boolean(usuario && sala) && (sala.ocultos ?? []).includes(servicio.claveOculto(usuario.uid, nombre));
+}
+export const publicarPersonajesMaster = (lista) => servicio.publicarPersonajesMaster(lista)
+    .catch(error => console.warn("No se pudieron poner tus personajes en la sala:", error));
+export const echarPersonajeSala = (jugador, id) => servicio.echarPersonaje(jugador, id);
+/** Motivo por el que un nombre no puede estar en la sala según un registro (el de la sala si no se pasa) */
+export const motivoNombreSala = (nombre, registro) => servicio.motivoNombre(nombre, registro);
+export const mensajeErrorOnline = (error) => servicio.mensajeError(error);
 
 export async function inicializarOnline(contexto) {
     ctx = contexto;
+    // Modo máster: en su sala entran sus personajes de la sesión, no la pestaña
+    if (ctx.modoMaster && ctx.master?.proveedorSala) servicio.configurarMaster(ctx.master.proveedorSala);
     if (!ctx.modoMaster) idPersonajeNube = leerIdNube();
     inicializarCuenta();
     inicializarSala();
@@ -86,7 +137,8 @@ export async function inicializarOnline(contexto) {
     servicio.alCambiarEstado(estado => {
         // Los pop-ups que se emitan llevan el nombre del personaje (no el del usuario); con sala, se envían
         configurarOrigen({ jugador: estado.usuario?.uid ?? null, oculto: servicio.personajeLocalOculto,
-            esMaster: servicio.soyMasterSala, enMiGrupo: servicio.enMiGrupo });
+            esMaster: servicio.soyMasterSala, enMiGrupo: (otra) => servicio.enMiGrupo(otra),
+            instancia: servicio.instanciaActual, esPropia: servicio.esInstanciaPropia });
         setPublicador(estado.sala ? servicio.publicarEvento : null);
         if (!estado.usuario && idPersonajeNube) cambiarIdNube(null);
         pintarCuenta();
@@ -103,18 +155,24 @@ export async function inicializarOnline(contexto) {
         if (el("modalGrupo").classList.contains("show")) pintarGrupo();
         if (el("modalAnadirAmigo").classList.contains("show")) pintarAnadirAmigo();
     });
+    servicio.alCambiarEstadosSala(() => ctx.alCambiarEstadosSala?.());
     servicio.alCambiarGrupo(grupo => {
         actualizarHudGrupo();
         if (el("modalGrupo").classList.contains("show")) pintarGrupo();
         ctx.alCambiarGrupo?.(grupo);
     });
-    servicio.alSalirGrupo(({ motivo }) => {
-        ctx.aviso("Grupo", [motivo === "echado" ? "El líder te ha sacado del grupo." : "El grupo se ha disuelto."]);
+    servicio.alSalirGrupo(({ motivo, nombre, propio }) => {
+        const quien = propio === false ? nombre || "Tu personaje" : null;
+        ctx.aviso("Grupo", [motivo === "echado"
+            ? (quien ? `El líder ha sacado a ${quien} del grupo.` : "El líder te ha sacado del grupo.")
+            : (quien ? `El grupo de ${quien} se ha disuelto.` : "El grupo se ha disuelto.")]);
     });
     inicializarSocial();
-    servicio.alSalirSala(({ motivo, nombre }) => {
+    servicio.alSalirSala(({ motivo, nombre, detalle }) => {
         if (motivo === "expulsado") {
             ctx.aviso("Sala", [`El máster te ha sacado de ${nombre}.`, "Puedes volver a entrar desde Tus salas."]);
+        } else if (motivo === "nombre") {
+            ctx.aviso("Sala", [`Has salido de ${nombre}: ${detalle}`, "Cambia el nombre de tu personaje para volver a entrar."]);
         } else {
             ctx.aviso("Sala", [`Has salido de ${nombre} por inactividad (${servicio.HORAS_INACTIVIDAD_SALA} h sin hacer nada).`,
                 "Puedes volver a entrar desde Tus salas."]);
@@ -127,9 +185,13 @@ export async function inicializarOnline(contexto) {
     });
     setInterval(() => servicio.comprobarInactividad(), MINUTOS_COMPROBAR_INACTIVIDAD * 60 * 1000);
     window.addEventListener("pagehide", () => servicio.alCerrarPestana());
+    // Diagnóstico: con ?debug, fichaProbarDesconexion() en la consola prueba la petición de cerrar la pestaña
+    if (new URLSearchParams(location.search).has("debug")) {
+        window.fichaProbarDesconexion = () => servicio.probarDesconexion().then(resultado => { console.info(resultado); return resultado; });
+    }
 
     // La instancia de esta pestaña tiene que estar comprobada (pestaña duplicada) antes de entrar en la sala
-    servicio.configurarPersonaje({ instancia: await instanciaLista, nombre: ctx.personaje().nombre });
+    servicio.configurarPersonaje({ instancia: await instanciaLista, nombre: ctx.personaje().nombre, id: ctx.personaje().idPersonaje });
     servicio.iniciar();
 }
 
@@ -401,6 +463,7 @@ function inicializarSala() {
 /* Personajes en la nube _______________________________________________________ */
 
 export async function guardarEnNube() {
+    if (ctx.modoMaster) return guardarMasterEnNube();
     const pj = ctx.personaje();
     await operar("avisoPersonajesNube", async () => {
         let id = idPersonajeNube;
@@ -411,11 +474,45 @@ export async function guardarEnNube() {
                 id = mismo.id;
             }
         }
-        cambiarIdNube(await servicio.guardarPersonaje(pj.toJSONString(), pj.nombre, id));
+        const json = pj.toJSONString();
+        cambiarIdNube(await servicio.guardarPersonaje(json, pj.nombre, id));
+        // En una sala, el máster ve esta versión en modo lectura cuando no estás conectado
+        if (servicio.getEstado().sala) servicio.guardarFichaSala(json).catch(error => console.warn("No se pudo dejar tu ficha en la sala:", error));
         ctx.marcarGuardado();
         ctx.aviso("Guardado en la nube", [pj.nombre]);
     });
     const error = el("avisoPersonajesNube").textContent;
+    if (error) ctx.aviso("No se pudo guardar en la nube", [error]);
+}
+
+/* Modo máster: sube todos sus personajes que han cambiado desde la última vez, cada uno como un personaje de
+   la nube normal (una escritura por personaje). Si uno no viene de la nube y ya hay otro con su nombre, pregunta. */
+async function guardarMasterEnNube() {
+    const master = ctx.master;
+    const pendientes = master.pendientesDeNube();
+    if (!pendientes.length) {
+        ctx.aviso("Guardado en la nube", ["No hay cambios que subir."]);
+        return;
+    }
+    const subidos = [];
+    await operar("avisoPersonajesNube", async () => {
+        const enNube = await servicio.listarPersonajes();
+        for (const p of pendientes) {
+            const nombre = p.resumen?.nombre || "Sin nombre";
+            let id = p.idNube;
+            if (!id) {
+                const mismo = enNube.find(n => n.nombre === nombre);
+                if (mismo && await ctx.confirmar({
+                    titulo: "Guardar en la nube",
+                    texto: `Ya tienes un personaje llamado "${nombre}" en la nube. ¿Guardar encima? Si no, se guarda como uno nuevo.`
+                })) id = mismo.id;
+            }
+            master.marcarSubido(p.id, await servicio.guardarPersonaje(p.json, nombre, id), p.json);
+            subidos.push(nombre);
+        }
+    });
+    const error = el("avisoPersonajesNube").textContent;
+    if (subidos.length) ctx.aviso("Guardado en la nube", subidos);
     if (error) ctx.aviso("No se pudo guardar en la nube", [error]);
 }
 
@@ -454,12 +551,18 @@ function inicializarPersonajesNube() {
         const nombre = fila.querySelector(".nombre-online").firstChild.textContent.trim();
 
         if (boton.dataset.accion === "cargar") {
-            if (ctx.hayCambiosSinGuardar() && !confirm("La ficha actual tiene cambios sin guardar. ¿Cargar otro personaje y perderlos?")) return;
+            // En modo máster no se pierde nada: el cargado se añade a sus personajes (o sustituye al mismo)
+            if (!ctx.modoMaster && ctx.hayCambiosSinGuardar() && !confirm("La ficha actual tiene cambios sin guardar. ¿Cargar otro personaje y perderlos?")) return;
             operar("avisoPersonajesNube", async () => {
                 const json = await servicio.cargarPersonaje(id);
-                ctx.cargarFicha(JSON.parse(json));
+                // Cerrada del todo antes de cargar (al cargar puede salir una pregunta)
+                const ventana = el("modalPersonajesNube");
+                await new Promise(resolver => {
+                    ventana.addEventListener("hidden.bs.modal", resolver, { once: true });
+                    cerrar("modalPersonajesNube");
+                });
+                await ctx.cargarFicha(JSON.parse(json), { idNube: id });
                 cambiarIdNube(id);
-                cerrar("modalPersonajesNube");
             });
         } else if (boton.dataset.accion === "borrar") {
             if (!confirm(`¿Borrar ${nombre} de la nube? No se puede deshacer.`)) return;
@@ -509,13 +612,26 @@ export async function quitarArteDeSala(id, nombre) {
 const enSala = () => Boolean(servicio.getEstado().sala && servicio.getEstado().usuario);
 const AVISO_SIN_SALA = "Entra en una sala (menú de opciones → Online) para usar amigos y grupos.";
 
-const esAmigo = (jugador, nombre) => ctx.personaje().amigos.some(a => a.jugador === jugador && a.nombre === nombre);
+/* Personaje de esta pestaña al que va algo (instancia "para" de un evento): en modo máster puede ser uno suyo que
+   no está en la ficha (ctx.leerPersonaje / ctx.conPersonaje lo cargan del almacén y lo guardan) */
+const personajeDe = (para) => ctx.leerPersonaje?.(para) ?? ctx.personaje();
+const esAmigo = (jugador, nombre, para) => personajeDe(para).amigos.some(a => a.jugador === jugador && a.nombre === nombre);
+/* Texto " (a X)" cuando va a un personaje del máster que no es el de la ficha */
+/* Para emitir la respuesta en nombre del personaje al que iba (instancia y nombre), no del de la ficha */
+const como = (para) => (esDeEstaPestana(para) ? { instancia: para, personaje: personajeDe(para).nombre || "" } : {});
+const paraQuien = (para) => {
+    const pj = personajeDe(para);
+    return pj !== ctx.personaje() ? ` (a ${pj.nombre || "Sin nombre"})` : "";
+};
 
-function anadirAmigo(jugador, nombre) {
+function anadirAmigo(jugador, nombre, para) {
     nombre = String(nombre ?? "").trim();
-    if (!jugador || !nombre || esAmigo(jugador, nombre)) return;
-    ctx.personaje().amigos.push({ jugador, nombre });
-    ctx.actualizar();
+    if (!jugador || !nombre || esAmigo(jugador, nombre, para)) return;
+    if (ctx.conPersonaje) ctx.conPersonaje(para, pj => pj.amigos.push({ jugador, nombre }));
+    else {
+        ctx.personaje().amigos.push({ jugador, nombre });
+        ctx.actualizar();
+    }
     if (el("modalAmigos").classList.contains("show")) pintarAmigos();
 }
 
@@ -550,7 +666,8 @@ export function abrirAnadirAmigo() {
 const enviadas = new Set();
 function pintarAnadirAmigo() {
     const candidatos = servicio.getPersonajesSala()
-        .filter(p => p.instancia !== getInstancia() && !p.oculto && p.nombre && !esAmigo(p.jugador, p.nombre));
+        .filter(p => p.instancia !== servicio.instanciaActual() && p.instancia !== getInstancia()
+            && !p.oculto && p.nombre && !esAmigo(p.jugador, p.nombre));
     el("listaAnadirAmigo").innerHTML = candidatos.length ? candidatos.map(p => `
         <div class="fila-online" data-instancia="${escaparHtml(p.instancia)}">
             <span class="nombre-online">${escaparHtml(p.nombre)}</span>
@@ -606,6 +723,20 @@ function inicializarSocial() {
         const instancia = e.target.closest('button[data-accion="solicitar"]')?.closest("[data-instancia]")?.dataset.instancia;
         if (!instancia) return;
         reproducir("click");
+        // Otro personaje del máster: se hacen amigos directamente (un evento propio no le llega a esta pestaña)
+        if (esDeEstaPestana(instancia)) {
+            const uid = servicio.getEstado().usuario?.uid;
+            const yo = ctx.personaje().nombre;
+            const otro = personajeDe(instancia).nombre;
+            if (!uid || !yo || !otro) return;
+            anadirAmigo(uid, otro, servicio.instanciaActual());
+            ctx.conPersonaje(instancia, pj => {
+                if (!pj.amigos.some(a => a.jugador === uid && a.nombre === yo)) pj.amigos.push({ jugador: uid, nombre: yo });
+            });
+            ctx.aviso("Amigos", [`${yo} y ${otro} ya son amigos.`]);
+            pintarAnadirAmigo();
+            return;
+        }
         operar("avisoAnadirAmigo", async () => {
             await emitirPrivado("amistad", { para: instancia });
             enviadas.add(instancia);
@@ -614,33 +745,39 @@ function inicializarSocial() {
     });
 
     // Solicitud de amistad recibida: aceptar añade al amigo en los dos lados
+    // (en modo máster puede ir a cualquiera de sus personajes: se le aplica a ese, no al de la ficha)
     registrarManejador("amistad", (evento) => {
         const nombre = String(evento.personaje ?? "").trim();
+        const para = evento.datos?.para;
         if (!nombre || !evento.jugador) return;
-        if (esAmigo(evento.jugador, nombre)) {
+        if (esAmigo(evento.jugador, nombre, para)) {
             // Ya era amigo (p. ej. lo quitó el otro y lo vuelve a pedir): se acepta sin preguntar
-            emitirPrivado("amistadRespuesta", { para: evento.instancia, aceptada: true }).catch(() => { /* sin conexión */ });
+            emitirPrivado("amistadRespuesta", { para: evento.instancia, aceptada: true }, como(para)).catch(() => { /* sin conexión */ });
             return;
         }
+        const destino = personajeDe(para);
         mostrarSolicitud({
             titulo: "Solicitud de amistad",
-            texto: `${nombre} quiere ser tu amigo.`,
+            texto: destino !== ctx.personaje()
+                ? `${nombre} quiere ser amigo de ${destino.nombre || "tu personaje"}.`
+                : `${nombre} quiere ser tu amigo.`,
             aceptar: async () => {
-                await emitirPrivado("amistadRespuesta", { para: evento.instancia, aceptada: true });
-                anadirAmigo(evento.jugador, nombre);
+                await emitirPrivado("amistadRespuesta", { para: evento.instancia, aceptada: true }, como(para));
+                anadirAmigo(evento.jugador, nombre, para);
             },
-            rechazar: () => emitirPrivado("amistadRespuesta", { para: evento.instancia, aceptada: false })
+            rechazar: () => emitirPrivado("amistadRespuesta", { para: evento.instancia, aceptada: false }, como(para))
         });
     });
 
     registrarManejador("amistadRespuesta", (evento) => {
         const nombre = String(evento.personaje ?? "").trim() || "Alguien";
+        const para = evento.datos?.para;
         enviadas.delete(evento.instancia);
         if (evento.datos.aceptada === true) {
-            anadirAmigo(evento.jugador, nombre);
-            ctx.aviso("Amigos", [`${nombre} ha aceptado tu solicitud de amistad.`]);
+            anadirAmigo(evento.jugador, nombre, para);
+            ctx.aviso("Amigos", [`${nombre} ha aceptado la solicitud de amistad${paraQuien(para)}.`]);
         } else {
-            ctx.aviso("Amigos", [`${nombre} ha rechazado tu solicitud de amistad.`]);
+            ctx.aviso("Amigos", [`${nombre} ha rechazado la solicitud de amistad${paraQuien(para)}.`]);
         }
         if (el("modalAnadirAmigo").classList.contains("show")) pintarAnadirAmigo();
     });
@@ -649,17 +786,25 @@ function inicializarSocial() {
     registrarManejador("invitacionGrupo", (evento) => {
         const nombre = String(evento.personaje ?? "").trim() || "Alguien";
         const id = String(evento.datos.grupo ?? "");
+        const para = evento.datos?.para;
         if (!id) return;
-        const responder = (aceptada) => emitirPrivado("invitacionRespuesta", { para: evento.instancia, aceptada });
+        const responder = (aceptada) => emitirPrivado("invitacionRespuesta", { para: evento.instancia, aceptada }, como(para));
+        const destino = personajeDe(para);
+        const otro = destino !== ctx.personaje();
         mostrarSolicitud({
             titulo: "Invitación a un grupo",
-            texto: `${nombre} te invita a su grupo.`,
+            texto: otro ? `${nombre} invita a ${destino.nombre || "tu personaje"} a su grupo.` : `${nombre} te invita a su grupo.`,
             aceptar: async () => {
-                if (servicio.getGrupo()) {
-                    if (!confirm("Ya estás en un grupo. ¿Salir de él y unirte a este?")) return;
-                    await servicio.salirDeGrupo();
+                if (servicio.getGrupo(para)) {
+                    const ok = await ctx.confirmar({
+                        titulo: "Invitación a un grupo",
+                        texto: otro ? `${destino.nombre || "Tu personaje"} ya está en un grupo. ¿Sacarlo y unirlo a este?`
+                            : "Ya estás en un grupo. ¿Salir de él y unirte a este?"
+                    });
+                    if (!ok) return;
+                    await servicio.salirDeGrupo({ instancia: para });
                 }
-                await servicio.unirseAGrupo(id);
+                await servicio.unirseAGrupo(id, para);
                 await responder(true);
             },
             rechazar: () => responder(false)
@@ -740,7 +885,7 @@ function pintarGrupo() {
         return;
     }
     lista.innerHTML = grupo.miembros.map(m => {
-        const propio = m.instancia === getInstancia();
+        const propio = m.instancia === servicio.instanciaActual();
         const detalles = [m.lider ? "líder" : "", propio ? "tú" : "", enLinea.has(m.instancia) ? "" : "desconectado"].filter(Boolean).join(" · ");
         return `
             <div class="fila-online${m.instancia === integranteSenalado ? " senalada" : ""}${enLinea.has(m.instancia) ? "" : " desconectado"}"
@@ -762,7 +907,7 @@ function pintarGrupo() {
     }
     const lleno = grupo.miembros.length >= 6;
     const candidatos = servicio.getPersonajesSala()
-        .filter(p => p.instancia !== getInstancia() && !p.oculto && !p.grupo && p.nombre);
+        .filter(p => p.instancia !== servicio.instanciaActual() && p.instancia !== getInstancia() && !p.oculto && !p.grupo && p.nombre);
     el("listaInvitarGrupo").innerHTML = lleno
         ? `<p class="lista-vacia">El grupo está lleno.</p>`
         : candidatos.length ? candidatos.map(p => `
@@ -790,7 +935,7 @@ function cancelarFichaPedida() {
 /** Abre la ficha resumida de un compañero de grupo (la pide y la muestra al llegar) */
 export function verFichaCompanero(instancia) {
     const miembro = servicio.getGrupo()?.miembros.find(m => m.instancia === instancia);
-    if (!miembro || instancia === getInstancia()) return;
+    if (!miembro || esDeEstaPestana(instancia)) return;
     const titulo = `Ficha de ${miembro.nombre || "Sin nombre"}`;
     cancelarFichaPedida();
     if (!instanciasConectadas().has(instancia)) {
@@ -812,10 +957,67 @@ export function verFichaCompanero(instancia) {
     });
 }
 
+/* Ficha completa para el modo lectura del máster ______________________________
+ * Si el personaje está conectado, se le pide (evento privado pedirFichaCompleta): su pestaña escribe la copia en
+ * la sala (fichas/{id}) y avisa (fichaCompletaLista). Si no, o si no responde, se lee la última copia. */
+const ESPERA_FICHA_COMPLETA_MS = 8000;
+/* Petición en curso: { id, instancia, resolver(ok) }, o null */
+let fichaCompletaPedida = null;
+
+/**
+ * Modo máster: la ficha de un personaje de un jugador. Devuelve { json, actualizado (ms), aviso } o { error }.
+ */
+export async function pedirFichaJugador(jugador, id) {
+    let aviso = null;
+    const instancia = servicio.instanciaDePersonaje(jugador, id);
+    if (instancia) {
+        fichaCompletaPedida?.resolver(false);
+        const respondio = await new Promise(resolver => {
+            const temporizador = setTimeout(() => terminar(false), ESPERA_FICHA_COMPLETA_MS);
+            const terminar = (ok) => {
+                clearTimeout(temporizador);
+                if (fichaCompletaPedida?.resolver === terminar) fichaCompletaPedida = null;
+                resolver(ok);
+            };
+            fichaCompletaPedida = { id, instancia, resolver: terminar };
+            emitirPrivado("pedirFichaCompleta", { para: instancia, id }).catch(() => terminar(false));
+        });
+        if (!respondio) aviso = "No ha respondido: se muestra la última copia guardada.";
+    }
+    try {
+        const ficha = await servicio.leerFichaSala(id);
+        if (!ficha) {
+            return { error: instancia
+                ? "No ha respondido y no hay ninguna copia de su ficha."
+                : "No hay ninguna copia de su ficha: su jugador tiene que guardarla en la nube estando en la sala." };
+        }
+        return { ...ficha, aviso };
+    } catch (error) {
+        return { error: servicio.mensajeError(error) };
+    }
+}
+
+function inicializarFichaCompleta() {
+    // Solo responde al máster de la sala y si el personaje pedido es el de esta pestaña
+    registrarManejador("pedirFichaCompleta", (evento) => {
+        const sala = servicio.getEstado().sala;
+        if (!sala || evento.jugador !== sala.master || !servicio.esPersonajeLocal(evento.datos?.id)) return;
+        servicio.guardarFichaSala(ctx.personaje().toJSONString())
+            .then(() => emitirPrivado("fichaCompletaLista", { para: evento.instancia, id: evento.datos.id }))
+            .catch(error => console.warn("No se pudo enviar tu ficha al máster:", error));
+    });
+    registrarManejador("fichaCompletaLista", (evento) => {
+        const pedida = fichaCompletaPedida;
+        if (pedida && pedida.instancia === evento.instancia && pedida.id === evento.datos?.id) pedida.resolver(true);
+    });
+}
+
 function inicializarFichaResumen() {
+    inicializarFichaCompleta();
     registrarManejador("pedirFicha", (evento) => {
-        if (!servicio.enMiGrupo(evento.instancia)) return;
-        emitirPrivado("fichaResumen", { para: evento.instancia, resumen: ctx.resumenPropio() })
+        const para = evento.datos?.para;
+        if (!servicio.enMiGrupo(evento.instancia, para)) return;
+        emitirPrivado("fichaResumen", { para: evento.instancia, resumen: ctx.resumenDe ? ctx.resumenDe(para) : ctx.resumenPropio() }, como(para))
             .catch(error => console.warn("No se pudo enviar tu ficha:", error));
     });
     registrarManejador("fichaResumen", (evento) => {
@@ -828,20 +1030,8 @@ function inicializarFichaResumen() {
     el("modalFichaResumen").addEventListener("hidden.bs.modal", cancelarFichaPedida);
 }
 
-/* Barras del grupo en la cabecera (compañeros, sin ti). Las filas solo se regeneran si cambia el número */
-function actualizarHudGrupo() {
-    const hud = el("hudGrupo");
-    const grupo = servicio.getGrupo();
-    const companeros = (grupo?.miembros ?? []).filter(m => m.instancia !== getInstancia());
-    hud.hidden = !companeros.length;
-    if (!companeros.length) {
-        hud.classList.remove("abierto");
-        return;
-    }
-    hud.querySelector(".hud-grupo-numero").textContent = String(companeros.length + 1);
-    const lista = el("hudGrupoLista");
-    if (lista.children.length !== companeros.length) {
-        lista.innerHTML = companeros.map(() => `
+/** HTML de una fila vacía de la cabecera (grupo o personajes del máster); se rellena con rellenarFilaHud */
+export const htmlFilaHud = () => `
             <button type="button" class="hud-grupo-fila">
                 <span class="hud-grupo-nombre"></span>
                 <span class="hud-grupo-barras">
@@ -850,50 +1040,87 @@ function actualizarHudGrupo() {
                 </span>
                 <span class="hud-grupo-nivel"></span>
                 <span class="hud-grupo-estados"></span>
-            </button>`).join("");
+            </button>`;
+
+/** Rellena una fila de la cabecera: { nombre, vida, pa (fracciones), nivel, estados } */
+export function rellenarFilaHud(fila, m) {
+    fila.querySelector(".hud-grupo-nombre").textContent = m.nombre || "Sin nombre";
+    const vida = fila.querySelector(".sao-track-fill");
+    vida.style.width = `${Math.round(m.vida * 100)}%`;
+    // Mismos umbrales de color que tu barra (actualizarInformacion en interfaz.js)
+    vida.classList.toggle("hp-orange", m.vida < 0.4 && m.vida >= 0.15);
+    vida.classList.toggle("hp-red", m.vida < 0.15);
+    fila.querySelector(".sao-arte-fill").style.width = `${Math.round(m.pa * 100)}%`;
+    fila.querySelector(".hud-grupo-nivel").textContent = `LV ${m.nivel}`;
+    const estados = fila.querySelector(".hud-grupo-estados");
+    const activos = (m.estados ?? []).filter(clave => ESTADOS_INFO[clave]);
+    if (estados.dataset.claves !== activos.join(",")) {
+        estados.dataset.claves = activos.join(",");
+        estados.innerHTML = activos.map(clave => `
+                <span class="hud-grupo-estado icono-activo" style="${estiloColor(ESTADOS_INFO[clave])}" title="${escaparHtml(ESTADOS_INFO[clave].etiqueta)}">${iconoSao(ESTADOS_INFO[clave].icono)}</span>`).join("");
+    }
+}
+
+let ultimoTurnoGrupo = 0;
+
+/** Alguien de la sala (de tu grupo o no) ha empezado su turno a esa hora: los turnos anteriores dejan de parpadear */
+export function verTurnoSala(hora) {
+    ultimoTurnoGrupo = Math.max(ultimoTurnoGrupo, Number(hora) || 0);
+    if (ctx) actualizarHudGrupo();
+}
+
+/* Barras del grupo en la cabecera (compañeros, sin ti). Las filas solo se regeneran si cambia el número.
+   El máster no ve aquí los grupos: ve a todos sus personajes en #hudMaster (interfazMaster.js). */
+function actualizarHudGrupo() {
+    const hud = el("hudGrupo");
+    const grupo = servicio.getGrupo();
+    const companeros = ctx.modoMaster ? [] : (grupo?.miembros ?? []).filter(m => m.instancia !== getInstancia());
+    hud.hidden = !companeros.length;
+    if (!companeros.length) {
+        hud.classList.remove("abierto");
+        return;
+    }
+    hud.querySelector(".hud-grupo-numero").textContent = String(companeros.length + 1);
+    const lista = el("hudGrupoLista");
+    if (lista.children.length !== companeros.length) {
+        lista.innerHTML = companeros.map(htmlFilaHud).join("");
     }
     const enLinea = instanciasConectadas();
+    // Turno: parpadea quien pulsó Play más tarde (también tú; con la misma iniciativa, varios a la vez)
+    // (se recuerda el último visto: si quien lo tenía pasa a zona segura, los anteriores no vuelven a parpadear)
+    ultimoTurnoGrupo = Math.max(ultimoTurnoGrupo, Number(ctx.turnoPropio?.()) || 0, ...companeros.map(m => m.turno || 0));
+    const ultimoTurno = ultimoTurnoGrupo;
     companeros.forEach((m, i) => {
         const fila = lista.children[i];
+        fila.classList.toggle("en-turno", m.turno > 0 && m.turno >= ultimoTurno);
         fila.dataset.instancia = m.instancia;
         fila.classList.toggle("desconectado", !enLinea.has(m.instancia));
         fila.classList.toggle("lider", m.lider);
         fila.title = `${m.nombre || "Sin nombre"}${m.lider ? " (líder)" : ""}${enLinea.has(m.instancia) ? "" : " · desconectado"}`;
-        fila.querySelector(".hud-grupo-nombre").textContent = m.nombre || "Sin nombre";
-        const vida = fila.querySelector(".sao-track-fill");
-        vida.style.width = `${Math.round(m.vida * 100)}%`;
-        // Mismos umbrales de color que tu barra (actualizarInformacion en interfaz.js)
-        vida.classList.toggle("hp-orange", m.vida < 0.4 && m.vida >= 0.15);
-        vida.classList.toggle("hp-red", m.vida < 0.15);
-        fila.querySelector(".sao-arte-fill").style.width = `${Math.round(m.pa * 100)}%`;
-        fila.querySelector(".hud-grupo-nivel").textContent = `LV ${m.nivel}`;
-        const estados = fila.querySelector(".hud-grupo-estados");
-        const activos = m.estados.filter(clave => ESTADOS_INFO[clave]);
-        if (estados.dataset.claves !== activos.join(",")) {
-            estados.dataset.claves = activos.join(",");
-            estados.innerHTML = activos.map(clave => `
-                <span class="hud-grupo-estado icono-activo" style="${estiloColor(ESTADOS_INFO[clave])}" title="${escaparHtml(ESTADOS_INFO[clave].etiqueta)}">${iconoSao(ESTADOS_INFO[clave].icono)}</span>`).join("");
-        }
+        rellenarFilaHud(fila, m);
     });
-    comprobarPlegadoGrupo();
+    comprobarPlegadoHud(hud);
 }
 
-/* Si no caben las barras a la derecha del HUD, se pliegan en una pestaña. Con más de 3 compañeros van en
-   dos columnas (para no hacer la cabecera más alta), que necesitan el doble de sitio */
+/** Si no caben las barras a la derecha del HUD, se pliegan en una pestaña. Con más de 3 filas van en
+ *  dos columnas (para no hacer la cabecera más alta), que necesitan el doble de sitio */
 const ANCHO_MINIMO_GRUPO = 260;
-function comprobarPlegadoGrupo() {
-    const hud = el("hudGrupo");
+export function comprobarPlegadoHud(hud) {
     if (hud.hidden) return;
     const cabecera = el("datosPrincipalesDiv");
     const barra = cabecera.querySelector(".sao-bar-wrapper");
     const libre = cabecera.clientWidth - (barra?.offsetWidth ?? 0) - 30;
-    const dosColumnas = el("hudGrupoLista").children.length > 3;
+    const filas = hud.querySelectorAll(".hud-grupo-fila").length;
+    const dosColumnas = filas > 3;
     hud.classList.toggle("dos-columnas", dosColumnas);
+    // En dos columnas el orden va de arriba abajo (primero toda la izquierda): la rejilla necesita el número de filas
+    hud.style.setProperty("--filas-hud", String(Math.ceil(filas / 2)));
     const plegado = libre < ANCHO_MINIMO_GRUPO * (dosColumnas ? 2 : 1);
     hud.classList.toggle("plegado", plegado);
     if (!plegado) hud.classList.remove("abierto");
     hud.querySelector(".hud-grupo-pestana").setAttribute("aria-expanded", String(hud.classList.contains("abierto")));
 }
+const comprobarPlegadoGrupo = () => comprobarPlegadoHud(el("hudGrupo"));
 
 function inicializarGrupo() {
     el("listaGrupo").addEventListener("click", (e) => {
@@ -924,6 +1151,12 @@ function inicializarGrupo() {
         reproducir("click");
         operar("avisoGrupo", async () => {
             const id = await servicio.invitarAGrupo(instancia);
+            // Otro personaje del máster: entra directamente (un evento propio no le llega a esta pestaña)
+            if (esDeEstaPestana(instancia)) {
+                await servicio.unirseAGrupo(id, instancia);
+                ctx.aviso("Grupo", [`${personajeDe(instancia).nombre || "Tu personaje"} se ha unido al grupo.`]);
+                return;
+            }
             await emitirPrivado("invitacionGrupo", { para: instancia, grupo: id });
         });
     });
@@ -955,13 +1188,33 @@ function inicializarGrupo() {
 /* Tu vida, PA, nivel y estados para el grupo: se publican tras un rato sin cambios y solo si cambian */
 const RETARDO_ESTADO_GRUPO_MS = 1500;
 let temporizadorEstadoGrupo = null;
+let estadoGrupoPendiente = null;
+
+/** Modo máster: estado de uno de sus personajes que no está en la ficha (p. ej. al empezar el turno a la vez) */
+export function publicarEstadoDe(id, datos) {
+    servicio.publicarEstadoGrupo({ ...datos, id }).catch(error => console.warn("No se pudo publicar el estado en el grupo:", error));
+}
 
 /** La ficha avisa de su estado (en cada actualizarTodo): { vida, pa (fracciones), nivel, estados } */
 export function avisarEstadoGrupo(datos) {
     clearTimeout(temporizadorEstadoGrupo);
+    // Otro personaje en la ficha (modo máster): lo pendiente del anterior se publica ya, en su grupo
+    if (estadoGrupoPendiente && estadoGrupoPendiente.id !== datos.id) {
+        servicio.publicarEstadoGrupo(estadoGrupoPendiente).catch(() => { /* sin conexión */ });
+    }
+    estadoGrupoPendiente = datos;
     temporizadorEstadoGrupo = setTimeout(() => {
+        estadoGrupoPendiente = null;
         servicio.publicarEstadoGrupo(datos).catch(error => console.warn("No se pudo actualizar tu estado en el grupo:", error));
+        // El máster de la sala lo ve en su cabecera (también iniciativa)
+        servicio.publicarEstadoSala(datos).catch(error => console.warn("No se pudo publicar tu estado en la sala:", error));
     }, RETARDO_ESTADO_GRUPO_MS);
 }
 
 export const getGrupoSala = () => servicio.getGrupo();
+
+/** Tu turno (hora en ms en la que pulsaste Play, o 0): se publica al momento en el grupo y para el máster */
+export function avisarTurno(turno, id) {
+    servicio.publicarTurno(turno, id).catch(error => console.warn("No se pudo publicar tu turno:", error));
+    if (ctx) actualizarHudGrupo();
+}

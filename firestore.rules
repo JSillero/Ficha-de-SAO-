@@ -51,15 +51,21 @@ service cloud.firestore {
     function expulsadosDe(datos) {
       return datos.get('expulsados', {});
     }
+    // Personajes que han estado en la sala: registro.<uid>.<idPersonaje> = { nombre }
+    function registroDe(datos) {
+      return datos.get('registro', {});
+    }
 
     // Jugador: entrar (añadirse a miembros y quitarse la marca de echado), y apuntar, renombrar o quitar
-    // sus propios personajes conectados (personajes.<uid>.<pestaña>). Nada más.
+    // sus propios personajes conectados (personajes.<uid>.<pestaña>) y su registro (registro.<uid>). Nada más.
     function cambioDeJugador() {
       let uid = request.auth.uid;
       let antes = resource.data;
       let despues = request.resource.data;
       let cambioExpulsados = expulsadosDe(despues).diff(expulsadosDe(antes));
-      return despues.diff(antes).affectedKeys().hasOnly(['miembros', 'personajes', 'expulsados'])
+      return despues.diff(antes).affectedKeys().hasOnly(['miembros', 'personajes', 'expulsados', 'registro'])
+        && registroDe(despues).diff(registroDe(antes)).affectedKeys().hasOnly([uid])
+        && (!(uid in registroDe(despues)) || (registroDe(despues)[uid] is map && registroDe(despues)[uid].size() <= 100))
         && despues.miembros.hasAll(antes.miembros)
         && despues.miembros.removeAll(antes.miembros).hasOnly([uid])
         && uid in despues.miembros
@@ -70,11 +76,13 @@ service cloud.firestore {
         && cambioExpulsados.removedKeys().hasOnly([uid]);
     }
 
-    // Máster: ocultar personajes y echar jugadores (marca y quita sus personajes). No puede echarse a sí mismo.
+    // Máster: ocultar personajes, echar jugadores (marca y quita sus personajes), echar personajes del registro y
+    // poner los suyos (personajes y registro, sin límite de entradas). No puede echarse a sí mismo.
     function cambioDeMaster() {
       let despues = request.resource.data;
       return resource.data.master == request.auth.uid
-        && despues.diff(resource.data).affectedKeys().hasOnly(['ocultos', 'expulsados', 'personajes'])
+        && despues.diff(resource.data).affectedKeys().hasOnly(['ocultos', 'expulsados', 'personajes', 'registro', 'miembros'])
+        && despues.miembros.hasAll(resource.data.miembros)
         && despues.get('ocultos', []) is list
         && despues.get('ocultos', []).size() <= 200
         && expulsadosDe(despues) is map
@@ -109,6 +117,26 @@ service cloud.firestore {
         && invitados.addedKeys().size() == 0
         && invitados.changedKeys().size() == 0
         && invitados.removedKeys().hasOnly([clave]);
+    }
+
+    // Documento de estados/{idPersonaje}: solo estos campos, del propio jugador
+    function estadoValido() {
+      let d = request.resource.data;
+      return d.jugador == request.auth.uid
+        && d.keys().hasOnly(['jugador', 'master', 'nombre', 'vida', 'pa', 'nivel', 'iniciativa', 'estados', 'turno'])
+        && d.master is string
+        && d.nombre is string && d.nombre.size() <= 60
+        && d.estados is list && d.estados.size() <= 30;
+    }
+
+    // Documento de fichas/{idPersonaje}: la ficha en JSON (como personajes/), del propio jugador
+    function fichaValida() {
+      let d = request.resource.data;
+      return d.jugador == request.auth.uid
+        && d.keys().hasOnly(['jugador', 'master', 'json', 'actualizado'])
+        && d.master is string
+        && d.json is string && d.json.size() < 900000
+        && d.actualizado == request.time;
     }
 
     // Salas: se entra conociendo el código. Sin get() en estas reglas: todo sale de resource.data (gratis).
@@ -155,6 +183,27 @@ service cloud.firestore {
           && (cambioDeLider() || cambioDeIntegrante());
         // Lo borra el líder (el último que queda siempre es el líder: el liderazgo pasa al salir)
         allow delete: if conSesion() && resource.data.liderJugador == request.auth.uid;
+      }
+
+      // Estado de cada personaje para la cabecera del máster (vida y PA en fracción, nivel, iniciativa, estados).
+      // Lo escribe su jugador; lo lee y lo borra el máster que pone el documento. Sin get(): todo sale del documento.
+      match /estados/{personaje} {
+        allow read: if conSesion() && resource.data.master == request.auth.uid;
+        allow create: if conSesion() && estadoValido();
+        allow update: if conSesion() && resource.data.jugador == request.auth.uid && estadoValido();
+        allow delete: if conSesion()
+          && (resource.data.jugador == request.auth.uid || resource.data.master == request.auth.uid);
+      }
+
+      // Copia de la ficha completa para que el máster la vea en modo lectura. La escribe su jugador; la leen y la
+      // borran el jugador y el máster que pone el documento. Leer una que no existe se permite (para saber que no hay).
+      match /fichas/{personaje} {
+        allow read: if conSesion()
+          && (resource == null || resource.data.master == request.auth.uid || resource.data.jugador == request.auth.uid);
+        allow create: if conSesion() && fichaValida();
+        allow update: if conSesion() && resource.data.jugador == request.auth.uid && fichaValida();
+        allow delete: if conSesion()
+          && (resource.data.jugador == request.auth.uid || resource.data.master == request.auth.uid);
       }
 
       // Catálogo de artes compartido: lo añade cualquiera de la sala; lo edita su autor y lo borra su autor o el máster

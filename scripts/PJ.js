@@ -33,7 +33,7 @@ export const ESTADOS_LISTA = [
 
 /* Campos que se guardan y se cargan tal cual (sin conversión) */
 const CAMPOS_SIMPLES = [
-    'nombre', 'nivel', 'experiencia',
+    'idPersonaje', 'nombre', 'nivel', 'experiencia',
     'fortaleza', 'reflejos', 'voluntad', 'inteligencia',
     ...HABILIDADES_LISTA,
     'puntosArte', 'vida',
@@ -44,6 +44,12 @@ const CAMPOS_SIMPLES = [
     'notas', 'listadoArtes', 'listaDeAmigos', 'recetasProfesion'
 ];
 
+/* Identificador estable del personaje (no cambia al renombrarlo): lo usan el modo máster y la sala */
+export function nuevoIdPersonaje() {
+    if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
+    return `pj-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function crearEstadosVacios() {
     return Object.fromEntries(ESTADOS_LISTA.map(estado => [estado, { valor: 0, turnos: 0 }]));
 }
@@ -51,6 +57,7 @@ function crearEstadosVacios() {
 export default class PJ {
     constructor() {
         /* caracteristicas base */
+        this.idPersonaje = nuevoIdPersonaje(); // las fichas antiguas reciben uno nuevo al cargar
         this.nombre = "nombre"; //String
         this.nivel = 15;
         this.experiencia = 0;
@@ -384,6 +391,7 @@ export default class PJ {
             // Las fichas antiguas guardaban "vacio" en los bloques de texto sin rellenar
             if (this[campo] === "vacio") this[campo] = "";
         }
+        this.idPersonaje = String(this.idPersonaje || porDefecto.idPersonaje).slice(0, 60);
         if (!ZONAS[this.zona]) this.zona = ZONA_POR_DEFECTO;
         // Fichas anteriores a la casilla Underworld: si tenían Sacro, lo eran
         this.esUnderworld = jsonObject.esUnderworld === undefined ? Number(this.sacro) > 0 : Boolean(this.esUnderworld);

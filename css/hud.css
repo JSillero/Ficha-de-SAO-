@@ -40,6 +40,11 @@
     text-shadow: 1px 1px 2px black;
 }
 
+/* El nombre no se edita aquí: pulsarlo abre el perfil */
+.sao-input-nombre[readonly] {
+    cursor: pointer;
+}
+
 .sao-tracks-col {
     display: flex;
     flex-direction: column;
@@ -308,6 +313,9 @@
 .hud-grupo.dos-columnas:not(.plegado) .hud-grupo-lista {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    /* De arriba abajo: primero la columna de la izquierda (--filas-hud lo pone comprobarPlegadoHud) */
+    grid-template-rows: repeat(var(--filas-hud, 2), auto);
+    grid-auto-flow: column;
     gap: 4px 10px;
 }
 
@@ -480,6 +488,66 @@
     display: flex;
 }
 
+/* Personajes del máster (interfazMaster.js, actualizarHudMaster) ______________
+   Mismas filas que el grupo, cada una con un icono para sacarla de la sesión, y un + al final.
+   El personaje que está en la ficha lleva el borde dorado interactivo. */
+.hud-master-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+.hud-master-item .hud-grupo-fila {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.hud-grupo-fila.activo {
+    background: #5c5c5c;
+    box-shadow: inset 4px 0 0 #EBA601;
+    cursor: default;
+}
+
+.btn-hud-echar {
+    flex: none;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.2s;
+}
+
+.btn-hud-echar:hover:not(:disabled) {
+    transform: scale(1.1);
+}
+
+.btn-hud-echar:hover:not(:disabled) .icono-sao,
+.btn-hud-echar:focus-visible .icono-sao {
+    --fondo: #FBFBFB;
+    --glifo: #EBA601;
+}
+
+.btn-hud-echar:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+/* El + va a la derecha del último; los demás dejan un hueco del mismo ancho */
+.hud-master-anadir,
+.hud-master-hueco {
+    flex: none;
+    width: 26px;
+    height: 26px;
+}
+
+.hud-master-anadir {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
 /* Cabecera en móvil */
 @media (max-width: 600px) {
     .sao-input-nombre {
@@ -547,4 +615,35 @@
         font-size: 13px;
         padding: 0 4px;
     }
+}
+
+/* Turno (actualizarBrilloTurno en interfaz.js; filas en actualizarHudGrupo y actualizarHudMaster): el fondo gris
+   del HUD (nombre, vida y PA) y la fila del grupo o de la cabecera del máster parpadean en un gris más claro */
+@keyframes parpadeo-turno {
+    0%, 100% { background: #4a4a4a; }
+    50% { background: #888; }
+}
+
+.sao-bar-wrapper.en-turno .sao-bar-main,
+.hud-grupo-fila.en-turno {
+    animation: parpadeo-turno 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sao-bar-wrapper.en-turno .sao-bar-main,
+    .hud-grupo-fila.en-turno {
+        animation: none;
+        background: #888;
+    }
+}
+
+/* Ocultar personajes desde la cabecera del máster (cambiarOculto en interfazMaster.js): ojo abierto si se ve,
+   tachado y dorado si está oculto; la fila se atenúa */
+.btn-hud-ocultar.activo .icono-sao {
+    --fondo: #FBFBFB;
+    --glifo: #EBA601;
+}
+
+.hud-grupo-fila.oculta {
+    opacity: 0.6;
 }

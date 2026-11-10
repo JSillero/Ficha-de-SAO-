@@ -75,6 +75,15 @@
                 <div id="hudGrupoLista" class="hud-grupo-lista"></div>
             </div>
 
+            <!-- Personajes del máster (?master; interfazMaster.js, actualizarHudMaster): mismas filas que el grupo,
+                 con el personaje en pantalla incluido, ordenados por iniciativa, y + para añadir o crear -->
+            <div id="hudMaster" class="hud-grupo hud-master" hidden>
+                <button type="button" class="hud-grupo-pestana" aria-expanded="false" aria-controls="hudMasterLista">
+                    Personajes (<span class="hud-grupo-numero">0</span>) <span class="hud-grupo-flecha" aria-hidden="true">▾</span>
+                </button>
+                <div id="hudMasterLista" class="hud-grupo-lista"></div>
+            </div>
+
             <!-- Cargar, guardar y silencio están en el menú de opciones (engranaje de la silueta) -->
             <input type="file" id="fileInput" accept=".json" hidden>
         </div>
@@ -82,6 +91,9 @@
 
 
     </header>
+
+    <!-- Modo lectura del máster (pintarAvisoLectura en interfaz.js): de quién es la ficha y cómo volver -->
+    <div id="avisoLectura" class="aviso-lectura" role="status" hidden></div>
 
     <main id="pag1">
         <div class="layout">
@@ -668,6 +680,106 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modo máster: personajes guardados en local que no están en la sesión, y crear uno (interfazMaster.js) -->
+    <div class="modal fade modal-sao" id="modalPersonajesMaster" tabindex="-1" aria-labelledby="modalPersonajesMasterLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalPersonajesMasterLabel">Añadir personaje</h5>
+                    <button type="button" class="btn-crear-objeto" id="btnCrearPersonajeMaster">+ Crear personaje</button>
+                </div>
+                <div class="modal-body">
+                    <div id="listaPersonajesMaster" class="lista-objetos"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modo máster: perfil editable de un personaje propio, para crearlo o editarlo (interfazMaster.js) -->
+    <div class="modal fade modal-sao" id="modalPerfilMaster" tabindex="-1" aria-labelledby="modalPerfilMasterLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalPerfilMasterLabel">Nuevo personaje</h5>
+                </div>
+                <div class="modal-body">
+                    <form id="formPerfilMaster" class="form-objeto perfil-master" novalidate>
+                        <div class="campo-objeto">
+                            <label for="perfilMasterNombre">Nombre</label>
+                            <input type="text" id="perfilMasterNombre" maxlength="60" required>
+                        </div>
+                        <div class="fila-campos">
+                            <label>Nivel <input type="number" id="perfilMasterNivel" min="1" max="150"></label>
+                            <label>Profesión <select id="perfilMasterProfesion"></select></label>
+                            <label><input type="checkbox" id="perfilMasterUnderworld"> Underworld</label>
+                            <label><input type="checkbox" id="perfilMasterProtagonista"> Protagonista</label>
+                        </div>
+                        <div class="campo-objeto">
+                            <label>Características <span class="perfil-master-puntos" id="perfilMasterPuntosCar"></span></label>
+                            <div class="fila-campos" id="perfilMasterCaracteristicas"></div>
+                        </div>
+                        <div class="campo-objeto">
+                            <label>Habilidades <span class="perfil-master-puntos" id="perfilMasterPuntosHab"></span></label>
+                            <div class="fila-campos" id="perfilMasterHabilidades"></div>
+                        </div>
+                        <div class="fila-campos">
+                            <label>PV <input type="number" id="perfilMasterVida" min="0"> / <span id="perfilMasterVidaMax"></span></label>
+                            <label>PA <input type="number" id="perfilMasterPA" min="0"> / <span id="perfilMasterPAMax"></span></label>
+                            <label>Cor <input type="number" id="perfilMasterCor" min="0"></label>
+                        </div>
+                        <!-- Valores de combate del borrador (solo lectura; pintarPerfil los recalcula en cada cambio) -->
+                        <div class="campo-objeto ficha-resumen">
+                            <label>Valores de combate</label>
+                            <div id="perfilMasterCombate" class="resumen-rejilla"></div>
+                        </div>
+                        <!-- Inventario, baúl y objetos clave (pintarObjetosPerfil): sin acciones ni restricciones de zona -->
+                        <div class="campo-objeto">
+                            <div class="perfil-master-titulo">
+                                <label>Inventario <span class="perfil-master-puntos" id="perfilMasterContadorInventario"></span></label>
+                                <button type="button" class="btn-crear-objeto" data-crear="inventario">+ Crear objeto</button>
+                            </div>
+                            <div id="perfilMasterInventario" class="lista-objetos" data-lista="inventario"></div>
+                        </div>
+                        <div class="campo-objeto">
+                            <div class="perfil-master-titulo">
+                                <label>Baúl <span class="perfil-master-puntos" id="perfilMasterContadorBaul"></span></label>
+                                <button type="button" class="btn-crear-objeto" data-crear="baul">+ Crear objeto</button>
+                            </div>
+                            <div id="perfilMasterBaul" class="lista-objetos" data-lista="baul"></div>
+                        </div>
+                        <div class="campo-objeto">
+                            <div class="perfil-master-titulo">
+                                <label>Objetos clave <span class="perfil-master-puntos" id="perfilMasterContadorClave"></span></label>
+                                <button type="button" class="btn-crear-objeto" data-crear="objetosClave">+ Crear objeto clave</button>
+                            </div>
+                            <div id="perfilMasterObjetosClave" class="lista-objetos" data-lista="objetosClave"></div>
+                        </div>
+                        <!-- Artes (pintarArtesPerfil): equipadas, sin equipar y oníricas; sin gastar desbloqueos ni zona -->
+                        <div class="campo-objeto">
+                            <div class="perfil-master-titulo">
+                                <label>Artes <span class="perfil-master-puntos" id="perfilMasterMemoria"></span></label>
+                                <span class="d-flex gap-2 flex-wrap justify-content-end">
+                                    <button type="button" class="btn-crear-objeto" data-crear="catalogo">+ Catálogo</button>
+                                    <button type="button" class="btn-crear-objeto" data-crear="arte">+ Crear arte</button>
+                                    <button type="button" class="btn-crear-objeto" data-crear="onirica" id="perfilMasterCrearOnirica">+ Crear habilidad onírica</button>
+                                </span>
+                            </div>
+                            <div id="perfilMasterArtes" class="lista-objetos" data-lista="artes"></div>
+                        </div>
+                        <p id="avisoPerfilMaster" class="aviso-objeto" role="alert"></p>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cancelar" aria-label="Cancelar"></button>
+                    <button type="button" class="btn-modal-sao aceptar" id="btnAceptarPerfilMaster" title="Guardar" aria-label="Guardar"></button>
                 </div>
             </div>
         </div>
