@@ -1,18 +1,22 @@
-import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ESCUDO, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, ELEMENTOS, cargarValoresElementales } from "./equipamiento.js";
+import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ESCUDO, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, ELEMENTOS, cargarValoresElementales, cargarDebilidades } from "./equipamiento.js";
 import { esReliquia, usarHabilidadReliquia, motivoNoUsarHabilidad, cargarHabilidadReliquia, equipoDeRanura } from "./reliquias.js";
 import { partesDeEfecto, motivoNoUsarEfecto, usarEfectoEquipo, pasivasDeEquipo, cargarEfectos } from "./efectosEquipo.js";
-import Modificador, { TURNOS_PERMANENTE } from "./modificador.js";
+import Modificador, { TURNOS_PERMANENTE, numeroModificador, esModificadorDecimal } from "./modificador.js";
 import PJ from "./PJ.js";
 import { VALORES_COMBATE, PROFESIONES, crearResumenFicha } from "./resumenFicha.js";
+import {
+    VALORES_NPC, MAX_TIRADAS_NPC, MAX_PARTES_NPC, cargarTiradaNpc, parteNpc, tieneParte, partesExtra, parteQueOcupa,
+    partesDeEquipoNpc, motivoNoQuitarParte, quitarParte, anadirParte, anadirBrazo, esCuerpoPorDefecto, PARTE_DE_MANO
+} from "./npc.js";
 import { tirarFalloEmbriaguez } from "./embriaguez.js";
 import { sanearHtmlDiario, paginaLlena, anadirPagina, borrarPagina, motivoNoAnadirPagina, MAX_CARACTERES_PAGINA, ETIQUETA_TITULO_DIARIO } from "./diario.js";
 import { ejecutarTirada, combinarModos, esCritico, mostrarPopupDanno } from "./dados.js";
-import { prepararAtaque, calcularDannoAtaque, prepararLanzamiento, calcularDannoLanzamiento, calcularDannoLanzamientoArma, describirEfecto } from "./ataque.js";
+import { prepararAtaque, prepararAtaqueNpc, aciertoNpc, calcularDannoAtaque, prepararLanzamiento, calcularDannoLanzamiento, calcularDannoLanzamientoArma, describirEfecto } from "./ataque.js";
 import {
     TIPOS_OBJETO, MAX_PILA_INVENTARIO, ELEMENTOS_ARROJADIZA, cargarObjeto, anadirAInventario, anadirABaul,
     transferirABaul, transferirAInventario, descartar, comer, beberPocion, aplicarPocionAArma, manosConArma,
     usarCristal, lanzarArrojadiza, manoParaUsar, categoriaEquipo, manosParaEquipar, motivoNoEquipar, equipar,
-    motivoNoGuardar, motivoNoBeber, guardarEquipado, ranuraTieneEquipo, getCantidadAccesoriosPorArmadura, cabenEnInventario,
+    motivoNoGuardar, motivoNoBeber, guardarEquipado, ranuraTieneEquipo, getCantidadAccesoriosPorArmadura, ranurasAccesorio, cabenEnInventario,
     anadirCor, gastarCor, aplicarEfectoEnObjetivo, ofrecerObjeto, consumirOfrecido,
     capacidadInventario, ajustarInventario, cargarObjetosClave, motivoNoLanzar, lanzarArma, recogerArma, motivoNoRecoger, destinoRecoger,
     moverEnLista
@@ -22,17 +26,17 @@ import {
     puedeGastarVarias, gastarVarias, gastarTodas, partesDeMano, estaIncapacitado,
     iniciarTurno, gastarAccion, devolverAccion, puedeGastar, accionesRestantes,
     correr, puedeCorrer, puedeMoverse, velocidadMovimiento, velocidadCorrer,
-    modoSigiloPorArmadura, puedeEntrarEnSigilo, entrarEnSigilo, salirDeSigilo, dannoHemorragia
+    modoSigiloPorArmadura, puedeEntrarEnSigilo, entrarEnSigilo, salirDeSigilo, dannoHemorragia, parteDisponible
 } from "./turno.js";
 import { ESTADOS_INFO, TIPOS_DANNO, aplicarDanno, activarEstado, quitarEstado, estaActivo, estiloColor } from "./estados.js";
 import { iconoSao, tieneIconoSao } from "./iconos.js";
 import { mostrarPopup, getHistorialPopups, vaciarHistorialPopups } from "./popups.js";
-import { emitirEvento, emitirPrivado, registrarManejador, PARA_TODOS, configurarOrigen, setAplicadorDanno, setConsumidorOferta, setBloqueoEmision } from "./eventos.js";
+import { emitirEvento, emitirPrivado, registrarManejador, PARA_TODOS, configurarOrigen, setAplicadorDanno, setConsumidorOferta, setBloqueoEmision, setGolpesPropiosAplicables, registrarAlRecibir, esDeEstaPestana } from "./eventos.js";
 import { escaparHtml } from "./html.js";
 import { getInstancia } from "./instancia.js";
 import { inicializarVentanas, abrirCapa, cerrarCapa } from "./ventanas.js";
 import {
-    inicializarOnline, getEstadoOnline, getPersonajesSala, avisarNombrePersonaje, setIdPersonajeNube, motivoNombreNoDisponible,
+    inicializarOnline, getEstadoOnline, getPersonajesSala, getTodosPersonajesSala, avisarNombrePersonaje, setIdPersonajeNube, motivoNombreNoDisponible,
     abrirAmigos, abrirAnadirAmigo, abrirGrupo, crearGrupo, salirGrupo, getGrupoSala, avisarEstadoGrupo, avisarTurno, verTurnoSala, abrirCuenta, abrirSala, abrirPersonajesNube,
     guardarEnNube, compartirArte, quitarArteDeSala, publicarEstadoDe, estaOcultoEnSala
 } from "./interfazOnline.js";
@@ -44,7 +48,9 @@ import { inicializarMaster, restaurarMaster, guardarActivo as guardarActivoMaste
     anadirFichaCargada, abrirPerfilMaster, pendientesDeNube as pendientesMasterDeNube, marcarSubido as marcarSubidoMaster,
     proveedorSala as proveedorSalaMaster, alCambiarSala as alCambiarSalaMaster, estaEnTurno as estaEnTurnoMaster,
     alIniciarTurno as alIniciarTurnoMaster, getUltimoTurno as getUltimoTurnoMaster,
-    leerPersonaje as leerPersonajeMaster, conPersonaje as conPersonajeMaster } from "./interfazMaster.js";
+    leerPersonaje as leerPersonajeMaster, conPersonaje as conPersonajeMaster, tamanoPaginaCompendio,
+    retirarNpcMuerto } from "./interfazMaster.js";
+import * as compendio from "./compendio.js";
 import { reproducir, iniciarBucle, pararBucle, precargarSonidos, estaSilenciado, setSilenciado } from "./sonidos.js";
 import { ejecutarDebug, crearPersonajePrueba, validarFicha } from "./debug.js";
 import {
@@ -58,7 +64,7 @@ import {
 
 let personaje = new PJ(); //objeto que almaacena y define el comportamiento y limites de toda la informacion relevante
 // Los pop-ups compartidos llevan el nombre del personaje (eventos.js)
-configurarOrigen({ personaje: () => personaje.nombre });
+configurarOrigen({ personaje: () => personaje.nombre, idPersonaje: () => personaje.idPersonaje });
 
 /* Modo master (?master en la URL): las tarjetas de equipo se editan libremente, como antes.
    Sin él, el equipo solo se cambia desde el inventario. */
@@ -342,7 +348,23 @@ function inicializarBotonesModales() {
     });
 }
 
+/* NPC (personaje.esNpc, npc.js): body.modo-npc oculta lo que no tiene (.ficha-personaje) y muestra lo suyo
+   (.ficha-npc). Al pasar de personaje a NPC o al revés se rehacen las listas que dependen del tipo. */
+let ultimoModoNpc = null;
+function aplicarModoNpc() {
+    const npc = Boolean(personaje.esNpc);
+    document.body.classList.toggle("modo-npc", npc);
+    // Los NPC no tienen artes sin equipar (también lo hace PJ.calcularNpc; aquí, antes de pintar las listas)
+    if (npc) personaje.artes.forEach(arte => { arte.equipada = true; });
+    if (npc === ultimoModoNpc) return;
+    ultimoModoNpc = npc;
+    valoresCombateDiv.innerHTML = "";
+    listadoModificadores.innerHTML = "";
+    document.querySelectorAll("#divEquipamiento .mods-equipo[data-mods]").forEach(lista => { lista.innerHTML = ""; });
+}
+
 function actualizarTodo() {
+    aplicarModoNpc();
     ajustarInventario(personaje); // la capacidad cambia con el equipo, la comida o los modificadores
     // En modo lectura no se avisa de nada: la ficha no es del máster
     if (!lectura) {
@@ -358,21 +380,26 @@ function actualizarTodo() {
     actualizarAtributos();
     actualizarHabilidades();
     actualizarCaracteristicas();
+    pintarTiradasNpc();
     actuaizarTextos();
     actualizarEquipamiento();
+    pintarPartesNpc();
     actualizarModificadores();
     generarAccesorios();
     parseModificadoresEquipo();
     pintarHabilidadesReliquia();
     pintarEfectosEquipo();
+    pintarExtrasArmaNpc();
     pintarArmasLanzadas();
     actualizarObjetos();
+    if (document.getElementById("modalBotin").classList.contains("show")) pintarBotin();
     actualizarArtes();
     actualizarArtesPasivas();
     actualizarCatalogoArtes();
     actualizarAcciones();
     actualizarEstados();
     actualizarZona();
+    comprobarMuerteNpc();
     comprobarCambios();
     // Modo máster: sus personajes en la cabecera, con el de la ficha al día
     actualizarHudMaster();
@@ -394,6 +421,346 @@ function actualizarTodo() {
         estados: Object.keys(ESTADOS_INFO).filter(clave => estaActivo(personaje, clave)),
         turno: turnoDe(personaje.idPersonaje),
         id: personaje.idPersonaje // en modo máster, a qué personaje suyo (y su grupo) va
+    });
+}
+
+/* Botín que te ofrece un compañero: va al inventario; lo que no cabe se pierde */
+function cogerOfrecido(datosObjeto, { autor, para }) {
+    const objeto = cargarObjeto(datosObjeto);
+    if (!objeto) return false;
+    const resto = conPersonajeDeInstancia(para, pj => anadirAInventario(pj, objeto)) ?? objeto.cantidad;
+    reproducir("click");
+    const cogidos = objeto.cantidad - resto;
+    const lineas = [cogidos > 0 ? `${objeto.nombre} ×${cogidos} al inventario` : `${objeto.nombre}: no cabe en el inventario`];
+    if (resto > 0) lineas.push(`Se pierden ${resto} (no caben)`);
+    mostrarPopupInfo(`Botín de ${escaparHtml(autor)}`, lineas.map(escaparHtml));
+    actualizarTodo();
+    return true;
+}
+
+/* Muerte de un NPC (modo máster) ___________________________________________
+ * Cuando el NPC de la ficha pasa a 0 PV (por un golpe, el botón Daño, un estado al empezar turno o a mano) se abre
+ * #modalMuerteNpc. Si ya estaba a 0 y recibe otro golpe, se vuelve a preguntar; el botón Derrotar la abre a mano.
+ * El último que le ha golpeado desde un pop-up queda preseleccionado para la EXP. Al aceptar, su copia sale de la
+ * sesión y se borra (retirarNpcMuerto); al cancelar queda a 0 PV. */
+let atacanteGolpe = null; // { jugador, instancia, nombre } del golpe que se está aplicando
+let golpeAlNpc = false;
+let vidaNpcVista = { id: null, vida: null };
+let muerteNpcAbierta = null; // { id, atacante } de la ventana abierta
+
+function comprobarMuerteNpc() {
+    const atacante = atacanteGolpe;
+    const golpe = golpeAlNpc;
+    atacanteGolpe = null;
+    golpeAlNpc = false;
+    const id = personaje.idPersonaje;
+    const antes = vidaNpcVista.id === id ? vidaNpcVista.vida : null;
+    vidaNpcVista = { id, vida: personaje.vida };
+    document.getElementById("btnDerrotarNpc").hidden = !(MODO_MASTER && personaje.esNpc && personaje.vida <= 0 && !lectura);
+    if (!MODO_MASTER || lectura || !personaje.esNpc || personaje.vida > 0) return;
+    if ((antes !== null && antes > 0) || golpe) abrirMuerteNpc(id, golpe ? atacante : null);
+}
+
+/* Datos del NPC (el de la ficha o uno de la sesión que no está en ella) */
+const npcPorId = (id) => (id === personaje.idPersonaje ? personaje : leerPersonajeMaster(id));
+
+/* Se abre cuando no hay otra ventana a la vista (p. ej. tras cerrarse la de daño) */
+function abrirMuerteNpc(id, atacante) {
+    const pj = npcPorId(id);
+    if (!pj?.esNpc) return;
+    if (muerteNpcAbierta?.id === id) {
+        if (atacante) muerteNpcAbierta.atacante = atacante;
+        return;
+    }
+    muerteNpcAbierta = { id, atacante };
+    const mostrar = () => {
+        const otra = document.querySelector(".modal.show:not(#modalMuerteNpc)");
+        if (otra) {
+            otra.addEventListener("hidden.bs.modal", () => setTimeout(mostrar, 50), { once: true });
+            return;
+        }
+        pintarMuerteNpc();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById("modalMuerteNpc")).show();
+    };
+    setTimeout(mostrar, 300);
+}
+
+/* Quién recibe la EXP: los personajes conectados de la sala, también los ocultos y los del máster (sus "m-<id>"),
+   salvo sus NPC (el que muere incluido) */
+function candidatosExp() {
+    if (!getEstadoOnline().sala) return [];
+    return getTodosPersonajesSala().filter(p => {
+        if (!p.instancia?.startsWith("m-")) return true;
+        const id = p.id ?? p.instancia.slice(2);
+        return id !== muerteNpcAbierta?.id && !npcPorId(id)?.esNpc;
+    });
+}
+
+function pintarMuerteNpc() {
+    const { id, atacante } = muerteNpcAbierta ?? {};
+    const pj = npcPorId(id);
+    if (!pj) return;
+    const nombre = pj.nombre || "Sin nombre";
+    const { expRecompensa, recompensa } = pj.npc;
+    document.getElementById("modalMuerteNpcLabel").textContent = `${nombre} ha caído`;
+    document.getElementById("textoMuerteNpc").textContent =
+        `${nombre} está a 0 PV. Al derrotarlo sale de la sesión y su copia se borra (la plantilla sigue en el compendio).`;
+
+    const enSala = Boolean(getEstadoOnline().sala);
+    const select = document.getElementById("selectExpMuerteNpc");
+    const candidatos = candidatosExp();
+    select.innerHTML = `<option value="">Nadie</option>` + candidatos
+        .map(p => `<option value="${escaparHtml(p.instancia)}">${escaparHtml(p.nombre || "Sin nombre")}</option>`).join("");
+    const preseleccionado = candidatos.find(p => p.instancia === atacante?.instancia);
+    select.value = preseleccionado?.instancia ?? "";
+    document.getElementById("campoExpMuerteNpc").hidden = !enSala;
+    const avisos = [];
+    if (!enSala) avisos.push(`Sin sala: reparte a mano la EXP (${expRecompensa}) y la recompensa.`);
+    else {
+        if (atacante?.idPersonaje) avisos.push(`El último golpe es de ${atacante.nombre}, uno de tus personajes: elige si alguien recibe la EXP.`);
+        else if (atacante?.nombre && !preseleccionado) avisos.push(`El último golpe es de ${atacante.nombre}, que no está conectado: elige a quién dar la EXP.`);
+        avisos.push("Solo reciben EXP y recompensa los personajes conectados; a los demás dáselo a mano.");
+    }
+    document.getElementById("avisoMuerteNpc").textContent = avisos.join(" ");
+    pintarMitadMuerteNpc();
+
+    const filas = [
+        `<div class="fila-objeto"><span class="objeto-icono">${iconoSao("artes")}</span><div class="objeto-info"><div class="objeto-cabecera"><span class="objeto-nombre">${expRecompensa} EXP</span></div></div></div>`,
+        recompensa.cor > 0 ? `<div class="fila-objeto"><span class="objeto-icono">${iconoSao("cor")}</span><div class="objeto-info"><div class="objeto-cabecera"><span class="objeto-nombre">${recompensa.cor} Cor</span></div></div></div>` : "",
+        ...recompensa.objetos.map(objeto => `<div class="fila-objeto"><span class="objeto-icono">${iconoSao(iconoObjeto(objeto))}</span><div class="objeto-info">
+            <div class="objeto-cabecera"><span class="objeto-nombre">${escaparHtml(objeto.nombre)}</span><span class="objeto-cantidad">×${objeto.cantidad}</span></div></div></div>`),
+        ...recompensa.objetosClave.map(objeto => `<div class="fila-objeto"><span class="objeto-icono">${iconoSao("llave")}</span><div class="objeto-info">
+            <div class="objeto-cabecera"><span class="objeto-nombre">${escaparHtml(objeto.nombre)}</span></div><div class="objeto-detalle">Objeto clave</div></div></div>`)
+    ];
+    document.getElementById("recompensaMuerteNpc").innerHTML = filas.join("");
+}
+
+/* Compañeros del grupo de quien recibe la EXP (conectados): reciben la mitad */
+function companerosExp(instancia) {
+    const candidatos = candidatosExp();
+    const elegido = candidatos.find(p => p.instancia === instancia);
+    if (!elegido?.grupo) return [];
+    return candidatos.filter(p => p.grupo === elegido.grupo && p.instancia !== instancia);
+}
+
+function pintarMitadMuerteNpc() {
+    const pj = npcPorId(muerteNpcAbierta?.id);
+    const instancia = document.getElementById("selectExpMuerteNpc").value;
+    const companeros = instancia ? companerosExp(instancia) : [];
+    const mitad = Math.floor((pj?.npc.expRecompensa ?? 0) / 2);
+    document.getElementById("mitadMuerteNpc").textContent = companeros.length
+        ? `Su grupo recibe ${mitad} EXP cada uno: ${companeros.map(p => p.nombre || "Sin nombre").join(", ")}.`
+        : instancia ? "No tiene compañeros de grupo conectados." : "";
+}
+
+/* Reparto de la derrota: un evento "derrota" para toda la sala (con el sonido de muerte). Quien mata recibe toda la
+   EXP y la recompensa (Cor y objetos clave directos; los objetos, a su botín); sus compañeros de grupo, la mitad de
+   la EXP. Lo aplica cada pestaña al recibirlo (alDerrota). Sin sala solo se pinta aquí, para repartirlo a mano. */
+function repartirDerrota({ nombre, exp, cor, objetos, objetosClave, para, companeros }) {
+    const mitad = Math.floor(exp / 2);
+    const lineas = [];
+    if (para) lineas.push(`${para.nombre || "Sin nombre"}: +${exp} EXP`);
+    if (para && companeros.length) lineas.push(`Su grupo (+${mitad} EXP): ${companeros.map(p => p.nombre || "Sin nombre").join(", ")}`);
+    if (!para) lineas.push(`EXP sin repartir: ${exp}`);
+    const botin = [cor > 0 ? `${cor} Cor` : "", ...objetos.map(o => `${o.nombre} ×${o.cantidad}`), ...objetosClave.map(o => o.nombre)].filter(Boolean);
+    if (botin.length) lineas.push(`Recompensa${para ? ` para ${para.nombre || "Sin nombre"}` : ""}: ${botin.join(", ")}`);
+    reproducir("muerte"); // los demás lo oyen al recibir el evento (datos.sonido)
+    const evento = emitirEvento("derrota", {
+        titulo: `${nombre} ha sido derrotado`,
+        subtitulo: "Derrota",
+        lineas,
+        sonido: "muerte",
+        npc: nombre,
+        atacante: para?.instancia ?? null,
+        exp,
+        grupo: companeros.map(p => p.instancia),
+        mitad,
+        botin: para ? { cor, objetos, objetosClave } : null
+    });
+    // Los personajes del máster no reciben sus propios eventos: lo suyo se aplica aquí
+    if (evento) alDerrota(evento);
+}
+
+/* Al recibir una derrota: si la EXP o la recompensa son para un personaje de esta pestaña, se le aplican */
+const cantidadSegura = (valor) => Math.max(0, Math.min(1e7, Math.floor(Number(valor) || 0)));
+function alDerrota(evento) {
+    const d = evento.datos ?? {};
+    const npc = String(d.npc ?? "un NPC").slice(0, 60);
+    const recibir = (instancia, aplicar) => {
+        const pj = leerPersonajeDeInstancia(instancia);
+        if (!pj) return;
+        conPersonajeDeInstancia(instancia, aplicar);
+        return pj;
+    };
+    if (esDeEstaPestana(d.atacante)) {
+        const exp = cantidadSegura(d.exp);
+        const cor = cantidadSegura(d.botin?.cor);
+        const objetos = (Array.isArray(d.botin?.objetos) ? d.botin.objetos : []).slice(0, 50).map(cargarObjeto).filter(Boolean);
+        const claves = cargarObjetosClave(Array.isArray(d.botin?.objetosClave) ? d.botin.objetosClave.slice(0, 50) : []);
+        const nivelAntes = leerPersonajeDeInstancia(d.atacante)?.nivel;
+        const pj = recibir(d.atacante, (p) => {
+            p.setExp((Number(p.experiencia) || 0) + exp);
+            if (cor > 0) anadirCor(p, cor);
+            p.objetosClave.push(...claves);
+            p.botin.push(...objetos);
+        });
+        if (pj) {
+            const despues = leerPersonajeDeInstancia(d.atacante);
+            const lineas = [`+${exp} EXP`];
+            if (despues && despues.nivel > nivelAntes) lineas.push(`¡Sube a nivel ${despues.nivel}!`);
+            if (cor > 0) lineas.push(`+${cor} Cor`);
+            if (claves.length) lineas.push(`Objetos clave: ${claves.map(o => o.nombre).join(", ")}`);
+            if (objetos.length) lineas.push(`Botín por recoger: ${objetos.map(o => `${o.nombre} ×${o.cantidad}`).join(", ")}`);
+            mostrarPopupInfo(`${escaparHtml(despues?.nombre || "Tu personaje")} derrota a ${escaparHtml(npc)}`, lineas.map(escaparHtml));
+            if (objetos.length && esElDeLaFicha(idDeInstancia(d.atacante))) setTimeout(abrirBotin, 600);
+        }
+    }
+    (Array.isArray(d.grupo) ? d.grupo : []).filter(esDeEstaPestana).forEach(instancia => {
+        const mitad = cantidadSegura(d.mitad);
+        const nivelAntes = leerPersonajeDeInstancia(instancia)?.nivel;
+        if (!recibir(instancia, (p) => p.setExp((Number(p.experiencia) || 0) + mitad))) return;
+        const despues = leerPersonajeDeInstancia(instancia);
+        const lineas = [`+${mitad} EXP (tu grupo ha derrotado a ${npc})`];
+        if (despues && despues.nivel > nivelAntes) lineas.push(`¡Sube a nivel ${despues.nivel}!`);
+        mostrarPopupInfo(`${escaparHtml(despues?.nombre || "Tu personaje")}: EXP de grupo`, lineas.map(escaparHtml));
+    });
+}
+registrarAlRecibir("derrota", alDerrota);
+
+/* Ventana de botín (#modalBotin) ______________________________________________
+ * personaje.botin: objetos de la recompensa por recoger. Coger (al inventario; lo que no cabe se queda aquí),
+ * Ofrecer a un compañero del grupo conectado (evento "oferta" con coger: true; si no lo coge, se pierde) o
+ * Descartar. "Coger todo" mete lo que quepa. Se abre al recibirlo y desde el menú del inventario. */
+const listaBotinEl = document.getElementById("listaBotin");
+let eleccionBotin = null; // fila que está eligiendo a quién ofrecer
+
+/* Compañeros de grupo conectados a los que se puede ofrecer (no este mismo personaje) */
+const companerosBotin = () => (getGrupoSala()?.miembros ?? []).filter(m => !esDeEstaPestana(m.instancia));
+
+function pintarBotin() {
+    const botin = personaje.botin ?? [];
+    document.getElementById("contadorBotin").textContent = `(${botin.length})`;
+    document.getElementById("btnCogerTodoBotin").disabled = !botin.length;
+    const companeros = companerosBotin();
+    pintarLista(listaBotinEl, botin.length ? botin.map((objeto, i) => {
+        const tipoInfo = TIPOS_OBJETO[objeto.tipo];
+        const cabe = cabenEnInventario(personaje, objeto) > 0;
+        const eleccion = eleccionBotin === i ? `<div class="objeto-eleccion">
+            ${companeros.map(m => `<button type="button" class="btn-eleccion" data-accion="ofrecerA" data-instancia="${escaparHtml(m.instancia)}">Ofrecer a ${escaparHtml(m.nombre || "Sin nombre")}</button>`).join("")}
+            <button type="button" class="btn-eleccion cancelar" data-accion="cancelar">Cancelar</button></div>` : "";
+        return `<div class="fila-objeto" data-index="${i}">
+            <span class="objeto-icono" title="${tipoInfo.etiqueta}">${iconoSao(iconoObjeto(objeto))}</span>
+            <div class="objeto-info">
+                <div class="objeto-cabecera"><span class="objeto-nombre">${escaparHtml(objeto.nombre)}</span><span class="objeto-cantidad">×${objeto.cantidad}</span></div>
+                <div class="objeto-detalle">${tipoInfo.etiqueta} · ${escaparHtml(detalleObjeto(objeto))}</div>
+                ${objeto.descripcion ? `<div class="objeto-descripcion">${escaparHtml(objeto.descripcion)}</div>` : ""}
+            </div>
+            <div class="objeto-acciones">
+                ${botonObjeto("coger", "inventario", cabe ? "Coger (al inventario)" : "No cabe en el inventario", !cabe)}
+                ${botonObjeto("ofrecer", "amigos", companeros.length ? "Ofrecer a un compañero del grupo" : "No tienes compañeros de grupo conectados", !companeros.length)}
+                ${botonObjeto("descartar", "descartar", "Descartar")}
+            </div>
+            ${eleccion}
+        </div>`;
+    }).join("") : `<p class="lista-vacia">No tienes botín por recoger.</p>`);
+}
+
+function abrirBotin() {
+    eleccionBotin = null;
+    pintarBotin();
+    const ventana = document.getElementById("modalBotin");
+    if (ventana.classList.contains("show")) return;
+    if (document.querySelector(".modal.show")) return; // ya lo verá desde el menú del inventario
+    bootstrap.Modal.getOrCreateInstance(ventana).show();
+}
+
+/* Mete en el inventario lo que quepa de un objeto del botín; lo que no, se queda */
+function cogerDelBotin(indice) {
+    const objeto = personaje.botin[indice];
+    if (!objeto) return 0;
+    const resto = anadirAInventario(personaje, objeto);
+    const cogidos = objeto.cantidad - resto;
+    if (resto > 0) objeto.cantidad = resto;
+    else personaje.botin.splice(indice, 1);
+    return cogidos;
+}
+
+function inicializarBotin() {
+    listaBotinEl.addEventListener("click", async (e) => {
+        const boton = e.target.closest("button[data-accion]");
+        const indice = Number(boton?.closest(".fila-objeto")?.dataset.index);
+        const objeto = personaje.botin[indice];
+        if (!boton || boton.disabled || !objeto) return;
+        reproducir("click");
+        const accion = boton.dataset.accion;
+        if (accion === "coger") {
+            if (!cogerDelBotin(indice)) mostrarPopupInfo("No cabe", ["Libera un hueco del inventario."]);
+        } else if (accion === "ofrecer") {
+            eleccionBotin = eleccionBotin === indice ? null : indice;
+        } else if (accion === "cancelar") {
+            eleccionBotin = null;
+        } else if (accion === "ofrecerA") {
+            const destino = companerosBotin().find(m => m.instancia === boton.dataset.instancia);
+            if (!destino) return;
+            personaje.botin.splice(indice, 1);
+            eleccionBotin = null;
+            const nombre = String(personaje.nombre ?? "").trim() || "Alguien";
+            emitirEvento("oferta", {
+                titulo: `${nombre} ofrece ${objeto.nombre} ×${objeto.cantidad}`,
+                subtitulo: `Botín · para ${destino.nombre || "un compañero"}`,
+                lineas: ["Si no lo coges o no te cabe en el inventario, se pierde."],
+                para: destino.instancia,
+                objeto,
+                coger: true
+            });
+        } else if (accion === "descartar") {
+            if (!(await confirmarSao({ titulo: "Descartar botín", texto: `¿Descartar ${objeto.nombre} ×${objeto.cantidad}?` }))) return;
+            personaje.botin.splice(personaje.botin.indexOf(objeto), 1);
+        }
+        actualizarTodo();
+    });
+    document.getElementById("btnCogerTodoBotin").addEventListener("click", () => {
+        reproducir("click");
+        for (let i = personaje.botin.length - 1; i >= 0; i--) cogerDelBotin(i);
+        if (personaje.botin.length) mostrarPopupInfo("Botín", ["No cabe todo: lo que queda sigue en el botín."]);
+        actualizarTodo();
+    });
+    document.getElementById("modalBotin").addEventListener("show.bs.modal", () => { eleccionBotin = null; pintarBotin(); });
+}
+
+function inicializarMuerteNpc() {
+    const modalEl = document.getElementById("modalMuerteNpc");
+    document.getElementById("selectExpMuerteNpc").addEventListener("change", pintarMitadMuerteNpc);
+    document.getElementById("formMuerteNpc").addEventListener("submit", (e) => e.preventDefault());
+    modalEl.addEventListener("hidden.bs.modal", () => { muerteNpcAbierta = null; });
+    document.getElementById("btnDerrotarNpc").addEventListener("click", () => {
+        reproducir("click");
+        abrirMuerteNpc(personaje.idPersonaje, null);
+    });
+    document.getElementById("btnAceptarMuerteNpc").addEventListener("click", () => {
+        const datos = muerteNpcAbierta;
+        const pj = npcPorId(datos?.id);
+        if (!pj) return;
+        reproducir("click");
+        const instancia = document.getElementById("selectExpMuerteNpc").value;
+        const para = candidatosExp().find(p => p.instancia === instancia) ?? null;
+        const reparto = {
+            nombre: pj.nombre || "Sin nombre",
+            exp: pj.npc.expRecompensa,
+            cor: pj.npc.recompensa.cor,
+            objetos: structuredClone(pj.npc.recompensa.objetos),
+            objetosClave: structuredClone(pj.npc.recompensa.objetosClave),
+            para,
+            companeros: para ? companerosExp(instancia) : []
+        };
+        bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        const motivo = retirarNpcMuerto(datos.id);
+        // Si no se puede quitar no se reparte nada (así no se da dos veces al volver a derrotarlo)
+        if (motivo) {
+            mostrarPopupInfo("No se puede derrotar", [escaparHtml(`${motivo}: ${reparto.nombre} queda a 0 PV. Añade otro personaje a la sesión y vuelve a derrotarlo.`)]);
+            return;
+        }
+        repartirDerrota(reparto);
     });
 }
 
@@ -903,7 +1270,137 @@ function formatearNumero(valor) {
     return Number.isInteger(numero) ? String(numero) : numero.toFixed(1).replace(".", ",");
 }
 
+/* NPC: cada valor se escribe a mano (personaje.npc); debajo, el valor con modificadores si es distinto.
+   La armadura sale de la armadura equipada (solo lectura). */
+const VALORES_FICHA_NPC = [
+    ...VALORES_NPC,
+    { clave: "armadura", etiqueta: "Armadura", icono: "armadura", soloLectura: true, ayuda: "Daño que la armadura resta a cada impacto." }
+];
+
+function construirValoresNpc() {
+    valoresCombateDiv.innerHTML = VALORES_FICHA_NPC.map(({ clave, etiqueta, icono, ayuda, soloLectura, min }) => `
+        <div class="valor-combate valor-npc" data-valor="${clave}" title="${escaparHtml(ayuda ?? etiqueta)}">
+            <span class="valor-icono">${iconoSao(icono)}</span>
+            <span class="valor-texto">
+                <span class="valor-etiqueta">${etiqueta}</span>
+                ${soloLectura ? `<span class="valor-numero"></span>`
+                    : `<input type="number" class="valor-npc-input" data-npc="${clave}" min="${min}" aria-label="${escaparHtml(etiqueta)}">`}
+                <span class="valor-nota"></span>
+            </span>
+        </div>`).join("");
+}
+
+function actualizarValoresNpc() {
+    if (!valoresCombateDiv.children.length) construirValoresNpc();
+    VALORES_FICHA_NPC.forEach(({ clave, unidad, soloLectura }) => {
+        const tarjeta = valoresCombateDiv.querySelector(`[data-valor="${clave}"]`);
+        if (!tarjeta) return;
+        const efectivo = Number(personaje[clave]) || 0;
+        let nota = "";
+        if (soloLectura) {
+            tarjeta.querySelector(".valor-numero").innerHTML = formatearNumero(efectivo) + (unidad ? ` <small>${unidad}</small>` : "");
+        } else {
+            const input = tarjeta.querySelector("input");
+            if (document.activeElement !== input) input.value = personaje.npc[clave];
+            // Con modificadores, estados o escudo el valor efectivo es otro
+            if (efectivo !== personaje.npc[clave]) nota = `Efectivo: ${formatearNumero(efectivo)}${unidad ? ` ${unidad}` : ""}`;
+        }
+        tarjeta.querySelector(".valor-nota").textContent = nota;
+        tarjeta.classList.toggle("con-nota", Boolean(nota));
+    });
+}
+
+function inicializarValoresNpc() {
+    valoresCombateDiv.addEventListener("change", (e) => {
+        const input = e.target.closest("input[data-npc]");
+        if (!input || !personaje.esNpc) return;
+        const valor = VALORES_NPC.find(v => v.clave === input.dataset.npc);
+        if (!valor) return;
+        // Si la vida o los PA estaban al máximo, siguen al máximo
+        const vidaLlena = personaje.vida >= personaje.vidaMax;
+        const paLleno = personaje.puntosArte >= personaje.puntosArteMax;
+        const numero = Math.trunc(Number(input.value));
+        personaje.npc[valor.clave] = Number.isFinite(numero) ? Math.max(valor.min, numero) : personaje.npc[valor.clave];
+        personaje.calcularCaracteristicas();
+        personaje.vida = vidaLlena ? personaje.vidaMax : Math.min(personaje.vida, personaje.vidaMax);
+        personaje.puntosArte = paLleno ? personaje.puntosArteMax : Math.min(personaje.puntosArte, personaje.puntosArteMax);
+        actualizarTodo();
+    });
+}
+
+/* Tiradas libres del NPC (personaje.npc.tiradas): nombre y valor, se tiran con 3d10 + valor.
+   Mismo patrón que las listas: filas regeneradas solo si cambia el número, sin pisar el campo con el foco. */
+const tiradasNpcDiv = document.getElementById("tiradasNpcDiv");
+
+function pintarTiradasNpc() {
+    if (!personaje.esNpc) return;
+    const tiradas = personaje.npc.tiradas;
+    document.getElementById("anadirTiradaNpc").disabled = tiradas.length >= MAX_TIRADAS_NPC;
+    if (!tiradas.length) {
+        tiradasNpcDiv.innerHTML = `<p class="lista-vacia">Sin tiradas. Añade una con el +.</p>`;
+        return;
+    }
+    if (tiradasNpcDiv.querySelectorAll(".fila-tirada-npc").length !== tiradas.length) {
+        tiradasNpcDiv.innerHTML = tiradas.map((_, i) => `
+            <div class="fila-tirada-npc" data-index="${i}">
+                <button type="button" class="btn-objeto" data-accion="tirar" title="Tirar" aria-label="Tirar">${iconoSao("usar")}</button>
+                <input type="text" data-campo="nombre" maxlength="60" aria-label="Nombre de la tirada">
+                <input type="number" data-campo="valor" min="-99" max="99" aria-label="Valor">
+                <button type="button" class="btn-objeto" data-accion="quitar" title="Quitar tirada" aria-label="Quitar tirada">${iconoSao("descartar")}</button>
+            </div>`).join("");
+    }
+    tiradas.forEach((tirada, i) => {
+        const fila = tiradasNpcDiv.children[i];
+        const nombre = fila.querySelector('[data-campo="nombre"]');
+        const valor = fila.querySelector('[data-campo="valor"]');
+        if (document.activeElement !== nombre) nombre.value = tirada.nombre;
+        if (document.activeElement !== valor) valor.value = tirada.valor;
+    });
+}
+
+function inicializarTiradasNpc() {
+    document.getElementById("anadirTiradaNpc").addEventListener("click", () => {
+        if (!personaje.esNpc || personaje.npc.tiradas.length >= MAX_TIRADAS_NPC) return;
+        reproducir("click");
+        personaje.npc.tiradas.push(cargarTiradaNpc({ nombre: "Tirada", valor: 0 }));
+        actualizarTodo();
+        tiradasNpcDiv.lastElementChild?.querySelector('[data-campo="nombre"]')?.select();
+    });
+    tiradasNpcDiv.addEventListener("change", (e) => {
+        const campo = e.target.closest("[data-campo]");
+        const tirada = personaje.npc.tiradas[Number(campo?.closest("[data-index]")?.dataset.index)];
+        if (!tirada) return;
+        if (campo.dataset.campo === "nombre") tirada.nombre = campo.value.trim().slice(0, 60) || "Tirada";
+        else tirada.valor = cargarTiradaNpc({ valor: campo.value }).valor;
+        actualizarTodo();
+    });
+    tiradasNpcDiv.addEventListener("click", (e) => {
+        const boton = e.target.closest("button[data-accion]");
+        const indice = Number(boton?.closest("[data-index]")?.dataset.index);
+        const tirada = personaje.npc.tiradas[indice];
+        if (!tirada) return;
+        reproducir("click");
+        if (boton.dataset.accion === "quitar") {
+            personaje.npc.tiradas.splice(indice, 1);
+            actualizarTodo();
+            return;
+        }
+        if (fallaPorEmbriaguez(`Tirada de ${tirada.nombre}`)) return;
+        const { modos, criticoFacil } = obtenerConfiguracionTirada();
+        ejecutarTirada({
+            nombreAccion: tirada.nombre,
+            valorHabilidad: tirada.valor,
+            etiquetaHabilidad: tirada.nombre,
+            valorCaracteristica: 0,
+            etiquetaCaracteristica: null,
+            criticoFacil,
+            ...resolverModoTirada(modos)
+        });
+    });
+}
+
 function actualizarCaracteristicas() {
+    if (personaje.esNpc) return actualizarValoresNpc();
     if (!valoresCombateDiv.children.length) construirValoresCombate();
 
     VALORES_COMBATE.forEach(({ clave, unidad, soloUnderworld }) => {
@@ -967,7 +1464,7 @@ const listadoModificadores = document.getElementById("listadoModificadores");
 
 document.getElementById("anadirMod").addEventListener("click", () => {
     // Por defecto es permanente: dura hasta que el usuario lo edite o lo elimine
-    personaje.modificadores.push(new Modificador("", "atletismo", 0, TURNOS_PERMANENTE));
+    personaje.modificadores.push(new Modificador("", personaje.esNpc ? "defensa" : "atletismo", 0, TURNOS_PERMANENTE));
     personaje.calcularCaracteristicas();
     actualizarTodo();
     listadoModificadores.lastElementChild?.querySelector(".nombreMod")?.focus();
@@ -994,11 +1491,29 @@ const GRUPOS_ATRIBUTOS = [
     ["Resistencias", ELEMENTOS.map(elemento => [`res_${elemento}`, `Resistencia a ${TIPOS_DANNO[elemento].etiqueta.toLowerCase()}`])]
 ];
 
+/* NPC: solo sus valores de combate (no tiene características ni habilidades). "Daño" se suma a sus armas. */
+const GRUPOS_ATRIBUTOS_NPC = [
+    ["Combate", [
+        ["defensa", "Defensa"], ["armadura", "Armadura"], ["iniciativa", "Iniciativa"],
+        ["vMovimiento", "Movimiento"], ["dFisico", "Daño"], ["acierto", "Acierto"]
+    ]],
+    ["Otros", [
+        ["aguante", "Aguante"], ["vidaMax", "PV máximos"], ["arte", "PA máximos"],
+        ["perspicacia", "Perspicacia"], ["percepcionPasiva", "Percepción pasiva"],
+        ["regeneracion", "Regeneración (PV/turno)"]
+    ]],
+    ["Resistencias", ELEMENTOS.map(elemento => [`res_${elemento}`, `Resistencia a ${TIPOS_DANNO[elemento].etiqueta.toLowerCase()}`])],
+    // Multiplicadores del daño de cada elemento (se suman a los de la armadura, PJ.getDebilidad)
+    ["Debilidades", ELEMENTOS.map(elemento => [`deb_${elemento}`, `Debilidad a ${TIPOS_DANNO[elemento].etiqueta.toLowerCase()} (×)`])]
+];
+const gruposAtributos = () => personaje.esNpc ? GRUPOS_ATRIBUTOS_NPC : GRUPOS_ATRIBUTOS;
+
 function opcionesAtributo(seleccionado) {
-    const conocido = GRUPOS_ATRIBUTOS.some(([, atributos]) => atributos.some(([valor]) => valor === seleccionado));
+    const grupos = gruposAtributos();
+    const conocido = grupos.some(([, atributos]) => atributos.some(([valor]) => valor === seleccionado));
     // Un atributo que ya no está en la lista (fichas antiguas) se conserva para no perderlo
     const desconocido = !conocido ? `<option selected value="${seleccionado ?? ""}">(${seleccionado || "sin atributo"})</option>` : "";
-    return desconocido + GRUPOS_ATRIBUTOS.map(([grupo, atributos]) =>
+    return desconocido + grupos.map(([grupo, atributos]) =>
         `<optgroup label="${grupo}">${atributos.map(([valor, etiqueta]) =>
             `<option ${valor === seleccionado ? "selected" : ""} value="${valor}">${etiqueta}</option>`).join("")}</optgroup>`
     ).join("");
@@ -1020,7 +1535,7 @@ listadoModificadores.addEventListener("change", (e) => {
     if (!mod) return;
     const fila = e.target.closest(".fila-modificador");
     if (e.target.classList.contains("listValores")) mod.modificado = e.target.value;
-    if (e.target.classList.contains("cantidadMod")) mod.numero = parseInt(e.target.value) || 0;
+    if (e.target.classList.contains("cantidadMod")) mod.numero = numeroModificador(mod.modificado, e.target.value);
     if (e.target.classList.contains("duracionMod")) {
         // Un modificador temporal dura al menos 1 turno
         mod.turnos = Math.max(1, parseInt(e.target.value) || 1);
@@ -1083,6 +1598,8 @@ function actualizarModificadores() {
         if (document.activeElement !== inputNombre) inputNombre.value = mod.nombre === "nombre" ? "" : (mod.nombre ?? "");
         if (document.activeElement !== select && select.querySelector(`option[value="${mod.modificado}"]`)) select.value = mod.modificado;
         if (document.activeElement !== inputCantidad) inputCantidad.value = numero;
+        // Las debilidades (deb_) admiten decimales
+        inputCantidad.toggleAttribute("data-decimal", esModificadorDecimal(mod.modificado));
         if (document.activeElement !== inputTurnos) inputTurnos.value = permanente ? "" : mod.turnos;
         inputTurnos.disabled = permanente;
         fila.querySelector(".checkPermanenteMod").checked = permanente;
@@ -1132,6 +1649,7 @@ function limpiarContenidoEquipamiento(propEquipo) {
     item.penalizacionAtletismo = 0;
     item.armadura = 0;
     item.resistencias = cargarValoresElementales();
+    item.debilidades = cargarDebilidades();
     item.dannoElemental = cargarValoresElementales();
     item.defensa = 0;
     item.enUso = false;
@@ -1229,6 +1747,16 @@ function inicializarEquipamiento() {
         const inputPen = elemento.querySelector(".inputPenalizacionAtletismo");
         const inputArm = elemento.querySelector(".inputValorArmadura");
         const btnUsar = elemento.querySelector(".btn-usar-equipo");
+
+        // Solo NPC: acierto y dado del arma
+        elemento.querySelector(".inputAciertoEquipo")?.addEventListener("change", (e) => {
+            personaje[propEquipo].acierto = Math.trunc(Number(e.target.value) || 0);
+            actualizarTodo();
+        });
+        elemento.querySelector(".selectDadoEquipo")?.addEventListener("change", (e) => {
+            personaje[propEquipo].dado = e.target.value === "" ? null : Number(e.target.value);
+            actualizarTodo();
+        });
 
         if (select) {
             select.dataset.valorActual = select.value;
@@ -1515,8 +2043,43 @@ function actualizarEquipamiento() {
             inputArm.value = item.armadura ?? 0;
         }
         pintarDescripcionEquipo(elemento.querySelector(".equipamiento-descripcion"), item);
+
+        // NPC: acierto y dado (solo en armas de ataque)
+        const inputAcierto = elemento.querySelector(".inputAciertoEquipo");
+        const selectDado = elemento.querySelector(".selectDadoEquipo");
+        const esArmaAtaque = Boolean(ARMAS[item.tipo]) && !esEscudo;
+        inputAcierto?.closest(".campo-numero")?.toggleAttribute("hidden", !esArmaAtaque);
+        selectDado?.closest(".campo-numero")?.toggleAttribute("hidden", !esArmaAtaque);
+        if (inputAcierto && document.activeElement !== inputAcierto) inputAcierto.value = item.acierto ?? 0;
+        if (selectDado && document.activeElement !== selectDado) selectDado.value = item.dado ?? "";
     });
+    if (personaje.esNpc) ajustarManosNpc();
     actualizarBloquesElementales();
+}
+
+/* NPC: cada brazo se ve con el nombre de su parte, y si no tiene esa parte no se ve. Sin el otro brazo no se puede
+   llevar un arma a dos manos en este. */
+function ajustarManosNpc() {
+    [["manoIzquierda", "izquierda", "derecha"], ["manoDerecha", "derecha", "izquierda"]].forEach(([prop, id, otro]) => {
+        const tarjeta = document.querySelector(`.${prop}.equipamiento`);
+        if (!tarjeta) return;
+        const parte = parteNpc(personaje, id);
+        if (!parte) {
+            tarjeta.style.display = "none";
+            return;
+        }
+        const dosManos = TIPOS_DOS_MANOS.includes(personaje[prop]?.tipo);
+        const titulo = tarjeta.querySelector(".tituloMano");
+        if (titulo) titulo.innerText = dosManos && tieneParte(personaje, otro) ? `${parte.nombre} (dos manos):` : `${parte.nombre}:`;
+        if (!tieneParte(personaje, otro)) {
+            tarjeta.querySelectorAll(".tipoEquipo option").forEach(opcion => {
+                if (TIPOS_DOS_MANOS.includes(opcion.value)) opcion.disabled = true;
+            });
+        }
+    });
+    if (!tieneParte(personaje, "izquierda") || !tieneParte(personaje, "derecha")) {
+        document.querySelector(".equipamiento-manos-grid")?.classList.remove("dos-manos");
+    }
 }
 
 /* Valores elementales del equipo ______________________________________________
@@ -1529,13 +2092,17 @@ function actualizarEquipamiento() {
 
 const TEXTO_ELEMENTAL = {
     resistencias: (etiqueta) => `Resistencia a ${etiqueta}`,
-    dannoElemental: (etiqueta) => `Daño de ${etiqueta}`
+    dannoElemental: (etiqueta) => `Daño de ${etiqueta}`,
+    debilidades: (etiqueta) => `Debilidad a ${etiqueta} (multiplicador, 0 = ninguna)`
 };
+/* Las debilidades son multiplicadores con decimales; el resto, enteros */
+const cargarElementales = (campo, valores) => (campo === "debilidades" ? cargarDebilidades(valores) : cargarValoresElementales(valores));
 
 /* Campos del formulario de objetos: id del contenedor, del acordeón y prefijo de los inputs */
 const FORMULARIO_ELEMENTAL = {
     resistencias: { contenedor: "objetoResistencias", acordeon: "detallesResistenciasObjeto", prefijo: "objetoRes_" },
-    dannoElemental: { contenedor: "objetoDannoElemental", acordeon: "detallesDannoElementalObjeto", prefijo: "objetoElem_" }
+    dannoElemental: { contenedor: "objetoDannoElemental", acordeon: "detallesDannoElementalObjeto", prefijo: "objetoElem_" },
+    debilidades: { contenedor: "objetoDebilidades", acordeon: "detallesDebilidadesObjeto", prefijo: "objetoDeb_" }
 };
 
 function campoElemental(campo, elemento, atributosInput = "") {
@@ -1543,7 +2110,7 @@ function campoElemental(campo, elemento, atributosInput = "") {
     const nombre = TEXTO_ELEMENTAL[campo](info.etiqueta.toLowerCase());
     return `<label class="campo-elemental" title="${nombre}" style="${estiloColor(info)}">
         <span class="icono-elemental">${iconoSao(info.icono)}</span>
-        <input type="number" min="0" value="0" data-elemento="${elemento}" aria-label="${nombre}" ${atributosInput}>
+        <input type="number" min="0" value="0" data-elemento="${elemento}" aria-label="${nombre}" ${campo === "debilidades" ? 'step="0.25" data-decimal' : ""} ${atributosInput}>
     </label>`;
 }
 
@@ -1557,6 +2124,8 @@ function marcarElementalesActivos(contenedor) {
 /* ¿La tarjeta muestra ese campo? Resistencias, la armadura; daño elemental, un arma de ataque */
 function tarjetaUsaElemental(item, campo) {
     if (campo === "resistencias") return TIPOS_ARMADURA.includes(item?.tipo);
+    // Debilidades: la armadura de un NPC
+    if (campo === "debilidades") return TIPOS_ARMADURA.includes(item?.tipo) && Boolean(personaje.esNpc);
     return Boolean(ARMAS[item?.tipo]) && !ARMAS[item.tipo].escudo;
 }
 
@@ -1570,7 +2139,8 @@ function inicializarBloquesElementales() {
             const elemento = e.target.dataset.elemento;
             const item = personaje[propEquipo];
             if (!elemento || !item) return;
-            item[campo] = cargarValoresElementales({ ...item[campo], [elemento]: e.target.value });
+            item[campo] = cargarElementales(campo, { ...item[campo], [elemento]: e.target.value });
+            if (campo === "debilidades") personaje.calcularCaracteristicas();
             marcarElementalesActivos(valores);
         });
     });
@@ -1610,7 +2180,7 @@ function rellenarElementalesFormulario(campo, valores) {
 
 function leerElementalesFormulario(campo) {
     const { prefijo } = FORMULARIO_ELEMENTAL[campo];
-    return cargarValoresElementales(Object.fromEntries(
+    return cargarElementales(campo, Object.fromEntries(
         ELEMENTOS.map(elemento => [elemento, document.getElementById(prefijo + elemento).value])));
 }
 
@@ -1679,11 +2249,41 @@ function conEmbriaguez(categoria, accion) {
     }
 }
 
+/* Acciones que gasta usar lo que hay en una mano (en un NPC, las de su parte; npc.js) */
+function partesDeManoEquipo(propEquipo) {
+    if (personaje.esNpc) return partesDeEquipoNpc(personaje, PARTE_DE_MANO[propEquipo]);
+    return partesDeMano(propEquipo, ARMAS[personaje[propEquipo]?.tipo]?.manos === 2);
+}
+
+/* Nombre de la mano para los pop-ups: en un NPC, el de su parte */
+const etiquetaMano = (propEquipo) => (personaje.esNpc && parteNpc(personaje, PARTE_DE_MANO[propEquipo])?.nombre) || ETIQUETAS_MANO[propEquipo];
+
 function usarEquipo(propEquipo) {
     const item = personaje[propEquipo];
     const arma = ARMAS[item?.tipo];
     if (!arma) return;
-    const partes = partesDeMano(propEquipo, arma.manos === 2);
+    usarItemEquipo(item, partesDeManoEquipo(propEquipo),
+        `Ataque con ${arma.etiqueta.toLowerCase()} · ${arma.manos === 2 ? "Dos manos" : etiquetaMano(propEquipo)}`,
+        () => prepararAtaque(personaje, propEquipo, obtenerConfiguracionTirada().modos));
+}
+
+/* NPC: usar el equipo de una de sus partes que no son brazos (cola, boca...) */
+function usarEquipoParte(id) {
+    const parte = parteNpc(personaje, id);
+    const item = parte?.equipo;
+    if (!ARMAS[item?.tipo]) return;
+    if (TIPOS_DOS_MANOS.includes(item.tipo) && !item.parteSecundaria) {
+        mostrarPopupInfo("No se puede usar", ["Elige la otra parte que ocupa el arma a dos manos."]);
+        return;
+    }
+    usarItemEquipo(item, partesDeEquipoNpc(personaje, id), `Ataque con ${parte.nombre.toLowerCase()}`,
+        () => prepararAtaqueNpc(personaje, item, obtenerConfiguracionTirada().modos));
+}
+
+/* Usa un escudo (lo activa o lo guarda) o ataca con un arma, gastando esas acciones */
+function usarItemEquipo(item, partes, subtitulo, preparar) {
+    const arma = ARMAS[item?.tipo];
+    if (!arma) return;
     const nombre = item.nombre?.trim() || arma.etiqueta;
 
     // Escudo: al usarlo suma su defensa hasta tu siguiente turno; volver a pulsar lo guarda
@@ -1700,15 +2300,15 @@ function usarEquipo(propEquipo) {
         return;
     }
 
-    const { modos, criticoFacil } = obtenerConfiguracionTirada();
-    const ataque = prepararAtaque(personaje, propEquipo, modos);
+    const { criticoFacil } = obtenerConfiguracionTirada();
+    const ataque = preparar();
     if (!ataque) return;
     const { resultado: atacado } = conEmbriaguez("ataque", () => gastarAccionesOConfirmar(partes, `Atacar con ${nombre}`));
     if (!atacado) { actualizarTodo(); return; } // borracho: la acción se ha gastado igual
 
     ejecutarTirada({
         nombreAccion: ataque.nombre,
-        subtitulo: `Ataque con ${arma.etiqueta.toLowerCase()} · ${arma.manos === 2 ? "Dos manos" : ETIQUETAS_MANO[propEquipo]}`,
+        subtitulo,
         valorHabilidad: ataque.valorHabilidad,
         etiquetaHabilidad: ataque.etiquetaHabilidad,
         valorCaracteristica: ataque.valorCaracteristica,
@@ -1851,7 +2451,11 @@ function guardarEnInventario(ranura) {
 }
 
 function actualizarBotonUsar(boton, propEquipo) {
-    const item = personaje[propEquipo];
+    pintarBotonUsar(boton, personaje[propEquipo], partesDeManoEquipo(propEquipo));
+}
+
+/* Icono y texto del botón de usar de un equipo (mano o parte de un NPC) */
+function pintarBotonUsar(boton, item, partes) {
     const arma = ARMAS[item?.tipo];
     if (!arma) return;
 
@@ -1862,12 +2466,13 @@ function actualizarBotonUsar(boton, propEquipo) {
     }
 
     const nombre = item.nombre?.trim() || arma.etiqueta;
-    const partes = partesDeMano(propEquipo, arma.manos === 2);
     let titulo;
     if (arma.escudo) {
         titulo = item.enUso
             ? `${nombre} en uso: +${item.defensa || 0} de defensa hasta tu siguiente turno. Clic para guardarlo.`
             : `Usar ${nombre}: suma ${item.defensa || 0} a tu defensa hasta tu siguiente turno.`;
+    } else if (personaje.esNpc) {
+        titulo = `Atacar con ${nombre} (acierto ${aciertoNpc(personaje, item)}, daño ${Number(item.danno) || 0})`;
     } else {
         titulo = `Atacar con ${nombre} (daño ${Number(item.danno) || 0} + ${Math.max(0, personaje.dFisico)} de bonificador)`;
     }
@@ -1915,6 +2520,7 @@ function pintarModsEquipo(ul) {
         const numero = Number(mod.numero) || 0;
         if (document.activeElement !== select && select.querySelector(`option[value="${mod.modificado}"]`)) select.value = mod.modificado;
         if (document.activeElement !== inputCantidad) inputCantidad.value = numero;
+        inputCantidad.toggleAttribute("data-decimal", esModificadorDecimal(mod.modificado)); // las debilidades admiten decimales
         fila.classList.toggle("mod-positivo", numero > 0);
         fila.classList.toggle("mod-negativo", numero < 0);
     });
@@ -1965,7 +2571,7 @@ function inicializarModsEquipo() {
         const mod = listaModsEquipo(fila.closest(".mods-equipo").dataset.mods)?.[Number(fila.dataset.index)];
         if (!mod) return;
         if (e.target.classList.contains("listValores")) mod.modificado = e.target.value;
-        if (e.target.classList.contains("cantidadMod")) mod.numero = parseInt(e.target.value) || 0;
+        if (e.target.classList.contains("cantidadMod")) mod.numero = numeroModificador(mod.modificado, e.target.value);
         personaje.calcularCaracteristicas();
         actualizarTodo();
     });
@@ -2017,6 +2623,8 @@ function rellenarFilasHabilidades(ul, habilidades) {
 function ranuraDeTarjeta(elemento) {
     const accesorio = elemento.closest(".tarjeta-accesorio");
     if (accesorio) return `accesorio-${accesorio.dataset.index}`;
+    const parte = elemento.closest(".tarjeta-parte-npc");
+    if (parte) return `parte:${parte.dataset.parte}`;
     return getPropiedadEquipo(elemento.closest(".equipamiento"));
 }
 
@@ -2161,6 +2769,9 @@ function detalleEfecto(efecto) {
 
 function filaEfectoEquipo(ranura, efecto, i) {
     const detalle = escaparHtml(detalleEfecto(efecto));
+    // NPC: los efectos se editan y se quitan desde la propia tarjeta
+    const editar = personaje.esNpc ? `<button type="button" class="btn-editar-efecto" title="Editar efecto" aria-label="Editar efecto">${iconoSao("editar")}</button>
+        <button type="button" class="quitar-mod btn-quitar-efecto" title="Quitar efecto" aria-label="Quitar efecto">×</button>` : "";
     // Descripción: hasta dos líneas (el resto se corta con …); entera al pasar el ratón
     const descripcion = efecto.descripcion?.trim()
         ? `<span class="efecto-descripcion" title="${escaparHtml(efecto.descripcion)}">${escaparHtml(efecto.descripcion)}</span>` : "";
@@ -2168,6 +2779,7 @@ function filaEfectoEquipo(ranura, efecto, i) {
         return `<li class="efecto-equipo pasiva" data-index="${i}" role="button" tabindex="0" title="Ver detalle">
             <span class="efecto-icono">${iconoSao("artePasiva")}</span>
             <span class="efecto-texto"><b>${escaparHtml(efecto.nombre)}</b><small>${detalle}</small>${descripcion}</span>
+            ${editar}
         </li>`;
     }
     const motivo = motivoNoUsarEfecto(personaje, ranura, i);
@@ -2176,6 +2788,7 @@ function filaEfectoEquipo(ranura, efecto, i) {
         <span class="efecto-icono">${iconoSao("arteActiva")}</span>
         <span class="efecto-texto"><b>${escaparHtml(efecto.nombre)}<small> - ${detalle}</small></b>${descripcion}</span>
         <button type="button" class="btn-usar-efecto" ${motivo ? "disabled" : ""} title="${escaparHtml(titulo)}" aria-label="${escaparHtml(titulo)}">Usar</button>
+        ${editar}
     </li>`;
 }
 
@@ -2224,7 +2837,29 @@ function inicializarEfectosEquipo() {
         reproducir("click");
         mostrarDetalleArte(efecto);
     };
-    contenedor.addEventListener("click", (e) => {
+    contenedor.addEventListener("click", async (e) => {
+        // NPC: editar o quitar un efecto desde la tarjeta
+        const editar = e.target.closest(".btn-editar-efecto");
+        const quitar = e.target.closest(".btn-quitar-efecto");
+        if (editar || quitar) {
+            const { ranura, indice, efecto } = datosFila(editar || quitar);
+            const efectos = equipoDeRanura(personaje, ranura)?.efectos;
+            if (!efecto || !efectos) return;
+            reproducir("click");
+            if (editar) {
+                abrirEditorEfecto(efecto, null, (nuevo) => {
+                    efectos[indice] = nuevo;
+                    personaje.calcularCaracteristicas();
+                    actualizarTodo();
+                });
+                return;
+            }
+            if (!(await confirmarSao({ titulo: "Quitar efecto", texto: `¿Quitar ${efecto.nombre}?` }))) return;
+            efectos.splice(efectos.indexOf(efecto), 1);
+            personaje.calcularCaracteristicas();
+            actualizarTodo();
+            return;
+        }
         const usar = e.target.closest(".btn-usar-efecto");
         if (usar) {
             reproducir("click");
@@ -2243,6 +2878,55 @@ function inicializarEfectosEquipo() {
     });
 }
 
+/* NPC: reliquia y efectos de un arma desde la ficha (manos y otras partes) __________
+ * "Es reliquia" le da (o le quita) habilidades de reliquia; "+ Crear efecto" abre el formulario de artes en modo
+ * efecto. Un objeto de tipo reliquia siempre lo es. */
+function pintarExtrasArmaNpc() {
+    if (!personaje.esNpc) return;
+    document.querySelectorAll("#divEquipamiento .extras-arma-npc").forEach(caja => {
+        const ranura = ranuraDeTarjeta(caja);
+        const equipo = equipoDeRanura(personaje, ranura);
+        caja.hidden = !equipo?.tipo;
+        if (!equipo?.tipo) return;
+        const check = caja.querySelector(".check-reliquia-npc");
+        check.checked = esReliquia(equipo);
+        check.disabled = equipo.tipo === TIPO_RELIQUIA;
+        check.closest("label").title = check.disabled ? "Una reliquia siempre lo es" : "Con habilidades que se usan a mano y tienen enfriamiento";
+    });
+}
+
+function inicializarExtrasArmaNpc() {
+    const contenedor = document.getElementById("divEquipamiento");
+    contenedor.addEventListener("change", async (e) => {
+        const check = e.target.closest(".check-reliquia-npc");
+        if (!check || !personaje.esNpc) return;
+        const equipo = equipoDeRanura(personaje, ranuraDeTarjeta(check));
+        if (!equipo?.tipo) return;
+        if (check.checked) equipo.reliquia = equipo.reliquia ?? { habilidades: [] };
+        else {
+            const conHabilidades = equipo.reliquia?.habilidades?.length;
+            if (conHabilidades && !(await confirmarSao({ titulo: "Quitar reliquia", texto: `Se borrarán sus ${conHabilidades} habilidades de reliquia. ¿Seguir?` }))) {
+                actualizarTodo();
+                return;
+            }
+            equipo.reliquia = null;
+        }
+        actualizarTodo();
+    });
+    contenedor.addEventListener("click", (e) => {
+        const boton = e.target.closest(".btn-efecto-npc");
+        if (!boton || !personaje.esNpc) return;
+        const equipo = equipoDeRanura(personaje, ranuraDeTarjeta(boton));
+        if (!equipo?.tipo) return;
+        reproducir("click");
+        abrirEditorEfecto(null, null, (efecto) => {
+            equipo.efectos = [...(equipo.efectos ?? []), efecto];
+            personaje.calcularCaracteristicas();
+            actualizarTodo();
+        });
+    });
+}
+
 /* Accesorios _________________________________________________________________ */
 const MAX_ACCESORIOS = 3;
 const NOMBRES_ARMADURA = { pesada: "pesada", media: "media", ligera: "ligera", ropa: "de ropa", real: "real" };
@@ -2257,7 +2941,9 @@ function generarAccesorios() {
     const contenedor = document.getElementById("listaAccesorios");
     if (!contenedor) return;
     const tipoArmadura = personaje.equipoArmadura?.tipo || "";
-    const ranuras = getCantidadAccesoriosPorArmadura(tipoArmadura);
+    // Un NPC no tiene límite: siempre tiene una ranura libre más (ranurasAccesorio en objetos.js)
+    const ranuras = ranurasAccesorio(personaje);
+    const tarjetas = personaje.esNpc ? ranuras : MAX_ACCESORIOS;
 
     if (!Array.isArray(personaje.accesorios)) personaje.accesorios = [];
     while (personaje.accesorios.length < ranuras) {
@@ -2269,13 +2955,13 @@ function generarAccesorios() {
     }
 
     const contador = document.getElementById("contadorAccesorios");
-    if (contador) contador.textContent = `(${ranuras} / ${MAX_ACCESORIOS})`;
+    if (contador) contador.textContent = personaje.esNpc ? `(${ranuras - 1})` : `(${ranuras} / ${MAX_ACCESORIOS})`;
 
     // Las tarjetas solo se regeneran si cambian las ranuras o la armadura
-    const clave = `${ranuras}|${tipoArmadura}`;
+    const clave = `${ranuras}|${tipoArmadura}|${personaje.esNpc}`;
     if (contenedor.dataset.clave !== clave) {
         contenedor.dataset.clave = clave;
-        contenedor.innerHTML = Array.from({ length: MAX_ACCESORIOS }, (_, i) => i < ranuras ? `
+        contenedor.innerHTML = Array.from({ length: tarjetas }, (_, i) => i < ranuras ? `
             <div class="tarjeta-accesorio" data-index="${i}">
                 <div class="accesorio-cabecera">
                     <span class="accesorio-icono">${iconoSao("accesorio")}</span>
@@ -2310,6 +2996,221 @@ function generarAccesorios() {
         const marca = tarjeta?.querySelector(".accesorio-marca-reliquia");
         if (marca) marca.hidden = !esReliquia(accesorio);
         actualizarBotonGuardar(tarjeta?.querySelector(".btn-guardar-equipo"), `accesorio-${i}`);
+    });
+}
+
+/* Partes del cuerpo del NPC (npc.js) ________________________________________
+ * Lista de partes (nombre editable y quitar; + en el título de Equipamiento para añadir). Los brazos usan las
+ * tarjetas de mano; el resto tiene su tarjeta aquí (#tarjetasPartesNpc) con un arma o un escudo: tipo, nombre,
+ * daño, acierto, dado y daño elemental (o defensa). Un arma a dos manos ocupa además la parte que se elija.
+ * Las tarjetas se regeneran solo si cambia su estructura (data-firma); los valores se repintan sin pisar el foco. */
+const listaPartesNpcEl = document.getElementById("listaPartesNpc");
+const tarjetasPartesNpcEl = document.getElementById("tarjetasPartesNpc");
+const accionesPartesNpcEl = document.getElementById("accionesPartesNpc");
+const NOMBRES_BRAZO = { izquierda: "Brazo izquierdo", derecha: "Brazo derecho" };
+const valorFoco = (input, valor) => { if (input && document.activeElement !== input) input.value = valor; };
+
+function pintarPartesNpc() {
+    if (!personaje.esNpc) return;
+    const partes = personaje.npc.partes;
+    document.getElementById("anadirParteNpc").disabled = partes.length >= MAX_PARTES_NPC;
+    const firma = partes.map(p => p.id).join(",");
+    if (listaPartesNpcEl.dataset.firma !== firma) {
+        listaPartesNpcEl.dataset.firma = firma;
+        const faltan = Object.keys(NOMBRES_BRAZO).filter(id => !tieneParte(personaje, id));
+        listaPartesNpcEl.innerHTML = `<span class="titulo-partes-npc">Partes del cuerpo</span>` + partes.map(p => `
+            <span class="parte-npc" data-parte="${escaparHtml(p.id)}">
+                <input type="text" class="nombre-parte-npc" maxlength="60" aria-label="Nombre de la parte">
+                <button type="button" class="quitar-mod" data-accion="quitarParte">×</button>
+            </span>`).join("")
+            + faltan.map(id => `<button type="button" class="btn-cabecera btn-brazo-npc" data-brazo="${id}">+ ${NOMBRES_BRAZO[id]}</button>`).join("");
+    }
+    partes.forEach(p => {
+        const fila = listaPartesNpcEl.querySelector(`[data-parte="${CSS.escape(p.id)}"]`);
+        if (!fila) return;
+        valorFoco(fila.querySelector("input"), p.nombre);
+        const quitar = fila.querySelector("button");
+        const motivo = motivoNoQuitarParte(personaje, p.id);
+        quitar.disabled = Boolean(motivo);
+        quitar.title = motivo || `Quitar ${p.nombre}`;
+        quitar.setAttribute("aria-label", quitar.title);
+    });
+    pintarTarjetasPartesNpc();
+}
+
+const OPCIONES_TIPO_PARTE = `<option value="">-- Dejar vacío --</option>`
+    + Object.entries(ARMAS).map(([tipo, arma]) => `<option value="${tipo}">${escaparHtml(arma.etiqueta)}</option>`).join("");
+
+/* Partes que puede ocupar como segunda parte un arma a dos manos de esta (sin equipo, sin ocupar, no brazos) */
+const candidatasSegundaParte = (id) => partesExtra(personaje)
+    .filter(p => p.id !== id && !p.equipo?.tipo && (!parteQueOcupa(personaje, p.id) || parteQueOcupa(personaje, p.id) === id));
+
+function htmlTarjetaParte(parte, ocupa) {
+    const equipo = parte.equipo;
+    const arma = ARMAS[equipo?.tipo];
+    const cabecera = `<div class="equipamiento-tipo-row">
+            <label><b>${escaparHtml(parte.nombre)}:</b></label>
+            ${ocupa ? "" : `<select class="tipoEquipo parte-tipo" aria-label="Equipo de ${escaparHtml(parte.nombre)}">${OPCIONES_TIPO_PARTE}</select>`}
+        </div>`;
+    if (ocupa) {
+        return cabecera + `<p class="equipamiento-vacio">Ocupada por el arma a dos manos de ${escaparHtml(parteNpc(personaje, ocupa)?.nombre ?? "otra parte")}</p>`;
+    }
+    if (!arma) return cabecera;
+    const numero = (campo, etiqueta, min = "") => `<div class="campo-numero"><label>${etiqueta}:</label>
+        <input type="number" data-campo="${campo}" ${min !== "" ? `min="${min}"` : ""}></div>`;
+    const segunda = TIPOS_DOS_MANOS.includes(equipo.tipo) ? `<div class="campo-numero"><label>Segunda parte:</label>
+        <select data-campo="parteSecundaria"><option value="">-- Elige --</option>${candidatasSegundaParte(parte.id)
+            .map(p => `<option value="${escaparHtml(p.id)}">${escaparHtml(p.nombre)}</option>`).join("")}</select></div>` : "";
+    const campos = arma.escudo ? numero("defensa", "Defensa", 0) : numero("danno", "Daño", 0) + numero("acierto", "Acierto")
+        + `<div class="campo-numero"><label>Dado:</label><select data-campo="dado"><option value="">Del tipo</option>
+            <option value="0">Bajo</option><option value="1">Medio</option><option value="2">Alto</option></select></div>`;
+    const elemental = arma.escudo ? "" : `<div class="bloque-elemental partes-elemental" title="Se suma a cada ataque, aparte del daño físico">
+            <span class="subtitulo-elemental">Daño elemental:</span>
+            <div class="valores-elementales">${ELEMENTOS.map(elemento => `<label class="valor-elemental" title="${escaparHtml(TIPOS_DANNO[elemento].etiqueta)}">
+                ${iconoSao(TIPOS_DANNO[elemento].icono ?? elemento)}<input type="number" min="0" data-elemental="${elemento}"></label>`).join("")}</div>
+        </div>`;
+    return cabecera + `<div class="equipamiento-detalles" style="display: flex;">
+            <div class="equipamiento-main-inputs">
+                <input type="text" class="inputNombreEquipo" data-campo="nombre" placeholder="Nombre" maxlength="60">
+                ${campos}${segunda}
+                <span class="acciones-arma"><button type="button" class="btn-usar-equipo" data-accion="usar"></button></span>
+            </div>
+            ${elemental}
+            <div class="extras-arma-npc">
+                <label><input type="checkbox" class="check-reliquia-npc"> Es reliquia</label>
+                <button type="button" class="btn-cabecera btn-efecto-npc">+ Crear efecto</button>
+            </div>
+            <div class="reliquia-habilidades" hidden></div>
+            <div class="efectos-equipo" hidden></div>
+        </div>`;
+}
+
+function pintarTarjetasPartesNpc() {
+    const partes = partesExtra(personaje);
+    // Una tarjeta por parte; se regenera si cambia su estructura
+    const firmas = partes.map(p => {
+        const ocupa = parteQueOcupa(personaje, p.id);
+        const tipo = p.equipo?.tipo || "";
+        const candidatas = TIPOS_DOS_MANOS.includes(tipo) ? candidatasSegundaParte(p.id).map(c => c.id + c.nombre).join() : "";
+        return { parte: p, ocupa, firma: [p.id, p.nombre, tipo, ocupa, candidatas].join("|") };
+    });
+    if (tarjetasPartesNpcEl.children.length !== partes.length
+        || firmas.some((f, i) => tarjetasPartesNpcEl.children[i]?.dataset.firma !== f.firma)) {
+        tarjetasPartesNpcEl.innerHTML = firmas.map(({ parte, ocupa, firma }) => `
+            <div class="equipamiento tarjeta-parte-npc" data-parte="${escaparHtml(parte.id)}" data-firma="${escaparHtml(firma)}">
+                ${htmlTarjetaParte(parte, ocupa)}
+            </div>`).join("");
+    }
+    partes.forEach((parte, i) => {
+        const tarjeta = tarjetasPartesNpcEl.children[i];
+        const equipo = parte.equipo;
+        valorFoco(tarjeta.querySelector(".parte-tipo"), equipo?.tipo || "");
+        if (!equipo?.tipo) return;
+        tarjeta.querySelectorAll("[data-campo]").forEach(campo => {
+            const clave = campo.dataset.campo;
+            valorFoco(campo, clave === "nombre" ? equipo.nombre ?? "" : (equipo[clave] ?? ""));
+        });
+        tarjeta.querySelectorAll("[data-elemental]").forEach(input => valorFoco(input, equipo.dannoElemental?.[input.dataset.elemental] ?? 0));
+        const usar = tarjeta.querySelector("[data-accion='usar']");
+        if (usar) pintarBotonUsar(usar, equipo, partesDeEquipoNpc(personaje, parte.id));
+    });
+}
+
+/* Casillas de acción por parte (cuando el NPC no tiene el cuerpo de siempre) */
+function pintarAccionesNpc() {
+    const sinMuneco = Boolean(personaje.esNpc) && !esCuerpoPorDefecto(personaje);
+    document.body.classList.toggle("npc-sin-muneco", sinMuneco);
+    accionesPartesNpcEl.hidden = !sinMuneco;
+    if (!sinMuneco) return;
+    const partes = personaje.npc.partes;
+    const firma = partes.map(p => p.id + p.nombre).join("|");
+    if (accionesPartesNpcEl.dataset.firma !== firma) {
+        accionesPartesNpcEl.dataset.firma = firma;
+        accionesPartesNpcEl.innerHTML = partes.map(p =>
+            `<button type="button" class="accion-parte" data-parte="${escaparHtml(p.id)}">${escaparHtml(p.nombre)}</button>`).join("");
+    }
+    partes.forEach((p, i) => {
+        const boton = accionesPartesNpcEl.children[i];
+        const disponible = parteDisponible(personaje, p.id);
+        boton.classList.toggle("gris", !disponible);
+        boton.classList.toggle("bloqueada", disponible && !puedeGastar(personaje, p.id));
+        boton.title = disponible ? `${p.nombre}: gastar su acción` : `${p.nombre}: acción gastada (clic para devolverla)`;
+    });
+}
+
+function inicializarPartesNpc() {
+    document.getElementById("anadirParteNpc").addEventListener("click", () => {
+        if (!personaje.esNpc) return;
+        reproducir("click");
+        if (!anadirParte(personaje)) return;
+        personaje.numeroAcciones = Math.min(personaje.numeroAcciones + 1, personaje.npc.partes.length - 1);
+        actualizarTodo();
+        listaPartesNpcEl.querySelector(".parte-npc:last-of-type input")?.select();
+    });
+    listaPartesNpcEl.addEventListener("change", (e) => {
+        const input = e.target.closest(".nombre-parte-npc");
+        const parte = parteNpc(personaje, input?.closest("[data-parte]")?.dataset.parte);
+        if (!parte) return;
+        parte.nombre = input.value.trim().slice(0, 60) || parte.nombre;
+        actualizarTodo();
+    });
+    listaPartesNpcEl.addEventListener("click", (e) => {
+        const brazo = e.target.closest("[data-brazo]")?.dataset.brazo;
+        if (brazo) {
+            reproducir("click");
+            if (anadirBrazo(personaje, brazo)) personaje.numeroAcciones = Math.min(personaje.numeroAcciones + 1, personaje.npc.partes.length - 1);
+            actualizarTodo();
+            return;
+        }
+        const quitar = e.target.closest("[data-accion='quitarParte']");
+        const id = quitar?.closest("[data-parte]")?.dataset.parte;
+        if (!id || quitar.disabled) return;
+        reproducir("click");
+        quitarParte(personaje, id);
+        actualizarTodo();
+    });
+
+    tarjetasPartesNpcEl.addEventListener("change", async (e) => {
+        const tarjeta = e.target.closest("[data-parte]");
+        const parte = parteNpc(personaje, tarjeta?.dataset.parte);
+        if (!parte) return;
+        if (e.target.matches(".parte-tipo")) {
+            const tipo = e.target.value;
+            if (!tipo) {
+                const nombre = parte.equipo?.nombre?.trim();
+                if (nombre && !(await confirmarSao({ titulo: "Quitar equipo", texto: `¿Quitar ${nombre} de ${parte.nombre}?` }))) {
+                    actualizarTodo();
+                    return;
+                }
+                parte.equipo = null;
+            } else {
+                // Cambiar de tipo conserva el nombre, el daño y el acierto
+                if (!parte.equipo) parte.equipo = new Equipamiento("", "", tipo);
+                parte.equipo.tipo = tipo;
+                parte.equipo.enUso = false;
+                if (!TIPOS_DOS_MANOS.includes(tipo)) parte.equipo.parteSecundaria = null;
+            }
+            personaje.calcularCaracteristicas();
+            actualizarTodo();
+            return;
+        }
+        const equipo = parte.equipo;
+        const campo = e.target.dataset.campo;
+        const elemento = e.target.dataset.elemental;
+        if (!equipo || (!campo && !elemento)) return; // reliquia y efectos tienen sus propias escuchas
+        if (elemento) equipo.dannoElemental[elemento] = Math.max(0, Math.trunc(Number(e.target.value) || 0));
+        else if (campo === "nombre") equipo.nombre = e.target.value.trim().slice(0, 60);
+        else if (campo === "dado") equipo.dado = e.target.value === "" ? null : Number(e.target.value);
+        else if (campo === "parteSecundaria") equipo.parteSecundaria = e.target.value || null;
+        else if (campo === "acierto") equipo.acierto = Math.trunc(Number(e.target.value) || 0);
+        else if (campo) equipo[campo] = Math.max(0, Math.trunc(Number(e.target.value) || 0));
+        personaje.calcularCaracteristicas();
+        actualizarTodo();
+    });
+    tarjetasPartesNpcEl.addEventListener("click", (e) => {
+        const usar = e.target.closest("[data-accion='usar']");
+        const id = usar?.closest("[data-parte]")?.dataset.parte;
+        if (id) usarEquipoParte(id);
     });
 }
 
@@ -2462,6 +3363,15 @@ function inicializarTurno() {
         mostrarPopupInfo(boton.titulo, resumen.map(escaparHtml));
     });
 
+    // NPC sin el cuerpo de siempre: una casilla por parte (mismo comportamiento que el muñeco)
+    accionesPartesNpcEl.addEventListener("click", (e) => {
+        const parte = e.target.closest("[data-parte]")?.dataset.parte;
+        if (!parte || !personaje.esNpc) return;
+        if (parteDisponible(personaje, parte)) gastarAccion(personaje, parte);
+        else devolverAccion(personaje, parte);
+        actualizarTodo();
+    });
+
     Object.entries(PARTES_SILUETA).forEach(([idSvg, parte]) => {
         const elemento = document.getElementById(idSvg);
         if (!elemento) return;
@@ -2528,6 +3438,8 @@ function actualizarAcciones() {
         elemento.classList.toggle("bloqueada", disponible && !puedeGastar(personaje, parte));
     });
 
+    pintarAccionesNpc();
+
     const contador = document.getElementById("contadorAcciones");
     if (contador) contador.textContent = `(${restantes} / ${personaje.numeroAcciones})`;
 
@@ -2558,6 +3470,8 @@ function actualizarAcciones() {
 
 /* Estados ___________________________________________________________________ */
 const chipsEstados = document.getElementById("chipsEstados");
+/* En un NPC los estados restan otros valores (PJ.getModificadorEstados) */
+const UNIDADES_ESTADO_NPC = { quemadura: "−Acierto", electrocutado: "−Defensa y Movimiento", deslumbrado: "−Percepción pasiva" };
 const listaEstadosActivos = document.getElementById("listaEstadosActivos");
 
 function inicializarEstados() {
@@ -2659,7 +3573,7 @@ function actualizarEstados() {
 
     // Las filas solo se regeneran si cambia qué estados están activos, para no perder el foco
     const activos = Object.keys(ESTADOS_INFO).filter(clave => estaActivo(personaje, clave));
-    const claves = activos.join(",");
+    const claves = activos.join(",") + (personaje.esNpc ? "|npc" : "");
     if (listaEstadosActivos.dataset.claves !== claves) {
         listaEstadosActivos.dataset.claves = claves;
         listaEstadosActivos.innerHTML = activos.map(clave => {
@@ -2668,7 +3582,7 @@ function actualizarEstados() {
             <div class="fila-estado icono-activo" data-estado="${clave}" style="${estiloColor(info)}" title="${info.descripcion}">
                 <span class="fila-icono">${iconoSao(info.icono)}</span>
                 <span class="nombre-estado">${info.etiqueta}</span>
-                ${info.unidad ? `<label>${info.unidad} <input type="number" min="0" class="valorEstado"></label>` : ""}
+                ${info.unidad ? `<label>${(personaje.esNpc && UNIDADES_ESTADO_NPC[clave]) || info.unidad} <input type="number" min="0" class="valorEstado"></label>` : ""}
                 <label>Turnos <input type="number" min="0" class="turnosEstado"></label>
                 <label><input type="checkbox" class="checkPermanenteEstado"> Permanente</label>
                 <label title="Se quita al hacer un descanso corto"><input type="checkbox" class="checkDescansoEstado"> Descanso corto</label>
@@ -2708,7 +3622,16 @@ const ELEMENTOS_DANNO = ["fuego", "electricidad", "hielo", "luz", "oscuridad"];
 
 /* Golpe de otro jugador recibido al pulsar su pop-up (eventos.js). Cada golpe va por separado: el físico
    resta la armadura y cada elemento su resistencia, igual que con el botón Daño. Devuelve si se aplicó. */
-function recibirGolpe(golpe, { autor, titulo, tirada = null }) {
+function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null }) {
+    // Modo máster: su propio golpe se recibe en otro de sus personajes, no en el que lo ha dado
+    if (lectura) {
+        mostrarPopupInfo("No se puede", ["Estás viendo la ficha de un jugador: vuelve a uno de tus personajes."]);
+        return false;
+    }
+    if (origen?.idPersonaje && origen.idPersonaje === personaje.idPersonaje) {
+        mostrarPopupInfo("No se puede", [escaparHtml(`Este golpe lo ha dado ${autor}, que es el personaje que tienes en pantalla. Cambia al que lo recibe.`)]);
+        return false;
+    }
     if (!puedeRecibirDanno(personaje)) {
         mostrarPopupInfo("No puedes recibir daño", [escaparHtml(MOTIVOS_ZONA.danno)]);
         return false;
@@ -2741,15 +3664,21 @@ function recibirGolpe(golpe, { autor, titulo, tirada = null }) {
         const resumen = aplicarEfectoEnObjetivo(personaje, efecto);
         lineas.push(...(conCabeceras ? [`${String(efecto.nombre || "Poción")}:`, ...resumen] : resumen));
     }
+    // NPC: quién ha dado el golpe, por si lo deja a 0 PV (comprobarMuerteNpc, en actualizarTodo)
+    atacanteGolpe = origen ?? { jugador: null, instancia: null, nombre: autor };
+    golpeAlNpc = true;
     actualizarTodo();
     const golpeTexto = golpe.etiqueta ? ` (${golpe.etiqueta})` : "";
     emitirDannoRecibido(vidaAntes, `${titulo}${golpeTexto} · de ${autor}`, lineas);
     return true;
 }
 setAplicadorDanno(recibirGolpe);
+// Modo máster: sus pop-ups también se pueden recibir, en el personaje que tenga en pantalla
+setGolpesPropiosAplicables(() => MODO_MASTER);
 
 /* Comida o poción que te ofrece otro jugador (pop-up "oferta"): gasta la boca y avisa a toda la sala */
-function consumirOferta(datosObjeto, { autor, para }) {
+function consumirOferta(datosObjeto, { autor, para, coger = false }) {
+    if (coger) return cogerOfrecido(datosObjeto, { autor, para });
     // Modo máster: si va a otro de sus personajes, se le aplica a ese (gasta su boca) y se guarda en local
     if (!esElDeLaFicha(idDeInstancia(para))) {
         const resultado = conPersonajeDeInstancia(para, pj => consumirOfrecido(pj, datosObjeto));
@@ -2874,6 +3803,7 @@ function inicializarDanno() {
         // Se comparte en la sala: texto plano (las cabeceras <b>Tipo n</b> pasan a "Tipo n:")
         const resumen = aplicarTodos(personaje, dannos).map(linea => linea.replace(/^<b>(.*)<\/b>$/, "$1:"));
         modal.hide();
+        golpeAlNpc = true; // un NPC que ya estaba a 0 vuelve a preguntar si se le derrota (sin atacante)
         actualizarTodo();
         const subtitulo = dannos.map(({ tipo, cantidad }) => `${TIPOS_DANNO[tipo].etiqueta} ${cantidad}`).join(" · ");
         emitirDannoRecibido(vidaAntes, subtitulo, resumen);
@@ -3241,14 +4171,17 @@ function actualizarZona() {
 
 /* Menú del inventario: inventario o baúl de la base ________________________ */
 function inicializarMenuInventario() {
-    const ventanas = { inventario: "modalInventario", objetosClave: "modalObjetosClave", baul: "modalBaul" };
+    const ventanas = { inventario: "modalInventario", objetosClave: "modalObjetosClave", baul: "modalBaul", botin: "modalBotin" };
     crearMenuSao({
         boton: document.getElementById("btnInventario"),
         menu: document.getElementById("menuInventario"),
-        opciones: () => [
+        // Los NPC solo tienen inventario (sin límite)
+        opciones: () => personaje.esNpc ? [{ clave: "inventario", etiqueta: "Inventario", icono: "inventario" }] : [
             { clave: "inventario", etiqueta: "Inventario", icono: "inventario" },
             { clave: "objetosClave", etiqueta: `Objetos clave (${personaje.objetosClave.length})`, icono: "llave" },
-            { clave: "baul", etiqueta: "Baúl de la base", icono: "baul" }
+            { clave: "baul", etiqueta: "Baúl de la base", icono: "baul" },
+            // Solo mientras haya botín de un NPC por recoger
+            ...(personaje.botin?.length ? [{ clave: "botin", etiqueta: `Botín (${personaje.botin.length})`, icono: "cor" }] : [])
         ],
         alElegir: (clave, menu) => {
             // Al elegir solo suena el click: ni el cierre del menú ni la apertura de la ventana
@@ -3275,7 +4208,8 @@ function inicializarArtes() {
     crearMenuSao({
         boton: document.getElementById("btnArtes"),
         menu: document.getElementById("menuArtes"),
-        opciones: () => [
+        // Los NPC no tienen artes sin equipar
+        opciones: () => personaje.esNpc ? [{ clave: "equipadas", etiqueta: "Artes", icono: "artes" }] : [
             { clave: "equipadas", etiqueta: "Artes equipadas", icono: "artes" },
             { clave: "sinEquipar", etiqueta: "Artes sin equipar", icono: "artesSinEquipar" }
         ],
@@ -3456,8 +4390,14 @@ function filaArte(arte, indice, { enCatalogo = false, motivoAnadir = null, autor
             + botonObjeto("borrar", "descartar", "Borrar")
             + (activa ? botonObjeto("usar", "usar", motivoUsar || `Usar (${arte.costePA} PA)`, Boolean(motivoUsar)) : "");
     } else if (enCatalogo) {
+        const textoAnadir = objetivoCatalogo?.pj?.esNpc ? "Añadir (queda equipada)" : "Añadir a las artes sin equipar (gasta 1 desbloqueo de arte)";
         botones = (quitable ? botonObjeto("quitarSala", "descartar", "Quitar del catálogo de la sala") : "")
-            + botonObjeto("anadir", "artesSinEquipar", motivoAnadir || "Añadir a las artes sin equipar (gasta 1 desbloqueo de arte)", Boolean(motivoAnadir));
+            + botonObjeto("anadir", "artesSinEquipar", motivoAnadir || textoAnadir, Boolean(motivoAnadir));
+    } else if (arte.equipada && personaje.esNpc) {
+        const motivoUsar = activa ? motivoNoUsarArte(personaje, arte) : null;
+        botones = botonObjeto("editar", "editar", "Editar")
+            + botonObjeto("borrar", "descartar", "Borrar")
+            + (activa ? botonObjeto("usar", "usar", motivoUsar || `Usar (${arte.costePA} PA)`, Boolean(motivoUsar)) : "");
     } else if (arte.equipada) {
         const motivoUsar = activa ? motivoNoUsarArte(personaje, arte) : null;
         const motivoGuardar = motivoNoDesequiparArte(personaje, arte);
@@ -3508,17 +4448,20 @@ function actualizarArtes() {
 
     // Equipadas: las artes y después un hueco libre por cada ranura de memoria que quede
     const usadas = ranurasUsadas(personaje);
-    const libres = Math.max(0, personaje.espaciosArte - usadas);
+    // Un NPC no tiene memoria de artes: sin huecos libres
+    const libres = personaje.esNpc ? 0 : Math.max(0, personaje.espaciosArte - usadas);
     const huecos = Array.from({ length: libres }, () => `<div class="fila-objeto vacia"><span class="objeto-hueco">Hueco libre</span></div>`);
     const filasEquipadas = [...equipadas.map(({ arte, i }) => filaArte(arte, i)), ...huecos];
     pintarLista(listaArtesEquipadasEl, filasEquipadas.length ? filasEquipadas.join("")
+        : personaje.esNpc ? `<p class="lista-vacia">Sin artes. Añádelas del catálogo o créalas con los botones de arriba.</p>`
         : `<p class="lista-vacia">Sin memoria de artes: se consigue a partir del nivel 16.</p>`);
 
     pintarLista(listaArtesSinEquiparEl, sinEquipar.length
         ? sinEquipar.map(({ arte, i }) => filaArte(arte, i)).join("")
         : `<p class="lista-vacia">No tienes artes sin equipar.</p>`);
 
-    document.getElementById("memoriaArtes").textContent = `(${usadas} / ${personaje.espaciosArte})`;
+    document.getElementById("memoriaArtes").textContent = personaje.esNpc ? `(${equipadas.length})` : `(${usadas} / ${personaje.espaciosArte})`;
+    document.getElementById("modalArtesEquipadasLabel").firstChild.textContent = personaje.esNpc ? "Artes " : "Artes equipadas ";
     document.getElementById("contadorArtesSinEquipar").textContent = `(${sinEquipar.length})`;
 
     // Desbloqueos de arte: total y botón de crear (crear gasta uno)
@@ -3677,6 +4620,12 @@ function crearVentanaHija(modalEl) {
     });
     return {
         abrirDesde(ventanaOrigen) {
+            // Sin ventana de origen (p. ej. desde una tarjeta de la ficha): se abre sin más
+            if (!ventanaOrigen) {
+                origen = null;
+                modal.show();
+                return;
+            }
             origen = ventanaOrigen;
             // La de origen se oculta para abrir esta, no se cierra: no debe volver a la suya
             ventanaOrigen.dataset.haciaHija = "1";
@@ -3896,7 +4845,7 @@ function inicializarFormularioArte() {
         const mod = mods[Number(e.target.closest(".mod-equipo")?.dataset.index)];
         if (!mod) return;
         if (e.target.classList.contains("listValores")) mod.modificado = e.target.value;
-        if (e.target.classList.contains("cantidadMod")) mod.numero = parseInt(e.target.value) || 0;
+        if (e.target.classList.contains("cantidadMod")) mod.numero = numeroModificador(mod.modificado, e.target.value);
     });
     listaMods.addEventListener("click", (e) => {
         if (!e.target.closest(".quitar-mod")) return;
@@ -4059,10 +5008,10 @@ function inicializarFormularioArte() {
         rellenar(efecto);
         ventana.abrirDesde(origen);
     };
-    campo("btnAbrirCrearArte").addEventListener("click", (e) => {
+    ["btnAbrirCrearArte", "btnCrearArteNpc"].forEach(id => campo(id).addEventListener("click", (e) => {
         reproducir("click");
         abrirEditorArte(null, e.target.closest(".modal"));
-    });
+    }));
 }
 
 /* Catálogo de artes ___________________________________________________________ */
@@ -4158,12 +5107,13 @@ function inicializarCatalogoArtes() {
         document.getElementById(id).addEventListener("input", actualizarCatalogoArtes);
     });
 
-    document.getElementById("btnAbrirCatalogoArtes").addEventListener("click", (e) => {
+    // También desde la ventana de artes de un NPC (no tiene artes sin equipar)
+    ["btnAbrirCatalogoArtes", "btnCatalogoArtesNpc"].forEach(id => document.getElementById(id).addEventListener("click", (e) => {
         reproducir("click");
         objetivoCatalogo = { pj: personaje, libre: false, alTerminar: null };
         actualizarCatalogoArtes();
         ventana.abrirDesde(e.target.closest(".modal"));
-    });
+    }));
     abrirCatalogoEn = (opciones) => {
         objetivoCatalogo = { pj: opciones.pj, libre: Boolean(opciones.libre), alTerminar: opciones.alTerminar ?? null };
         actualizarCatalogoArtes();
@@ -4842,7 +5792,8 @@ function filaObjeto(objeto, indice, enInventario) {
         const motivo = !opciones.length ? "Sin uso" : !disponibles.length ? opciones[0].motivo : "";
         const tituloUsar = motivo || (opciones.length === 1 ? opciones[0].etiqueta : "Usar…");
         botones = botonObjeto("editar", "editar", "Editar")
-            + botonObjeto("baul", "baul", baulAccesible(personaje) ? "Transferir al baúl" : MOTIVOS_ZONA.baul, !baulAccesible(personaje))
+            + (personaje.esNpc ? "" // los NPC no tienen baúl
+                : botonObjeto("baul", "baul", baulAccesible(personaje) ? "Transferir al baúl" : MOTIVOS_ZONA.baul, !baulAccesible(personaje)))
             + botonObjeto("descartar", "descartar", "Descartar 1")
             + botonObjeto("usar", "usar", tituloUsar, Boolean(motivo));
         // Con varias formas de usarlo se elige; las que no se pueden ahora (p. ej. sin mano libre) salen desactivadas
@@ -5342,7 +6293,7 @@ function inicializarCrearObjeto() {
         const mod = mods[Number(e.target.closest(".mod-equipo")?.dataset.index)];
         if (!mod) return;
         if (e.target.classList.contains("listValores")) mod.modificado = e.target.value;
-        if (e.target.classList.contains("cantidadMod")) mod.numero = parseInt(e.target.value) || 0;
+        if (e.target.classList.contains("cantidadMod")) mod.numero = numeroModificador(mod.modificado, e.target.value);
     });
     campo("btnAnadirHabilidadObjeto").addEventListener("click", () => {
         habilidades.push(cargarHabilidadReliquia({ enfriamiento: 1 }));
@@ -5427,6 +6378,7 @@ function inicializarCrearObjeto() {
             campo("objetoEquipoArmadura").value = equipo.armadura || 0;
             campo("objetoEquipoPenalizacion").value = equipo.penalizacionAtletismo || 0;
             rellenarElementalesFormulario("resistencias", equipo.resistencias);
+            rellenarElementalesFormulario("debilidades", equipo.debilidades);
             rellenarElementalesFormulario("dannoElemental", equipo.dannoElemental);
             checkReliquia.checked = Boolean(equipo.reliquia);
             habilidades = (equipo.reliquia?.habilidades ?? []).map(cargarHabilidadReliquia);
@@ -5488,6 +6440,9 @@ function inicializarCrearObjeto() {
                     ? leerElementalesFormulario("resistencias") : cargarValoresElementales(),
                 dannoElemental: tarjetaUsaElemental({ tipo: selectTipoEquipo.value }, "dannoElemental")
                     ? leerElementalesFormulario("dannoElemental") : cargarValoresElementales(),
+                // Debilidades (NPC): solo en armaduras y en modo máster
+                debilidades: MODO_MASTER && TIPOS_ARMADURA.includes(selectTipoEquipo.value)
+                    ? leerElementalesFormulario("debilidades") : cargarDebilidades(),
                 modificadores,
                 reliquia: conHabilidades() ? { habilidades: habilidades.map(cargarHabilidadReliquia) } : null,
                 efectos
@@ -5615,6 +6570,10 @@ function inicializarDebug() {
         personaje, ejecutar: () => ejecutarDebug(personaje), crearPersonajePrueba, validarFicha,
         // Repinta la ficha tras cambiar fichaDebug.personaje a mano
         actualizar: () => actualizarTodo(),
+        // Compendio de NPC: fichaDebug.compendio.info(), y páginas más pequeñas para ver cómo se reparten,
+        // p. ej. fichaDebug.paginasCompendio(5000) (vuelve al tamaño normal recargando la página)
+        compendio,
+        paginasCompendio: (bytes) => tamanoPaginaCompendio(bytes),
         // Modo lectura con un JSON cualquiera (modo máster), para probarlo sin sala
         abrirLectura: (json, info = { nombre: "Prueba" }) => abrirFichaLectura(typeof json === "string" ? json : JSON.stringify(json), info),
         // Artes: el catálogo cargado y los requisitos de cada una para este personaje
@@ -5698,11 +6657,17 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarModsEquipo();
     inicializarHabilidadesReliquia();
     inicializarEfectosEquipo();
+    inicializarExtrasArmaNpc();
     inicializarArmasLanzadas();
     actualizarModificadores();
     parseModificadoresEquipo();
     actualizarTodo();
     inicializarTiradasHabilidades();
+    inicializarTiradasNpc();
+    inicializarValoresNpc();
+    inicializarPartesNpc();
+    inicializarMuerteNpc();
+    inicializarBotin();
     inicializarTurno();
     inicializarEstados();
     inicializarDanno();
@@ -5753,7 +6718,9 @@ document.addEventListener("DOMContentLoaded", () => {
             publicarEstadoDe,
             // Ficha de un jugador en modo lectura
             abrirLectura: abrirFichaLectura,
-            lectura: () => lectura
+            lectura: () => lectura,
+            // Un NPC suyo que no está en la ficha ha llegado a 0 PV
+            alMorirNpc: (id) => abrirMuerteNpc(id, null)
         });
     }
     // La ficha de la última visita (en máster, su último personaje); si no hay, la vacía de inicio

@@ -9,7 +9,7 @@ import * as master from "./personajesMaster.js";
 import {
     htmlFilaHud, rellenarFilaHud, comprobarPlegadoHud, motivoNombreNoDisponible, motivoNombreSala, getEstadoOnline,
     getSalaMaster, publicarPersonajesMaster, echarPersonajeSala, mensajeErrorOnline, pedirFichaJugador,
-    ocultarPersonajeSala, claveOcultoSala
+    ocultarPersonajeSala, claveOcultoSala, leerCompendioNube, guardarCompendioNube, haySesionOnline, alCambiarSesionOnline
 } from "./interfazOnline.js";
 import { PROFESIONES, VALORES_COMBATE } from "./resumenFicha.js";
 import { ETIQUETAS_CARACTERISTICA, ETIQUETAS_HABILIDAD, ranurasUsadas, ranurasLibres, motivoInactiva } from "./artes.js";
@@ -18,6 +18,8 @@ import { escaparHtml } from "./html.js";
 import { reproducir } from "./sonidos.js";
 import { iniciarTurno } from "./turno.js";
 import { capacidadInventario, ajustarInventario, cabenEnInventario, transferirABaul, transferirAInventario } from "./objetos.js";
+import { VALORES_NPC, MAX_TIRADAS_NPC, crearNpc, cargarPiso } from "./npc.js";
+import * as compendio from "./compendio.js";
 
 /**
  * @typedef {Object} ContextoMaster
@@ -42,6 +44,7 @@ import { capacidadInventario, ajustarInventario, cabenEnInventario, transferirAB
  * @property {(id: string) => number} turnoDe  hora (ms) en la que empezó el turno de un personaje suyo, o 0
  * @property {(id: string, turno: number) => void} fijarTurno
  * @property {(id: string, datos: object) => void} publicarEstadoDe  estado de uno suyo en su grupo (vida, PA, turno...)
+ * @property {(id: string) => void} alMorirNpc  un NPC suyo que no está en la ficha ha llegado a 0 PV
  */
 /** @type {ContextoMaster} */
 let ctx = null;
@@ -152,13 +155,17 @@ export function marcarSubido(id, idNube, json) {
 /* Nombres de sus personajes que no pueden estar en la sala (los tiene otro jugador): se avisa una vez */
 const avisadosNombre = new Set();
 
-/* Sus personajes de la sesión que van a la sala: [{ id, nombre }], sin los de nombre ocupado por otro jugador */
+/* Sus personajes de la sesión que van a la sala: [{ id, nombre, npc }], sin los de nombre ocupado por otro
+   jugador. Los NPC pueden repetir nombre: no se comprueban (y en el registro van marcados para no ocupar el suyo). */
 function listaSala(registro) {
     const pj = ctx.personaje();
     const indice = Object.fromEntries(master.todos().map(p => [p.id, p]));
     return master.idsEnSesion()
-        .map(id => ({ id, nombre: id === pj.idPersonaje ? String(pj.nombre ?? "").trim() : (indice[id]?.resumen?.nombre ?? "") }))
+        .map(id => id === pj.idPersonaje
+            ? { id, nombre: String(pj.nombre ?? "").trim(), npc: Boolean(pj.esNpc) }
+            : { id, nombre: indice[id]?.resumen?.nombre ?? "", npc: Boolean(indice[id]?.resumen?.npc) })
         .filter(p => {
+            if (p.npc) return true;
             const motivo = motivoNombreSala(p.nombre, registro);
             if (motivo && !avisadosNombre.has(p.nombre)) {
                 avisadosNombre.add(p.nombre);
@@ -369,7 +376,10 @@ export function leerPersonaje(id) {
 export function conPersonaje(id, fn) {
     const pj = leerPersonaje(id);
     if (!pj) return null;
+    const vidaAntes = pj.vida;
     const resultado = fn(pj);
+    // Un NPC que muere fuera de la ficha (p. ej. veneno al empezar turno a la vez): se pregunta al máster
+    if (pj.esNpc && vidaAntes > 0 && pj.vida <= 0) setTimeout(() => ctx.alMorirNpc?.(id), 0);
     pj.calcularCaracteristicas();
     master.guardar(id, { json: pj.toJSONString(), resumen: master.resumenDe(pj) });
     ctx.publicarEstadoDe(id, { ...master.resumenDe(pj), turno: ctx.turnoDe(id) });
@@ -420,6 +430,24 @@ async function echar(id, jugador) {
     }
     master.quitarDeSesion(id);
     actualizarHudMaster();
+}
+
+/**
+ * NPC derrotado: su copia sale de la sesión (y de la sala) y se borra; la plantilla sigue en el compendio.
+ * Si está en la ficha, antes se pasa a otro personaje de la sesión. Devuelve el motivo si no se puede, o null.
+ */
+export function retirarNpcMuerto(id) {
+    const motivo = master.motivoNoQuitar(id);
+    if (motivo) return motivo;
+    if (id === master.getActivo() || id === ctx.personaje().idPersonaje) {
+        const siguiente = filasCabecera().find(f => !f.jugador && f.id !== id);
+        if (!siguiente) return "Es el único personaje de la sesión";
+        cambiarA(siguiente.id);
+    }
+    master.quitarDeSesion(id);
+    master.borrar(id);
+    actualizarHudMaster();
+    return null;
 }
 
 /* Ficha de un jugador en modo lectura: si está conectado se le pide la actual; si no, la última copia */
@@ -536,6 +564,13 @@ function inicializarPersonajesMaster() {
             pintarPersonajesMaster();
         }
     });
+    el("btnAbrirCompendio").addEventListener("click", () => {
+        reproducir("click");
+        const ventana = el("modalPersonajesMaster");
+        ventana.addEventListener("hidden.bs.modal", () => abrirCompendio(), { once: true });
+        ventana.dataset.sinSonidoCerrar = "1";
+        bootstrap.Modal.getOrCreateInstance(ventana).hide();
+    });
     el("btnCrearPersonajeMaster").addEventListener("click", () => {
         reproducir("click");
         const ventana = el("modalPersonajesMaster");
@@ -551,19 +586,56 @@ function inicializarPersonajesMaster() {
 
 let borrador = null;
 let creando = false;
+let plantillaEditada = null; // id de la plantilla del compendio que se edita (modo plantilla), o null
+let volverAlCompendio = false; // al cerrar el perfil se vuelve a abrir el compendio
+let tipoFijo = false; // al crear desde el compendio es un NPC: no se puede cambiar a personaje
 
-/** Abre el perfil: { crear: true } para un personaje nuevo; si no, el de la ficha */
-export function abrirPerfilMaster({ crear = false } = {}) {
+/**
+ * Abre el perfil: { crear: true } para un personaje nuevo (npc: true lo empieza como NPC);
+ * { plantilla: id } para editar una plantilla del compendio; si no, el de la ficha.
+ */
+export function abrirPerfilMaster({ crear = false, npc = false, plantilla = null } = {}) {
     creando = crear;
+    plantillaEditada = !crear && plantilla && compendio.existe(plantilla) ? plantilla : null;
     borrador = new PJ();
-    if (!crear) borrador.cargarJSON(JSON.parse(ctx.personaje().toJSONString()));
+    if (plantillaEditada) borrador.cargarJSON(JSON.parse(compendio.jsonDe(plantillaEditada)));
+    else if (!crear) borrador.cargarJSON(JSON.parse(ctx.personaje().toJSONString()));
     else borrador.nombre = "";
-    el("modalPerfilMasterLabel").textContent = crear ? "Nuevo personaje" : `Perfil de ${ctx.personaje().nombre || "Sin nombre"}`;
+    tipoFijo = false;
+    if (crear && npc) cambiarTipoBorrador(true);
+    tipoFijo = crear && npc;
+    // Personaje o NPC solo se elige al crear (y no desde el compendio, que siempre crea NPC)
+    el("perfilMasterTipo").hidden = !crear || tipoFijo;
+    ponerTituloPerfil();
     el("avisoPerfilMaster").textContent = "";
     pintarPerfil();
     const ventana = el("modalPerfilMaster");
     ventana.dataset.sinSonidoAbrir = "1";
     bootstrap.Modal.getOrCreateInstance(ventana).show();
+}
+
+function ponerTituloPerfil() {
+    el("modalPerfilMasterLabel").textContent = creando
+        ? (borrador.esNpc ? "Nuevo NPC" : "Nuevo personaje")
+        : plantillaEditada ? `Plantilla: ${borrador.nombre || "Sin nombre"}`
+        : `Perfil de ${ctx.personaje().nombre || "Sin nombre"}`;
+}
+
+/* Al crear: personaje o NPC. El NPC empieza con sus valores por defecto y la vida y los PA llenos */
+function cambiarTipoBorrador(npc) {
+    if (!creando || tipoFijo || borrador.esNpc === npc) return;
+    borrador.esNpc = npc;
+    borrador.npc = crearNpc();
+    if (npc) {
+        borrador.setUnderworld(false);
+        borrador.protagonista = false;
+        borrador.modificadores = []; // el de ejemplo de un personaje nuevo es de Atletismo, que un NPC no tiene
+    }
+    borrador.calcularCaracteristicas();
+    borrador.vida = borrador.vidaMax;
+    borrador.puntosArte = borrador.puntosArteMax;
+    ajustarInventario(borrador);
+    ponerTituloPerfil();
 }
 
 const campoNumero = (clave, etiqueta, min, max) =>
@@ -572,7 +644,18 @@ const campoNumero = (clave, etiqueta, min, max) =>
 function pintarPerfil() {
     const pj = borrador;
     pj.calcularCaracteristicas();
+    el("formPerfilMaster").classList.toggle("modo-npc", pj.esNpc);
+    el("perfilMasterTipo").querySelectorAll("[data-tipo]").forEach(boton => {
+        boton.setAttribute("aria-pressed", String((boton.dataset.tipo === "npc") === pj.esNpc));
+    });
     el("perfilMasterNombre").value = pj.nombre;
+    // Pasar los cambios de una copia en juego a su plantilla (no al crear ni al editar una plantilla)
+    el("perfilMasterCompendio").hidden = creando || Boolean(plantillaEditada);
+    const tienePlantilla = compendio.existe(pj.idPlantilla);
+    el("perfilMasterPlantilla").textContent = tienePlantilla ? "(es una copia de una plantilla)" : "(sin plantilla en el compendio)";
+    const sobrescribir = el("perfilMasterCompendio").querySelector('[data-compendio="sobrescribir"]');
+    sobrescribir.disabled = !tienePlantilla;
+    sobrescribir.title = tienePlantilla ? "" : "Su plantilla ya no está en el compendio";
     el("perfilMasterNivel").value = pj.nivel;
     el("perfilMasterProfesion").value = pj.tipoProfesion;
     el("perfilMasterUnderworld").checked = pj.esUnderworld;
@@ -600,6 +683,7 @@ function pintarPerfil() {
     el("perfilMasterPA").max = pj.puntosArteMax;
     el("perfilMasterPAMax").textContent = pj.puntosArteMax;
     el("perfilMasterCor").value = pj.cor;
+    if (pj.esNpc) pintarNpcPerfil();
     pintarCombatePerfil();
     pintarObjetosPerfil();
     pintarArtesPerfil();
@@ -614,7 +698,8 @@ function filaArtePerfil(arte, indice) {
     const coste = [activa ? `${arte.costePA} PA` : "Pasiva", arte.onirica ? "" : `${arte.ranuras} ranura${arte.ranuras === 1 ? "" : "s"}`]
         .filter(Boolean).join(" · ");
     const inactiva = arte.equipada && motivoInactiva(borrador, arte);
-    const equipar = arte.onirica ? ""
+    // Los NPC llevan todas sus artes equipadas (PJ.calcularNpc): sin equipar ni desequipar
+    const equipar = arte.onirica || borrador.esNpc ? ""
         : arte.equipada ? botonObjeto("desequipar", "cancelar", "Desequipar")
         : botonObjeto("equipar", "artes", "Equipar", arte.ranuras > ranurasLibres(borrador) ? "No queda memoria de artes" : "");
     return `<div class="fila-objeto fila-arte${inactiva ? " inactiva" : ""}" data-index="${indice}">
@@ -643,7 +728,8 @@ function pintarArtesPerfil() {
     el("perfilMasterArtes").innerHTML = visibles.length
         ? visibles.map(({ arte, i }) => filaArtePerfil(arte, i)).join("")
         : `<p class="lista-vacia">Sin artes.</p>`;
-    el("perfilMasterMemoria").textContent = `(memoria ${ranurasUsadas(pj)} / ${pj.espaciosArte})`;
+    // Los NPC no tienen memoria de artes
+    el("perfilMasterMemoria").textContent = pj.esNpc ? "" : `(memoria ${ranurasUsadas(pj)} / ${pj.espaciosArte})`;
     el("perfilMasterCrearOnirica").hidden = !pj.esUnderworld;
 }
 
@@ -698,7 +784,7 @@ const botonObjeto = (accion, icono, titulo, motivo = "") =>
 
 function filaObjetoPerfil(lista, objeto, indice) {
     if (!objeto) return `<div class="fila-objeto vacia" data-index="${indice}"><span class="objeto-hueco">Hueco libre</span></div>`;
-    const esClave = lista === "objetosClave";
+    const esClave = lista === "objetosClave" || lista === "recompensaClave";
     const mover = lista === "inventario" ? botonObjeto("baul", "baul", "Pasar al baúl")
         : lista === "baul" ? botonObjeto("inventario", "inventario", "Pasar al inventario",
             cabenEnInventario(borrador, objeto) > 0 ? "" : "No queda espacio en el inventario")
@@ -737,6 +823,7 @@ function pintarObjetosPerfil() {
 const opcionesObjeto = () => ({ pj: borrador, origen: el("modalPerfilMaster"), alTerminar: pintarObjetosPerfil, libre: true });
 
 async function accionObjetoPerfil(lista, indice, accion) {
+    if (lista === "recompensa" || lista === "recompensaClave") return accionRecompensa(lista, indice, accion);
     const pj = borrador;
     const objeto = pj[lista][indice];
     if (!objeto) return;
@@ -757,6 +844,68 @@ async function accionObjetoPerfil(lista, indice, accion) {
         else pj[lista].splice(indice, 1);
     }
     pintarObjetosPerfil();
+}
+
+/* NPC: valores de combate a mano, tiradas libres y recompensa ____________________ */
+
+function pintarNpcPerfil() {
+    const npc = borrador.npc;
+    el("formPerfilMaster").querySelectorAll("input[data-npc]").forEach(input => {
+        const clave = input.dataset.npc;
+        input.value = clave === "recompensaCor" ? npc.recompensa.cor : (npc[clave] ?? "");
+    });
+    // Las filas solo se rehacen si cambia el número de tiradas (así no se pierde el campo con el foco)
+    const lista = el("perfilMasterTiradas");
+    if (!npc.tiradas.length) lista.innerHTML = `<p class="lista-vacia">Sin tiradas. Se tiran con 3d10 + su valor.</p>`;
+    else if (lista.querySelectorAll(".fila-tirada-npc").length !== npc.tiradas.length) {
+        lista.innerHTML = npc.tiradas.map((_, i) => `
+        <div class="fila-tirada-npc" data-index="${i}">
+            <input type="text" data-tirada="nombre" maxlength="60" aria-label="Nombre de la tirada">
+            <input type="number" data-tirada="valor" min="-99" max="99" aria-label="Valor">
+            ${botonObjeto("quitarTirada", "descartar", "Quitar tirada")}
+        </div>`).join("");
+    }
+    npc.tiradas.forEach((tirada, i) => {
+        const fila = lista.children[i];
+        const nombre = fila?.querySelector('[data-tirada="nombre"]');
+        const valor = fila?.querySelector('[data-tirada="valor"]');
+        if (nombre && document.activeElement !== nombre) nombre.value = tirada.nombre;
+        if (valor && document.activeElement !== valor) valor.value = tirada.valor;
+    });
+    el("perfilMasterContadorTiradas").textContent = `(${npc.tiradas.length})`;
+    const { objetos, objetosClave } = npc.recompensa;
+    el("perfilMasterRecompensa").innerHTML = objetos.map((objeto, i) => filaObjetoPerfil("recompensa", objeto, i)).join("");
+    el("perfilMasterRecompensaClave").innerHTML = objetosClave.map((objeto, i) => filaObjetoPerfil("recompensaClave", objeto, i)).join("");
+    el("perfilMasterContadorRecompensa").textContent = objetos.length || objetosClave.length
+        ? `(${objetos.length} objeto${objetos.length === 1 ? "" : "s"}, ${objetosClave.length} clave)` : "";
+}
+
+/* Los editores de objetos trabajan sobre pj[lista]: para la recompensa se les pasa un "pj" que solo tiene esa
+   lista (baul = objetos de la recompensa, objetosClave = sus objetos clave), sin restricciones (libre) */
+const pjRecompensa = () => ({
+    baul: borrador.npc.recompensa.objetos,
+    objetosClave: borrador.npc.recompensa.objetosClave,
+    calcularCaracteristicas: () => {}
+});
+const opcionesRecompensa = () => ({ pj: pjRecompensa(), origen: el("modalPerfilMaster"), alTerminar: pintarPerfil, libre: true });
+
+async function accionRecompensa(lista, indice, accion) {
+    const { recompensa } = borrador.npc;
+    const objetos = lista === "recompensa" ? recompensa.objetos : recompensa.objetosClave;
+    const objeto = objetos[indice];
+    if (!objeto) return;
+    if (accion === "editar") {
+        if (lista === "recompensaClave") ctx.abrirEditorObjetoClave(indice, opcionesRecompensa());
+        else ctx.abrirEditorObjeto("baul", indice, opcionesRecompensa());
+        return;
+    }
+    if (accion === "descartar") {
+        const ok = await ctx.confirmar({ titulo: "Quitar de la recompensa", texto: `¿Quitar ${objeto.nombre} de la recompensa?` });
+        const actual = lista === "recompensa" ? borrador?.npc.recompensa.objetos : borrador?.npc.recompensa.objetosClave;
+        if (!ok || objetos !== actual) return;
+        objetos.splice(indice, 1);
+    }
+    pintarPerfil();
 }
 
 const entero = (valor, porDefecto = 0) => {
@@ -808,6 +957,20 @@ function aplicarCampo(input) {
         pj.puntosArte = limitar(entero(input.value, pj.puntosArte), 0, pj.puntosArteMax);
     } else if (input.id === "perfilMasterCor") {
         pj.cor = Math.max(0, entero(input.value, pj.cor));
+    } else if (input.dataset.npc && pj.esNpc) {
+        const clave = input.dataset.npc;
+        if (clave === "recompensaCor") pj.npc.recompensa.cor = Math.max(0, entero(input.value, pj.npc.recompensa.cor));
+        else if (clave === "expRecompensa") pj.npc.expRecompensa = Math.max(0, entero(input.value, pj.npc.expRecompensa));
+        else if (clave === "piso") pj.npc.piso = cargarPiso(input.value);
+        else {
+            const valor = VALORES_NPC.find(v => v.clave === clave);
+            if (valor) recalcularConservandoMaximos(() => { pj.npc[clave] = Math.max(valor.min, entero(input.value, pj.npc[clave])); });
+        }
+    } else if (input.dataset.tirada && pj.esNpc) {
+        const tirada = pj.npc.tiradas[Number(input.closest("[data-index]")?.dataset.index)];
+        if (!tirada) return;
+        if (input.dataset.tirada === "nombre") tirada.nombre = input.value.trim().slice(0, 60) || "Tirada";
+        else tirada.valor = limitar(entero(input.value, tirada.valor), -99, 99);
     }
 }
 
@@ -817,7 +980,9 @@ function aceptarPerfil() {
     form.querySelectorAll("input, select").forEach(aplicarCampo);
     const pj = borrador;
     const aviso = el("avisoPerfilMaster");
+    // Los NPC pueden repetir nombre (en el máster y en la sala)
     const motivo = !pj.nombre ? "Escribe un nombre."
+        : pj.esNpc ? null
         : master.nombreUsado(pj.nombre, pj.idPersonaje) ? `Ya tienes un personaje llamado "${pj.nombre}".`
         : motivoNombreNoDisponible(pj.nombre);
     if (motivo) {
@@ -826,6 +991,20 @@ function aceptarPerfil() {
         return;
     }
     reproducir("click");
+    if (plantillaEditada) {
+        // Plantilla del compendio: no toca la ficha; se vuelve al compendio
+        compendio.guardarPlantilla(plantillaEditada, pj);
+        subirCompendio();
+        volverAlCompendio = true;
+        bootstrap.Modal.getOrCreateInstance(el("modalPerfilMaster")).hide();
+        return;
+    }
+    // Un NPC nuevo se guarda también como plantilla en el compendio; en la sesión entra una copia
+    if (creando && pj.esNpc) {
+        pj.idPlantilla = compendio.anadirPlantilla(pj);
+        subirCompendio();
+    }
+    volverAlCompendio = false;
     const json = pj.toJSONString();
     if (creando) {
         ctx.comprobarCambios();
@@ -846,6 +1025,15 @@ function inicializarPerfilMaster() {
         .map(clave => campoNumero(clave, ETIQUETAS_CARACTERISTICA[clave], 1, 9)).join("");
     el("perfilMasterHabilidades").innerHTML = HABILIDADES_LISTA
         .map(clave => campoNumero(clave, ETIQUETAS_HABILIDAD[clave], 0, 10)).join("");
+    el("perfilMasterValoresNpc").innerHTML = VALORES_NPC.map(({ clave, etiqueta, min, ayuda }) =>
+        `<label${ayuda ? ` title="${escaparHtml(ayuda)}"` : ""}>${escaparHtml(etiqueta)} <input type="number" data-npc="${clave}" min="${min}"></label>`).join("");
+    el("perfilMasterTipo").addEventListener("click", (e) => {
+        const boton = e.target.closest("[data-tipo]");
+        if (!boton || !borrador) return;
+        reproducir("click");
+        cambiarTipoBorrador(boton.dataset.tipo === "npc");
+        pintarPerfil();
+    });
     const form = el("formPerfilMaster");
     form.addEventListener("change", (e) => {
         if (!borrador || !e.target.matches("input, select")) return;
@@ -861,11 +1049,33 @@ function inicializarPerfilMaster() {
             reproducir("click");
             const origen = el("modalPerfilMaster");
             const tipo = crear.dataset.crear;
-            if (tipo === "objetosClave") ctx.abrirEditorObjetoClave(null, opcionesObjeto());
+            if (tipo === "tirada") {
+                if (borrador.npc.tiradas.length >= MAX_TIRADAS_NPC) return;
+                borrador.npc.tiradas.push({ nombre: "Tirada", valor: 0 });
+                pintarPerfil();
+                el("perfilMasterTiradas").lastElementChild?.querySelector("input")?.select();
+                return;
+            }
+            if (tipo === "recompensa") ctx.abrirCrearObjeto("baul", opcionesRecompensa());
+            else if (tipo === "recompensaClave") ctx.abrirEditorObjetoClave(null, opcionesRecompensa());
+            else if (tipo === "objetosClave") ctx.abrirEditorObjetoClave(null, opcionesObjeto());
             else if (tipo === "catalogo") ctx.abrirCatalogo(opcionesArte());
             else if (tipo === "arte") ctx.abrirEditorArte(null, origen, opcionesArte());
             else if (tipo === "onirica") ctx.abrirEditorOnirica(null, origen, opcionesArte());
             else ctx.abrirCrearObjeto(tipo, opcionesObjeto());
+            return;
+        }
+        const botonCompendio = e.target.closest("button[data-compendio]");
+        if (botonCompendio && !botonCompendio.disabled) {
+            reproducir("click");
+            guardarBorradorEnCompendio(botonCompendio.dataset.compendio === "sobrescribir");
+            return;
+        }
+        const quitar = e.target.closest("button[data-accion='quitarTirada']");
+        if (quitar) {
+            reproducir("click");
+            borrador.npc.tiradas.splice(Number(quitar.closest("[data-index]").dataset.index), 1);
+            pintarPerfil();
             return;
         }
         const boton = e.target.closest(".lista-objetos button[data-accion]");
@@ -877,7 +1087,290 @@ function inicializarPerfilMaster() {
         else accionObjetoPerfil(lista, Number(fila.dataset.index), boton.dataset.accion);
     });
     el("btnAceptarPerfilMaster").addEventListener("click", aceptarPerfil);
+    // Abierto desde el compendio: al cerrarse (y no por abrir una ventana hija, que lo oculta un momento) vuelve a él
+    el("modalPerfilMaster").addEventListener("hidden.bs.modal", () => {
+        setTimeout(() => {
+            if (!volverAlCompendio || document.querySelector(".modal.show")) return;
+            volverAlCompendio = false;
+            abrirCompendio();
+        }, 400);
+    });
     // El borrador se conserva al ocultar la ventana (al abrir la de crear objeto vuelve a ella); se cambia al abrirla
+}
+
+/* Pasa el borrador (una copia en juego) a su plantilla o a una nueva; la ficha cambia al aceptar el perfil */
+async function guardarBorradorEnCompendio(sobrescribir) {
+    el("formPerfilMaster").querySelectorAll("input, select").forEach(aplicarCampo);
+    const pj = borrador;
+    if (sobrescribir) {
+        const ok = await ctx.confirmar({
+            titulo: "Sobrescribir plantilla",
+            texto: `¿Guardar ${pj.nombre || "este NPC"} encima de su plantilla del compendio? Las copias que ya están en juego no cambian.`
+        });
+        if (!ok || pj !== borrador) return;
+        compendio.guardarPlantilla(pj.idPlantilla, pj);
+    } else {
+        pj.idPlantilla = compendio.anadirPlantilla(pj);
+    }
+    subirCompendio();
+    pintarPerfil();
+    ctx.aviso("Compendio", [`${pj.nombre || "Sin nombre"} guardado en el compendio${sobrescribir ? "" : " como plantilla nueva"}.`]);
+}
+
+/* Compendio de NPC (#modalCompendio; datos en compendio.js) _______________________
+ * Plantillas agrupadas por piso, con filtro y buscador. Con sesión se sincroniza con la nube la primera vez que
+ * se abre (manda la copia más reciente) y cada cambio sube solo las páginas cambiadas. */
+
+let estadoNube = "local"; // local | cargando | ok | subiendo | error
+let errorNube = "";
+let sincronizado = null;  // uid con el que ya se ha sincronizado en esta sesión, o null
+
+function textoEstadoCompendio() {
+    const { total, plantillas } = compendio.info();
+    const paginas = `${plantillas} NPC en ${total} página${total === 1 ? "" : "s"}`;
+    switch (estadoNube) {
+        case "cargando": return "Cargando el compendio de la nube…";
+        case "subiendo": return `Guardando en la nube… (${paginas})`;
+        case "ok": return `Guardado en la nube (${paginas}).`;
+        case "error": return `No se pudo sincronizar con la nube: ${errorNube} Queda guardado en este navegador.`;
+        default: return `Sin sesión: el compendio solo está en este navegador (${paginas}). Inicia sesión para guardarlo en la nube.`;
+    }
+}
+
+const normalizarBusqueda = (texto) => String(texto ?? "").trim().toLocaleLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+const etiquetaPiso = (piso) => piso === null ? "Sin piso" : `Piso ${piso}`;
+
+function pintarCompendio() {
+    el("estadoCompendio").textContent = textoEstadoCompendio();
+    el("estadoCompendio").classList.toggle("error", estadoNube === "error");
+    const todas = compendio.listar();
+    // Filtro de piso: los pisos que hay (y "Sin piso" si alguna no tiene)
+    const filtro = el("filtroPisoCompendio");
+    const elegido = filtro.value;
+    const pisos = [...new Set(todas.map(p => p.piso))];
+    filtro.innerHTML = `<option value="">Todos</option>` + pisos
+        .map(piso => `<option value="${piso ?? "sin"}">${etiquetaPiso(piso)}</option>`).join("");
+    filtro.value = [...filtro.options].some(o => o.value === elegido) ? elegido : "";
+    const buscado = normalizarBusqueda(el("buscarCompendio").value);
+    const visibles = todas.filter(p => (!filtro.value || String(p.piso ?? "sin") === filtro.value)
+        && (!buscado || normalizarBusqueda(p.nombre).includes(buscado)));
+    if (!visibles.length) {
+        el("listaCompendio").innerHTML = `<p class="lista-vacia">${todas.length ? "Ningún NPC coincide." : "El compendio está vacío. Crea uno con \"+ Crear NPC\"."}</p>`;
+        return;
+    }
+    let html = "";
+    let pisoActual;
+    visibles.forEach(p => {
+        if (p.piso !== pisoActual) {
+            if (pisoActual !== undefined) html += "</div>";
+            pisoActual = p.piso;
+            html += `<h3 class="titulo-piso">${etiquetaPiso(p.piso)}</h3><div class="lista-objetos">`;
+        }
+        const r = p.resumen;
+        html += `
+            <div class="fila-objeto" data-id="${escaparHtml(p.id)}">
+                <span class="objeto-icono">${iconoSao("personaje")}</span>
+                <div class="objeto-info">
+                    <div class="objeto-cabecera"><span class="objeto-nombre">${escaparHtml(p.nombre || "Sin nombre")}</span></div>
+                    <div class="objeto-detalle">LV ${escaparHtml(r.nivel ?? "?")} · ${escaparHtml(r.vidaMax ?? "?")} PV · ${escaparHtml(r.exp ?? 0)} EXP</div>
+                </div>
+                <div class="objeto-acciones">
+                    ${botonObjeto("usar", "anadirAmigo", "Añadir una copia a la sesión")}
+                    ${botonObjeto("editar", "editar", "Editar plantilla")}
+                    ${botonObjeto("duplicar", "duplicar", "Duplicar plantilla")}
+                    ${botonObjeto("descartar", "descartar", "Borrar del compendio")}
+                </div>
+            </div>`;
+    });
+    el("listaCompendio").innerHTML = html + "</div>";
+}
+
+export function abrirCompendio() {
+    pintarCompendio();
+    const ventana = el("modalCompendio");
+    ventana.dataset.sinSonidoAbrir = "1";
+    bootstrap.Modal.getOrCreateInstance(ventana).show();
+    sincronizarCompendio();
+}
+
+/* Primera vez con sesión: manda la copia más reciente. Si la del navegador es de otro usuario, manda la nube. */
+async function sincronizarCompendio() {
+    if (!haySesionOnline()) {
+        estadoNube = "local";
+        pintarCompendio();
+        return;
+    }
+    const uid = getEstadoOnline().usuario?.uid;
+    if (sincronizado !== uid) {
+        estadoNube = "cargando";
+        pintarCompendio();
+        try {
+            const nube = await leerCompendioNube();
+            const local = compendio.info();
+            const localPropio = !local.dueno || local.dueno === uid;
+            if (!nube) {
+                if (localPropio && local.plantillas) compendio.marcarTodoCambiado();
+                else if (!localPropio) compendio.cargarDeNube({ actualizado: 0, paginas: [] });
+            } else if (localPropio && local.pendiente && local.actualizado > nube.actualizado) {
+                compendio.marcarTodoCambiado();
+            } else if (!localPropio || local.pendiente || local.actualizado !== nube.actualizado) {
+                if (localPropio && local.pendiente) {
+                    ctx.aviso("Compendio", ["En la nube hay una versión más reciente del compendio: se usa esa y se descartan los cambios de este navegador."]);
+                }
+                compendio.cargarDeNube(nube);
+            }
+            compendio.setDueno(uid);
+            sincronizado = uid;
+        } catch (error) {
+            estadoNube = "error";
+            errorNube = mensajeErrorOnline(error);
+            pintarCompendio();
+            return;
+        }
+    }
+    await subirCompendio();
+}
+
+/** Sube los cambios del compendio (si hay sesión y ya se ha sincronizado; si no, quedan pendientes) */
+export async function subirCompendio() {
+    if (!haySesionOnline()) {
+        estadoNube = "local";
+    } else if (sincronizado !== getEstadoOnline().usuario?.uid) {
+        return sincronizarCompendio();
+    } else {
+        const cambios = compendio.cambiosParaSubir();
+        if (cambios) {
+            estadoNube = "subiendo";
+            pintarCompendioSiAbierto();
+            try {
+                await guardarCompendioNube(cambios);
+                compendio.marcarSubido(cambios.actualizado);
+                if (compendio.info().pendiente) return subirCompendio(); // ha cambiado mientras subía
+            } catch (error) {
+                estadoNube = "error";
+                errorNube = mensajeErrorOnline(error);
+                pintarCompendioSiAbierto();
+                return;
+            }
+        }
+        estadoNube = "ok";
+    }
+    pintarCompendioSiAbierto();
+}
+
+const pintarCompendioSiAbierto = () => { if (el("modalCompendio").classList.contains("show")) pintarCompendio(); };
+
+/** Solo para el debug: páginas más pequeñas para ver cómo se reparten (y se suben) */
+export function tamanoPaginaCompendio(tamano) {
+    const info = compendio.setTamanoMaxPagina(tamano);
+    subirCompendio();
+    return info;
+}
+
+/* Cambia de ventana: oculta el compendio y luego hace lo que toque */
+function dejarCompendio(despues) {
+    const ventana = el("modalCompendio");
+    ventana.addEventListener("hidden.bs.modal", despues, { once: true });
+    ventana.dataset.sinSonidoCerrar = "1";
+    bootstrap.Modal.getOrCreateInstance(ventana).hide();
+}
+
+async function accionCompendio(id, accion) {
+    const nombre = compendio.listar().find(p => p.id === id)?.nombre || "Sin nombre";
+    if (accion === "usar") {
+        const json = compendio.copiaDePlantilla(id);
+        if (!json) return;
+        const copia = JSON.parse(json);
+        master.guardar(copia.idPersonaje, { json, guardada: "" });
+        master.anadirASesion(copia.idPersonaje);
+        actualizarHudMaster();
+        ctx.aviso("Compendio", [`${nombre} añadido a la sesión.`]);
+        return;
+    }
+    if (accion === "editar") {
+        volverAlCompendio = true;
+        dejarCompendio(() => abrirPerfilMaster({ plantilla: id }));
+        return;
+    }
+    if (accion === "duplicar") compendio.duplicarPlantilla(id);
+    if (accion === "descartar") {
+        const ok = await ctx.confirmar({
+            titulo: "Borrar del compendio",
+            texto: `¿Borrar la plantilla de ${nombre}? Las copias que ya están en juego se conservan.`
+        });
+        if (!ok) return;
+        compendio.borrarPlantilla(id);
+    }
+    pintarCompendio();
+    subirCompendio();
+}
+
+function exportarCompendio() {
+    const blob = new Blob([compendio.exportar()], { type: "application/json" });
+    const enlace = document.createElement("a");
+    enlace.href = URL.createObjectURL(blob);
+    enlace.download = `compendio-npc-${new Date().toISOString().slice(0, 10)}.json`;
+    enlace.click();
+    setTimeout(() => URL.revokeObjectURL(enlace.href), 1000);
+}
+
+async function importarCompendio(fichero) {
+    let lista = [];
+    try {
+        lista = compendio.leerImportacion(JSON.parse(await fichero.text()));
+    } catch {
+        lista = [];
+    }
+    if (!lista.length) {
+        ctx.aviso("Importar", ["El fichero no tiene NPC: elige un compendio exportado o la ficha de un NPC."]);
+        return;
+    }
+    const ok = await ctx.confirmar({
+        titulo: "Importar NPC",
+        texto: `¿Añadir ${lista.length} NPC al compendio? Los que ya tienes se conservan.`
+    });
+    if (!ok) return;
+    compendio.importar(lista);
+    pintarCompendio();
+    subirCompendio();
+}
+
+function inicializarCompendio() {
+    el("listaCompendio").addEventListener("click", (e) => {
+        const boton = e.target.closest("button[data-accion]");
+        const id = boton?.closest("[data-id]")?.dataset.id;
+        if (!id || boton.disabled) return;
+        reproducir("click");
+        accionCompendio(id, boton.dataset.accion);
+    });
+    el("filtroPisoCompendio").addEventListener("change", pintarCompendio);
+    el("buscarCompendio").addEventListener("input", pintarCompendio);
+    el("btnCrearNpcCompendio").addEventListener("click", () => {
+        reproducir("click");
+        volverAlCompendio = true; // si se cancela, se vuelve aquí; al aceptar se abre el NPC en la ficha
+        dejarCompendio(() => abrirPerfilMaster({ crear: true, npc: true }));
+    });
+    el("btnExportarCompendio").addEventListener("click", () => {
+        reproducir("click");
+        exportarCompendio();
+    });
+    el("btnImportarCompendio").addEventListener("click", () => {
+        reproducir("click");
+        el("fileCompendio").click();
+    });
+    el("fileCompendio").addEventListener("change", (e) => {
+        const fichero = e.target.files?.[0];
+        e.target.value = "";
+        if (fichero) importarCompendio(fichero);
+    });
+    // Al iniciar o cerrar sesión: se vuelve a sincronizar; si hay cambios pendientes, se suben ya
+    alCambiarSesionOnline((estado) => {
+        const uid = estado?.usuario?.uid ?? null;
+        if (uid === sincronizado) return;
+        sincronizado = null;
+        if (uid && compendio.info().pendiente) sincronizarCompendio();
+        else pintarCompendioSiAbierto();
+    });
 }
 
 /* Inicio _________________________________________________________________________ */
@@ -889,4 +1382,5 @@ export function inicializarMaster(contexto) {
     inicializarHud();
     inicializarPersonajesMaster();
     inicializarPerfilMaster();
+    inicializarCompendio();
 }

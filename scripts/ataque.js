@@ -27,6 +27,7 @@ export function prepararAtaque(pj, propMano, modosExtra = [1]) {
     const item = pj[propMano];
     const arma = ARMAS[item?.tipo];
     if (!arma || arma.escudo) return null;
+    if (pj.esNpc) return prepararAtaqueNpc(pj, item, modosExtra);
 
     const caracteristica = caracteristicaArma(pj, item.tipo);
     const habilidad = pj.getHabilidadAtaque();
@@ -45,6 +46,48 @@ export function prepararAtaque(pj, propMano, modosExtra = [1]) {
     };
 }
 
+/* NPC _____________________________________________________________________________
+ * Sin características ni habilidades: la tirada es el dado del arma (el suyo o el de su tipo) + su acierto
+ * (+ modificadores "acierto"), y el daño es el del arma (+ modificadores "dFisico"). El crítico multiplica
+ * el daño físico por CRITICO_NPC, hacia abajo; el elemental no. */
+export const CRITICO_NPC = 1.25;
+
+/** Dado del arma de un NPC: el elegido en el arma o, si no tiene, el de su tipo */
+export const dadoArmaNpc = (item) => item?.dado ?? ARMAS[item?.tipo]?.dado ?? 1;
+
+/** Acierto total de un arma de NPC (el suyo más los modificadores "acierto") */
+export const aciertoNpc = (pj, item) => (Number(item?.acierto) || 0) + (Number(pj.getModificador("acierto")) || 0);
+
+/** Tirada de ataque de un NPC con un equipo cualquiera (de un brazo o de otra parte), o null si no ataca */
+export function prepararAtaqueNpc(pj, item, modosExtra = [1]) {
+    const arma = ARMAS[item?.tipo];
+    if (!arma || arma.escudo) return null;
+    const { modo, bonificador } = combinarModos(dadoArmaNpc(item), ...[].concat(modosExtra));
+    return {
+        nombre: item.nombre?.trim() || arma.etiqueta,
+        tipo: item.tipo,
+        modo,
+        bonificador,
+        valorHabilidad: aciertoNpc(pj, item),
+        etiquetaHabilidad: "Acierto",
+        valorCaracteristica: 0,
+        etiquetaCaracteristica: null
+    };
+}
+
+function calcularDannoAtaqueNpc(pj, item, critico) {
+    const dannoArma = Math.max(0, Number(item?.danno) || 0);
+    const bono = Number(pj.dFisico) || 0; // solo modificadores
+    const base = Math.max(0, dannoArma + bono);
+    const total = critico ? Math.floor(base * CRITICO_NPC) : base;
+    const desglose = [`${dannoArma} (Arma)`];
+    if (bono) desglose.push(`${bono > 0 ? "" : "−"}${Math.abs(bono)} (Modificadores)`);
+    if (critico) desglose.push(`×${String(CRITICO_NPC).replace(".", ",")} (Crítico)`);
+    const notas = [];
+    if (item?.pocionAplicada) notas.push(`Poción aplicada: ${describirEfecto(item.pocionAplicada)}`);
+    return { total, desglose, elemental: dannoElementalArma(item), efecto: efectoDeObjeto(item?.pocionAplicada), notas };
+}
+
 /**
  * Daño del ataque = daño del arma + bonificador CaC.
  * - Crítico: el bonificador ×2 (el daño del arma no se duplica).
@@ -53,6 +96,7 @@ export function prepararAtaque(pj, propMano, modosExtra = [1]) {
  * @returns {{ total: number, desglose: string[], notas: string[] }}
  */
 export function calcularDannoAtaque(pj, item, critico) {
+    if (pj.esNpc) return calcularDannoAtaqueNpc(pj, item, critico);
     const dannoArma = Math.max(0, Number(item?.danno) || 0);
     const bono = Math.max(0, Number(pj.dFisico) || 0);
     const esCuchillo = item?.tipo === "cuchillo";

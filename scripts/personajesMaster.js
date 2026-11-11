@@ -71,7 +71,8 @@ export function resumenDe(pj) {
         pa: pj.puntosArteMax > 0 ? Math.max(0, Math.min(1, pj.puntosArte / pj.puntosArteMax)) : 0,
         nivel: pj.nivel,
         iniciativa: Number(pj.iniciativa) || 0,
-        estados: Object.keys(ESTADOS_INFO).filter(clave => estaActivo(pj, clave))
+        estados: Object.keys(ESTADOS_INFO).filter(clave => estaActivo(pj, clave)),
+        npc: Boolean(pj.esNpc)
     };
 }
 
@@ -114,11 +115,12 @@ export const fueraDeSesion = () => todos()
 
 const normalizarNombre = (nombre) => String(nombre ?? "").trim().toLocaleLowerCase();
 
-/** Otro personaje del máster con este nombre, o null (los nombres son únicos; sin distinguir mayúsculas) */
+/** Otro personaje del máster con este nombre, o null (los nombres son únicos; sin distinguir mayúsculas).
+    Los NPC pueden repetir nombre: ni se comprueban ni cuentan. */
 export function nombreUsado(nombre, salvoId = null) {
     const buscado = normalizarNombre(nombre);
     if (!buscado) return null;
-    return todos().find(p => p.id !== salvoId && normalizarNombre(p.resumen?.nombre) === buscado) ?? null;
+    return todos().find(p => p.id !== salvoId && !p.resumen?.npc && normalizarNombre(p.resumen?.nombre) === buscado) ?? null;
 }
 
 /**

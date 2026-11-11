@@ -22,6 +22,8 @@
  *       grupo de hasta 6 personajes; solo lo escuchan sus integrantes. vida y pa son fracciones (0-1)
  * - salas/{codigo}/eventos/{auto}: { jugador, evento, creado }     evento = JSON de eventos.js
  * - salas/{codigo}/artes/{id}: { autor, nombreAutor, nombre, arte, actualizado }   arte = JSON del arte
+ * - compendios/{uid}: { paginas, actualizado }                     compendio de NPC del máster (compendio.js):
+ *   compendios/{uid}/paginas/{n}: { plantillas }                   índice y páginas de < 1 MB (texto JSON)
  *
  * Plan gratuito de Firebase: peticiones al mínimo. Personajes, ocultos y expulsados van en el documento de
  * la sala, que ya se escucha (sin listeners ni colecciones extra); nada es periódico; los nombres de usuario
@@ -211,7 +213,8 @@ export function motivoNombre(nombre, registro = datosSala?.registro) {
     if (!buscado) return null;
     for (const [jugador, personajes] of Object.entries(registro ?? {})) {
         if (jugador === uid) continue;
-        const usado = Object.values(personajes ?? {}).find(p => normalizarNombre(p?.nombre) === buscado);
+        // Los NPC del máster pueden repetir nombre y no ocupan el suyo
+        const usado = Object.values(personajes ?? {}).find(p => !p?.npc && normalizarNombre(p?.nombre) === buscado);
         if (usado) return `Ya hay un personaje llamado ${usado.nombre} en la sala.`;
     }
     return null;
@@ -416,7 +419,9 @@ function cambiosMaster(f, uid, lista, datos) {
     const presencia = datos?.personajes?.[uid] ?? {};
     const ids = new Set(lista.map(p => p.id));
     for (const p of lista) {
-        if (registro[p.id]?.nombre !== p.nombre) cambios[`registro.${uid}.${p.id}`] = { nombre: p.nombre };
+        if (registro[p.id]?.nombre !== p.nombre || Boolean(registro[p.id]?.npc) !== Boolean(p.npc)) {
+            cambios[`registro.${uid}.${p.id}`] = p.npc ? { nombre: p.nombre, npc: true } : { nombre: p.nombre };
+        }
         const entrada = presencia[`m-${p.id}`];
         const idGrupo = grupos.get(`m-${p.id}`)?.id ?? null;
         if (!entrada || entrada.nombre !== p.nombre || (entrada.grupo ?? null) !== idGrupo
@@ -1230,6 +1235,33 @@ export async function cargarPersonaje(id) {
 export async function borrarPersonaje(id) {
     const { db, f } = exigirUsuario();
     await f.deleteDoc(f.doc(db, "personajes", id));
+}
+
+/* Compendio de NPC del máster (compendio.js) ___________________________________
+ * compendios/{uid} = { paginas (cuántas), actualizado (ms del último cambio) } y compendios/{uid}/paginas/{n} =
+ * { plantillas } (texto JSON). Solo lo lee y escribe su dueño. Leer = 1 + n lecturas; guardar = un lote con
+ * las páginas cambiadas y el índice. */
+
+/** { actualizado, paginas: [texto] }, o null si aún no tiene compendio en la nube */
+export async function leerCompendio() {
+    const { db, f, uid } = exigirUsuario();
+    const indice = await f.getDoc(f.doc(db, "compendios", uid));
+    if (!indice.exists()) return null;
+    const total = Math.max(0, Math.trunc(Number(indice.data().paginas) || 0));
+    const paginas = await Promise.all(Array.from({ length: total }, (_, n) =>
+        f.getDoc(f.doc(db, "compendios", uid, "paginas", String(n)))
+            .then(d => (d.exists() ? String(d.data().plantillas ?? "[]") : "[]"))));
+    return { actualizado: Number(indice.data().actualizado) || 0, paginas };
+}
+
+/** Sube las páginas cambiadas ({ n: texto }), borra las que sobran y actualiza el índice, todo a la vez */
+export async function guardarPaginasCompendio({ actualizado, total, paginas, borrar = [] }) {
+    const { db, f, uid } = exigirUsuario();
+    const lote = f.writeBatch(db);
+    Object.entries(paginas).forEach(([n, texto]) => lote.set(f.doc(db, "compendios", uid, "paginas", String(n)), { plantillas: texto }));
+    borrar.forEach(n => lote.delete(f.doc(db, "compendios", uid, "paginas", String(n))));
+    lote.set(f.doc(db, "compendios", uid), { paginas: total, actualizado });
+    await lote.commit();
 }
 
 /* Errores _____________________________________________________________________ */

@@ -35,6 +35,23 @@ service cloud.firestore {
         && request.resource.data.json.size() < 900000;
     }
 
+    // Compendio de NPC del máster (compendio.js): índice y páginas de texto JSON. Solo su dueño
+    match /compendios/{uid} {
+      allow read, delete: if conSesion() && request.auth.uid == uid;
+      allow create, update: if conSesion() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['paginas', 'actualizado'])
+        && request.resource.data.paginas is int
+        && request.resource.data.paginas <= 100
+        && request.resource.data.actualizado is number;
+      match /paginas/{pagina} {
+        allow read, delete: if conSesion() && request.auth.uid == uid;
+        allow create, update: if conSesion() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['plantillas'])
+          && request.resource.data.plantillas is string
+          && request.resource.data.plantillas.size() < 900000;
+      }
+    }
+
     // Nombre público de cada jugador (para elegir a quién ofrecer algo)
     match /usuarios/{uid} {
       allow read: if conSesion();

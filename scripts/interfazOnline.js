@@ -75,6 +75,8 @@ export const getPersonajesSala = () => servicio.getPersonajesSala()
 /* ¿Es un personaje de esta pestaña? (en modo máster, cualquiera de los suyos) */
 const esDeEstaPestana = (instancia) => instancia === getInstancia() || servicio.esInstanciaPropia(instancia);
 export const setIdPersonajeNube = (id) => cambiarIdNube(id);
+/** Todos los personajes conectados de la sala, también los de esta pestaña (en modo máster, sus "m-<id>") y los ocultos */
+export const getTodosPersonajesSala = () => servicio.getPersonajesSala();
 
 /**
  * ¿Se puede usar este nombre en la sala? Devuelve el motivo si no, o null. Los nombres son únicos en la sala:
@@ -124,6 +126,11 @@ export const echarPersonajeSala = (jugador, id) => servicio.echarPersonaje(jugad
 /** Motivo por el que un nombre no puede estar en la sala según un registro (el de la sala si no se pasa) */
 export const motivoNombreSala = (nombre, registro) => servicio.motivoNombre(nombre, registro);
 export const mensajeErrorOnline = (error) => servicio.mensajeError(error);
+/* Compendio de NPC del máster (lo gestiona interfazMaster.js con compendio.js) */
+export const leerCompendioNube = () => servicio.leerCompendio();
+export const guardarCompendioNube = (cambios) => servicio.guardarPaginasCompendio(cambios);
+export const haySesionOnline = () => Boolean(servicio.getEstado().usuario);
+export const alCambiarSesionOnline = (cb) => servicio.alCambiarEstado(cb);
 
 export async function inicializarOnline(contexto) {
     ctx = contexto;

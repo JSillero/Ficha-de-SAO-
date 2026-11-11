@@ -397,6 +397,14 @@ const GLIFOS = {
     guardar: `
         <path class="p" d="M69 67.77v7.23h-7.23l7.23-7.23zm0-42.77v35.699l-14.302 14.301h-23.698v-50h38zm-19 25.25h-14v1.5h14v-1.5zm14-5.5h-28v1.5h28v-1.5zm0-5.5h-28v1.5h28v-1.5zm0-5.5h-28v1.5h28v-1.5zm-10.376 47.451l-2.917 1.326 1.326-2.917 1.591 1.591zm25.014-24.483l-2.121-2.121-24.042 24.041 2.121 2.121 24.042-24.041z"/>`,
     /* Menú de opciones: Personaje (silueta de busto) y Online (punto con ondas) */
+    // Dos hojas superpuestas (duplicar una plantilla del compendio)
+    duplicar: `
+        <rect class="s" x="22" y="18" width="40" height="48" rx="5"/>
+        <rect class="p" x="38" y="34" width="40" height="48" rx="5"/>`,
+    // Libro abierto (compendio de NPC)
+    compendio: `
+        <path class="p" d="M18 26C28 22 40 22 48 28V80C40 74 28 74 18 78Z"/>
+        <path class="s" d="M82 26C72 22 60 22 52 28V80C60 74 72 74 82 78Z"/>`,
     personaje: `
         <polygon class="p" points="41,22 59,22 64,30 64,47 57,56 43,56 36,47 36,30"/>
         <polygon class="p" points="43,58 57,58 60,64 78,70 80,80 20,80 22,70 40,64"/>`,

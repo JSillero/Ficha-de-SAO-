@@ -11,6 +11,13 @@ import { MANOS, partesDeMano } from "./turno.js";
 import { esZonaSegura, MOTIVOS_ZONA } from "./zonas.js";
 import { gastarEstricto } from "./objetos.js";
 import { calcularDannoAtaque, dannoElementalArma } from "./ataque.js";
+import { partesExtra, partesDeEquipoNpc, PARTE_DE_MANO } from "./npc.js";
+
+/* Ranura del arma con la que se usa un arte: una mano, o en un NPC "parte:<id>" (sus partes que no son brazos) */
+const itemDeRanura = (pj, ranura) => (ranura?.startsWith("parte:")
+    ? partesExtra(pj).find(parte => parte.id === ranura.slice(6))?.equipo ?? null
+    : pj[ranura]);
+const esArmaDeAtaque = (item) => Boolean(ARMAS[item?.tipo]) && !ARMAS[item.tipo].escudo;
 
 export const VERSION_FORMATO_ARTES = 1;
 export const URL_CATALOGO_ARTES = "./data/artes.json";
@@ -206,6 +213,7 @@ export function quitarDesbloqueos(pj, cantidad) {
 
 /** Motivo por el que no se puede conseguir un arte nueva, o null */
 export function motivoNoConseguirArte(pj) {
+    if (pj.esNpc) return null; // los NPC no gastan desbloqueos
     return desbloqueosDisponibles(pj) < COSTE_DESBLOQUEO_ARTE ? "No te quedan desbloqueos de arte." : null;
 }
 
@@ -213,8 +221,9 @@ export function motivoNoConseguirArte(pj) {
 export function conseguirArte(pj, arte) {
     const motivo = motivoNoConseguirArte(pj);
     if (motivo) return { ok: false, resumen: [motivo] };
-    pj.desbloqueosArteGastados = (Number(pj.desbloqueosArteGastados) || 0) + COSTE_DESBLOQUEO_ARTE;
+    if (!pj.esNpc) pj.desbloqueosArteGastados = (Number(pj.desbloqueosArteGastados) || 0) + COSTE_DESBLOQUEO_ARTE;
     pj.artes.push(arte);
+    if (pj.esNpc) return { ok: true, resumen: [`${arte.nombre} está en las artes sin equipar.`] };
     return { ok: true, resumen: [`${arte.nombre} está en las artes sin equipar.`, `Desbloqueos de arte: ${desbloqueosDisponibles(pj)}`] };
 }
 
@@ -290,6 +299,8 @@ export function cumpleRequisito(pj, req) {
  * @returns {{ cumple: boolean, obligatorios: {req, ok, texto}[], alternativos: {req, ok, texto}[] }}
  */
 export function estadoRequisitos(pj, arte) {
+    // Los NPC no tienen requisitos (no tienen características ni habilidades)
+    if (pj.esNpc) return { cumple: true, obligatorios: [], alternativos: [] };
     const evaluar = (req) => ({ req, ok: cumpleRequisito(pj, req), texto: textoRequisito(req) });
     const obligatorios = arte.requisitos.filter(req => !req.alternativo).map(evaluar);
     const alternativos = arte.requisitos.filter(req => req.alternativo).map(evaluar);
@@ -345,6 +356,7 @@ export function ranurasUsadas(pj) {
 }
 
 export function ranurasLibres(pj) {
+    if (pj.esNpc) return Infinity; // los NPC no tienen límite de memoria
     return (Number(pj.espaciosArte) || 0) - ranurasUsadas(pj);
 }
 
@@ -367,6 +379,7 @@ export function motivoNoEquiparArte(pj, arte) {
  */
 export function ajustarMemoriaArtes(pj) {
     const desequipadas = [];
+    if (pj.esNpc) return desequipadas;
     // Desequipar una pasiva puede quitar memoria (modificador "espacios"): se recalcula cada vez
     while (ranurasUsadas(pj) > (Number(pj.espaciosArte) || 0)) {
         const ultima = artesEnMemoria(pj).at(-1);
@@ -379,6 +392,7 @@ export function ajustarMemoriaArtes(pj) {
 }
 
 export function motivoNoDesequiparArte(pj, arte) {
+    if (pj.esNpc) return "Los NPC llevan todas sus artes equipadas.";
     if (arte.onirica) return "Las habilidades oníricas no se pueden desequipar.";
     if (!arte.equipada) return "No está equipada.";
     if (!esZonaSegura(pj)) return MOTIVOS_ZONA.artes + ".";
@@ -407,9 +421,16 @@ export function desequiparArte(pj, arte) {
 
 /* Usar un arte activa __________________________________________________________ */
 
-/** Mano con la que se usa un arte de arma (null si no hay arma de esos tipos) */
+/** Mano con la que se usa un arte de arma (null si no hay arma de esos tipos).
+    Un NPC puede usarla con el arma de cualquier parte: primero una de los tipos del arte; si no, cualquiera. */
 export function manoDeArte(pj, arte) {
     if (arte.uso?.tipo !== "arma") return null;
+    if (pj.esNpc) {
+        const ranuras = [...MANOS, ...partesExtra(pj).map(parte => `parte:${parte.id}`)]
+            .filter(ranura => esArmaDeAtaque(itemDeRanura(pj, ranura)));
+        if (arte.uso.ambasManos) return MANOS.every(mano => ranuras.includes(mano)) ? "manoDerecha" : null;
+        return ranuras.find(ranura => arte.uso.armas.includes(itemDeRanura(pj, ranura).tipo)) ?? ranuras[0] ?? null;
+    }
     const tiene = (mano) => arte.uso.armas.includes(pj[mano]?.tipo);
     if (arte.uso.ambasManos) return MANOS.every(tiene) ? "manoDerecha" : null;
     return MANOS.find(tiene) ?? null;
@@ -423,6 +444,7 @@ export function partesDeArte(pj, arte) {
     const mano = manoDeArte(pj, arte);
     if (!mano) return [];
     if (arte.uso.ambasManos) return ["izquierda", "derecha"];
+    if (pj.esNpc) return partesDeEquipoNpc(pj, mano.startsWith("parte:") ? mano.slice(6) : PARTE_DE_MANO[mano]);
     return partesDeMano(mano, TIPOS_DOS_MANOS.includes(pj[mano]?.tipo));
 }
 
@@ -476,7 +498,7 @@ export function calcularDannoArte(pj, arte, mano = manoDeArte(pj, arte)) {
                 desglose: arte.danno > 0 ? [`${arte.danno} (Arte)`] : []
             };
         }
-        let item = pj[manoGolpe];
+        let item = itemDeRanura(pj, manoGolpe);
         if (conPocion.has(manoGolpe)) item = { ...item, pocionAplicada: null };
         else if (item?.pocionAplicada) conPocion.add(manoGolpe);
         const ataque = calcularDannoAtaque(pj, item, false);
@@ -510,7 +532,10 @@ export function usarArte(pj, arte, gastar = gastarEstricto(pj)) {
     const mano = manoDeArte(pj, arte);
     const danno = calcularDannoArte(pj, arte, mano);
     // Como en un ataque normal, la poción aplicada a cada arma usada se gasta en su primer golpe
-    if (danno) new Set(manosDeGolpes(pj, arte, mano)).forEach(m => { if (m && pj[m]?.pocionAplicada) pj[m].pocionAplicada = null; });
+    if (danno) new Set(manosDeGolpes(pj, arte, mano)).forEach(m => {
+        const item = m ? itemDeRanura(pj, m) : null;
+        if (item?.pocionAplicada) item.pocionAplicada = null;
+    });
 
     pj.puntosArte = Math.max(0, (Number(pj.puntosArte) || 0) - arte.costePA);
     const resumen = [arte.descripcion.trim() || "(El arte no tiene descripción)"];

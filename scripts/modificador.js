@@ -1,5 +1,12 @@
 /* Valor de turnos que marca algo como permanente: no se descuenta al pasar turno,
    solo desaparece si el usuario lo edita o lo elimina. Se usa también en los estados de PJ. */
+/** Valor de un modificador: entero, salvo las debilidades (deb_<elemento>), que son multiplicadores con 2 decimales */
+export function numeroModificador(modificado, valor) {
+    const n = Number(String(valor ?? 0).replace(",", ".")) || 0;
+    return String(modificado ?? "").startsWith("deb_") ? Math.round(n * 100) / 100 : Math.trunc(n);
+}
+export const esModificadorDecimal = (modificado) => String(modificado ?? "").startsWith("deb_");
+
 export const TURNOS_PERMANENTE = -1;
 
 export default class Modificador {
@@ -40,6 +47,6 @@ export function cargarModificador(datos) {
     // Las fichas antiguas guardaban turnos = 0 en modificadores que en la práctica eran permanentes
     const turnos = Math.trunc(Number(mod.turnos));
     mod.turnos = (!Number.isFinite(turnos) || turnos <= 0) ? TURNOS_PERMANENTE : turnos;
-    mod.numero = Math.trunc(Number(mod.numero) || 0);
+    mod.numero = numeroModificador(mod.modificado, mod.numero);
     return mod;
 }

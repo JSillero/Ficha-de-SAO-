@@ -10,8 +10,9 @@
 
 import { ARMAS, TIPOS_DOS_MANOS, equipoActivo } from "./equipamiento.js";
 import { cargarArte, calcularDannoArte } from "./artes.js";
-import { equipoDeRanura } from "./reliquias.js";
+import { equipoDeRanura, esRanuraParte, ranurasDePartes } from "./reliquias.js";
 import { partesDeMano } from "./turno.js";
+import { partesDeEquipoNpc, PARTE_DE_MANO } from "./npc.js";
 
 const MANOS_EFECTO = ["manoIzquierda", "manoDerecha"];
 
@@ -24,9 +25,9 @@ export function cargarEfectos(lista) {
     });
 }
 
-/** Ranuras de equipo que pueden llevar efectos: manos, armadura y accesorios */
+/** Ranuras de equipo que pueden llevar efectos: manos, armadura, accesorios y, en un NPC, sus otras partes */
 export function ranurasConEfectos(pj) {
-    return [...MANOS_EFECTO, "equipoArmadura", ...(pj.accesorios || []).map((_, i) => `accesorio-${i}`)];
+    return [...MANOS_EFECTO, "equipoArmadura", ...(pj.accesorios || []).map((_, i) => `accesorio-${i}`), ...ranurasDePartes(pj)];
 }
 
 /** Equipos puestos con efectos: [{ ranura, equipo }] */
@@ -49,17 +50,20 @@ export function modificadorEfectosEquipo(pj, atributo) {
 }
 
 const esMano = (ranura) => MANOS_EFECTO.includes(ranura);
+/* Ranuras que gastan su acción al usar un efecto: las manos y, en un NPC, sus otras partes */
+const gastaAccion = (ranura) => esMano(ranura) || esRanuraParte(ranura);
 
 /** Acciones que gasta usar un efecto activo de esa ranura */
 export function partesDeEfecto(pj, ranura) {
-    if (!esMano(ranura)) return [];
+    if (!gastaAccion(ranura)) return [];
+    if (pj.esNpc) return partesDeEquipoNpc(pj, esRanuraParte(ranura) ? ranura.slice(6) : PARTE_DE_MANO[ranura]);
     return partesDeMano(ranura, TIPOS_DOS_MANOS.includes(pj[ranura]?.tipo));
 }
 
-/* Mano cuyo arma suma su daño al efecto (solo armas de ataque, no escudos ni reliquias) */
+/* Ranura cuyo arma suma su daño al efecto (solo armas de ataque, no escudos ni reliquias) */
 function manoDelArma(pj, ranura) {
-    const tipo = pj[ranura]?.tipo;
-    return esMano(ranura) && ARMAS[tipo] && !ARMAS[tipo].escudo ? ranura : null;
+    const tipo = equipoDeRanura(pj, ranura)?.tipo;
+    return gastaAccion(ranura) && ARMAS[tipo] && !ARMAS[tipo].escudo ? ranura : null;
 }
 
 export function motivoNoUsarEfecto(pj, ranura, indice) {
@@ -96,7 +100,8 @@ export function usarEfectoEquipo(pj, ranura, indice, gastar) {
     const mano = manoDelArma(pj, ranura);
     const danno = calcularDannoEfecto(pj, ranura, efecto);
     // Como en un ataque, la poción aplicada al arma se gasta en el golpe
-    if (danno && mano && pj[mano]?.pocionAplicada) pj[mano].pocionAplicada = null;
+    const arma = mano ? equipoDeRanura(pj, mano) : null;
+    if (danno && arma?.pocionAplicada) arma.pocionAplicada = null;
 
     pj.puntosArte = Math.max(0, (Number(pj.puntosArte) || 0) - efecto.costePA);
     const resumen = [efecto.descripcion.trim() || "(El efecto no tiene descripción)"];

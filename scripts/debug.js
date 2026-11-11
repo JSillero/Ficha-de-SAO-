@@ -27,7 +27,8 @@ export function verificarIdaVuelta(personaje) {
     compararProfundo(original, recargado, "", diferencias);
 
     // Propiedades del modelo que no llegan al JSON
-    const sinGuardar = Object.keys(personaje).filter(campo => !(campo in original));
+    // (npc solo se guarda en los NPC)
+    const sinGuardar = Object.keys(personaje).filter(campo => !(campo in original) && !(campo === "npc" && !personaje.esNpc));
 
     return { diferencias, sinGuardar };
 }
@@ -60,6 +61,7 @@ export function crearPersonajePrueba() {
     }
     pj.nivel = 20;
     pj.zona = "base"; // solo admite claves de ZONAS
+    pj.esNpc = false; // el NPC tiene su propia ficha de prueba (crearNpcPrueba)
 
     ESTADOS_LISTA.forEach((estado, i) => {
         pj.estados[estado] = { valor: i + 1, turnos: i % 2 ? TURNOS_PERMANENTE : i + 2 };
@@ -92,6 +94,7 @@ export function crearPersonajePrueba() {
     pj.baul = objetos.map(objeto => cargarObjeto({ ...objeto, cantidad: 7 }));
     pj.objetosClave = [{ nombre: "llave", descripcion: "abre la puerta" }, { nombre: "mapa", descripcion: "" }];
     pj.armasLanzadas = [{ mano: "manoIzquierda", equipo: crearEquipo("cuchillo lanzado", "cuchillo") }];
+    pj.botin = [cargarObjeto({ tipo: "material", nombre: "piel", cantidad: 2 })]; // recompensa de un NPC por recoger
 
     pj.manoDerecha = crearEquipo("espada", "espada");
     pj.manoDerecha.pocionAplicada = { ...pocion, cantidad: 1 };
@@ -157,6 +160,53 @@ export function crearPersonajePrueba() {
     return pj;
 }
 
+/** NPC con todos sus campos distintos de los valores por defecto (npc.js) */
+export function crearNpcPrueba() {
+    const crearEquipo = (nombre, tipo) => {
+        const equipo = new Equipamiento(nombre, `descripción ${nombre}`, tipo, 4, 0, 0);
+        equipo.modificadores = [new Modificador(`mod ${nombre}`, "defensa", 1, TURNOS_PERMANENTE)];
+        return equipo;
+    };
+    const pj = new PJ();
+    pj.esNpc = true;
+    pj.idPlantilla = "plantilla-prueba";
+    pj.nombre = "lobo de prueba";
+    pj.nivel = 22;
+    Object.assign(pj.npc, {
+        vidaMax: 77, puntosArteMax: 3, defensa: 15, iniciativa: 9, vMovimiento: 6, perspicacia: 11,
+        percepcionPasiva: 13, aguante: 7, expRecompensa: 250,
+        tiradas: [{ nombre: "Olfato", valor: 6 }, { nombre: "Aullido", valor: -1 }],
+        recompensa: {
+            cor: 40,
+            objetos: [cargarObjeto({ tipo: "material", nombre: "piel", cantidad: 3 })],
+            objetosClave: [{ nombre: "colmillo", descripcion: "de lobo" }]
+        },
+        partes: [
+            { id: "izquierda", nombre: "Pata izquierda", disponible: true, equipo: null },
+            { id: "derecha", nombre: "Pata derecha", disponible: false, equipo: null },
+            { id: "cabeza", nombre: "Boca", disponible: true, equipo: null },
+            { id: "pies", nombre: "Patas traseras", disponible: true, equipo: null },
+            { id: "cola", nombre: "Cola", disponible: false, equipo: null },
+            { id: "ala", nombre: "Ala", disponible: true, equipo: null }
+        ]
+    });
+    // Arma a dos manos en la cola que ocupa también el ala, con acierto, dado y daño elemental
+    const coletazo = crearEquipo("coletazo", "espadon");
+    Object.assign(coletazo, { acierto: 5, dado: 2, parteSecundaria: "ala", dannoElemental: { fuego: 2, electricidad: 0, hielo: 0, luz: 0, oscuridad: 0 } });
+    pj.npc.partes[4].equipo = coletazo;
+    pj.manoIzquierda = Object.assign(crearEquipo("garra", "cuchillo"), { acierto: 3, dado: 0 });
+    pj.equipoArmadura = Object.assign(crearEquipo("piel", "media"), {
+        resistencias: { fuego: 0, electricidad: 0, hielo: 2, luz: 0, oscuridad: 0 },
+        debilidades: { fuego: 1.5, electricidad: 0, hielo: 0, luz: 2, oscuridad: 0 }
+    });
+    pj.modificadores.push(new Modificador("frágil", "deb_hielo", 0.75, TURNOS_PERMANENTE));
+    pj.modificadores = [new Modificador("furia", "defensa", 2, 3)];
+    pj.calcularCaracteristicas();
+    pj.vida = 50;
+    pj.puntosArte = 2;
+    return pj;
+}
+
 /**
  * Compara los campos visibles en la página con los del modelo.
  * @returns {string[]} descripción de cada campo que no coincide
@@ -207,6 +257,7 @@ export function verificarInterfaz(personaje, documento = document) {
  * @returns {string[]}
  */
 export function validarFicha(pj) {
+    if (pj.esNpc) return validarNpc(pj);
     const avisos = [];
     const caracteristicas = ["fortaleza", "reflejos", "voluntad", "inteligencia"];
 
@@ -274,16 +325,29 @@ export function validarFicha(pj) {
     return avisos;
 }
 
+/* NPC: no tiene características, habilidades ni límites de nivel; solo PV y PA dentro de sus máximos */
+function validarNpc(pj) {
+    const avisos = [];
+    if (pj.vida > pj.vidaMax) avisos.push(`PV actuales (${pj.vida}) por encima del máximo (${pj.vidaMax}).`);
+    if (pj.vida < 0) avisos.push(`PV actuales negativos (${pj.vida}).`);
+    if (pj.puntosArte > pj.puntosArteMax) avisos.push(`PA actuales (${pj.puntosArte}) por encima del máximo (${pj.puntosArteMax}).`);
+    if (pj.esUnderworld || pj.protagonista) avisos.push("Un NPC no puede ser Underworld ni protagonista.");
+    const huecosLibres = pj.inventario.filter(hueco => !hueco).length;
+    if (huecosLibres !== 1) avisos.push(`El inventario del NPC tiene ${huecosLibres} huecos libres (debería tener 1).`);
+    return avisos;
+}
+
 /**
  * Ejecuta todas las comprobaciones y devuelve el informe.
  */
 export function ejecutarDebug(personaje, documento = document) {
     const actual = verificarIdaVuelta(personaje);
     const prueba = verificarIdaVuelta(crearPersonajePrueba());
+    const npc = verificarIdaVuelta(crearNpcPrueba());
     return {
         idaVueltaActual: actual.diferencias,
-        idaVueltaPrueba: prueba.diferencias,
-        camposSinGuardar: [...new Set([...actual.sinGuardar, ...prueba.sinGuardar])],
+        idaVueltaPrueba: [...prueba.diferencias, ...npc.diferencias.map(d => `NPC: ${d}`)],
+        camposSinGuardar: [...new Set([...actual.sinGuardar, ...prueba.sinGuardar, ...npc.sinGuardar])],
         interfaz: verificarInterfaz(personaje, documento),
         avisos: validarFicha(personaje)
     };

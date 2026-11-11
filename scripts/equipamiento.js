@@ -31,6 +31,14 @@ export function cargarValoresElementales(datos) {
         [elemento, Math.max(0, Math.floor(Number(datos?.[elemento]) || 0))]));
 }
 
+/** Debilidades elementales (NPC): multiplicador del daño de cada elemento (0 = sin debilidad), con 2 decimales */
+export function cargarDebilidades(datos) {
+    return Object.fromEntries(ELEMENTOS.map(elemento => {
+        const n = Number(String(datos?.[elemento] ?? 0).replace(",", "."));
+        return [elemento, Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0];
+    }));
+}
+
 export const TIPOS_DOS_MANOS =Object.keys(ARMAS).filter(tipo => ARMAS[tipo].manos === 2);
 export const TIPOS_ESCUDO = Object.keys(ARMAS).filter(tipo => ARMAS[tipo].escudo);
 export const TIPOS_LANZABLES = Object.keys(ARMAS).filter(tipo => ARMAS[tipo].lanzable);
@@ -64,6 +72,13 @@ export default class Equipamiento {
         this.pocionAplicada = null; // poción untada en el arma: se aplica en el siguiente ataque
         this.reliquia = tipo === TIPO_RELIQUIA ? { habilidades: [] } : null; // { habilidades } si es reliquia (reliquias.js)
         this.efectos = []; // pasivas y activas con formato de arte (efectosEquipo.js; se cargan en cargarEquipo)
+        // Solo en los NPC (npc.js): acierto que suma a la tirada de ataque, dado propio (0 bajo, 1 medio, 2 alto;
+        // null = el de su tipo en ARMAS) y, en un arma a dos manos de una parte extra, la otra parte que ocupa
+        this.acierto = 0;
+        this.dado = null;
+        // Armadura de un NPC: multiplicador del daño de cada elemento (0 = sin debilidad)
+        this.debilidades = cargarDebilidades();
+        this.parteSecundaria = null;
     }
 
     esEscudo() {
@@ -171,5 +186,9 @@ export function cargarEquipamiento(datos) {
     // Una reliquia sin arma siempre tiene su lista de habilidades
     equipo.reliquia = cargarReliquia(equipo.reliquia) ?? (equipo.tipo === TIPO_RELIQUIA ? { habilidades: [] } : null);
     delete equipo.lanzada; // marca de una versión anterior: el arma lanzada ya no se queda en la mano
+    equipo.debilidades = cargarDebilidades(equipo.debilidades);
+    equipo.acierto = Math.trunc(Number(equipo.acierto) || 0);
+    equipo.dado = [0, 1, 2].includes(equipo.dado) ? equipo.dado : null;
+    equipo.parteSecundaria = equipo.parteSecundaria ? String(equipo.parteSecundaria).slice(0, 60) : null;
     return equipo;
 }

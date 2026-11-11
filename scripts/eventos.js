@@ -25,7 +25,7 @@ export const VERSION_EVENTO = 2;
 
 /* Sonidos que un evento puede pedir con datos.sonido al pintarse en las fichas de los demás (p. ej. el cristal
    al romperse). Solo los de esta lista, porque el dato viene de otro jugador; si no pide ninguno, "notificacion". */
-const SONIDOS_EVENTO = ["cristal"];
+const SONIDOS_EVENTO = ["cristal", "muerte"];
 const SONIDO_EVENTO_AJENO = "notificacion";
 
 /* tipo → pintar(datos) que devuelve { popup: HTMLElement, titulo: string, tipoPopup: "tirada" | "info" } */
@@ -33,6 +33,12 @@ const pintores = {};
 
 /* tipo → manejar(evento) de los eventos privados (solo se llama en el destinatario) */
 const manejadores = {};
+
+/* tipo → alRecibir(evento) de los eventos con pop-up que además hacen algo al llegar (p. ej. "derrota": la EXP) */
+const alRecibirPublico = {};
+export function registrarAlRecibir(tipo, alRecibir) {
+    alRecibirPublico[tipo] = alRecibir;
+}
 
 /* Quién emite: jugador (id de usuario) y nombre del personaje. personaje, oculto y esMaster pueden ser
    funciones (cambian con el tiempo). esMaster: si esta ficha es la del máster de la sala (lo ve todo completo).
@@ -42,10 +48,19 @@ const manejadores = {};
    en modo máster, cualquiera de sus personajes). */
 const origen = {
     jugador: null, personaje: "", oculto: false, esMaster: false, enMiGrupo: () => false,
-    instancia: () => getInstancia(), esPropia: (instancia) => instancia === getInstancia()
+    instancia: () => getInstancia(), esPropia: (instancia) => instancia === getInstancia(),
+    idPersonaje: () => null
 };
+
+/* Modo máster: sus propios pop-ups también se pueden recibir (en el personaje que tenga en pantalla) */
+let golpesPropiosAplicables = () => false;
+export function setGolpesPropiosAplicables(fn) {
+    golpesPropiosAplicables = fn;
+}
 const instanciaPropia = () => origen.instancia() || getInstancia();
 const esInstanciaPropia = (instancia) => Boolean(instancia) && (instancia === getInstancia() || origen.esPropia(instancia));
+/** ¿Esa instancia es de esta pestaña? (en modo máster, cualquiera de sus personajes) */
+export const esDeEstaPestana = esInstanciaPropia;
 let publicador = null;
 
 const valor = (v) => typeof v === "function" ? v() : v;
@@ -63,7 +78,8 @@ export function registrarManejador(tipo, manejar) {
     manejadores[tipo] = manejar;
 }
 
-export function configurarOrigen({ jugador, personaje, oculto, esMaster, enMiGrupo, instancia, esPropia } = {}) {
+export function configurarOrigen({ jugador, personaje, oculto, esMaster, enMiGrupo, instancia, esPropia, idPersonaje } = {}) {
+    if (idPersonaje !== undefined) origen.idPersonaje = idPersonaje;
     if (instancia !== undefined) origen.instancia = instancia;
     if (esPropia !== undefined) origen.esPropia = esPropia;
     if (jugador !== undefined) origen.jugador = jugador;
@@ -108,7 +124,8 @@ export function setBloqueoEmision(fn) {
 export function emitirEvento(tipo, datos) {
     if (emisionBloqueada()) return null;
     const evento = crearEvento(tipo, datos);
-    pintarEvento(evento, true);
+    // Quién lo ha emitido de esta pestaña (solo aquí, no viaja): para no recibir tu propio golpe en modo máster
+    pintarEvento(evento, true, origen.idPersonaje());
     if (publicador) {
         try {
             Promise.resolve(publicador(evento)).catch(error => console.warn("No se pudo enviar el evento", error));
@@ -135,6 +152,9 @@ export function recibirEvento(evento) {
     const completo = valor(origen.esMaster) || Boolean(origen.enMiGrupo?.(evento.instancia));
     if (!completo) evento = resumirEvento(evento);
     pintarEvento(evento, false);
+    if (alRecibirPublico[evento.tipo]) {
+        try { alRecibirPublico[evento.tipo](evento); } catch (error) { console.warn("Evento mal formado", evento, error); }
+    }
 }
 
 /* Copia del evento sin el cálculo: sin dados ni sumandos en las tiradas y sin desglose en el daño.
@@ -156,7 +176,7 @@ export function resumirEvento(evento) {
     return { ...evento, datos };
 }
 
-function pintarEvento(evento, propio) {
+function pintarEvento(evento, propio, idAutorPropio = null) {
     const pintar = pintores[evento.tipo];
     if (!pintar) {
         console.warn(`Evento de tipo desconocido: ${evento.tipo}`);
@@ -177,6 +197,10 @@ function pintarEvento(evento, propio) {
         popup.classList.add("popup-ajeno");
         hacerGolpesAplicables(popup, evento, autor);
         if (esOfertaParaMi(evento)) hacerOfertaConsumible(popup, evento, autor);
+    } else if (golpesPropiosAplicables()) {
+        // Modo máster: el golpe de uno de sus personajes se puede recibir en otro (el que tenga en pantalla)
+        const autor = String(evento.personaje ?? "").trim() || "Tu personaje";
+        hacerGolpesAplicables(popup, evento, autor, idAutorPropio);
     }
     mostrarPopup(popup, { titulo, tipo: tipoPopup, evento });
     // Los propios ya han sonado al hacer la acción; los de los demás suenan aquí
@@ -206,7 +230,7 @@ export function golpesDeEvento(evento) {
     return [];
 }
 
-function hacerGolpesAplicables(popup, evento, autor) {
+function hacerGolpesAplicables(popup, evento, autor, idAutorPropio = null) {
     if (!aplicadorDanno) return;
     const golpes = golpesDeEvento(evento);
     popup.querySelectorAll?.(".popup-danno[data-golpe]").forEach(bloque => {
@@ -215,14 +239,17 @@ function hacerGolpesAplicables(popup, evento, autor) {
         bloque.classList.add("aplicable");
         bloque.tabIndex = 0;
         bloque.setAttribute("role", "button");
-        bloque.title = "Recibir este golpe en tu personaje";
+        bloque.title = idAutorPropio ? "Recibir este golpe en el personaje que tienes en pantalla" : "Recibir este golpe en tu personaje";
         bloque.insertAdjacentHTML("beforeend", `<div class="popup-aplicar">Clic para recibir este golpe</div>`);
         const aplicar = (e) => {
             e.stopPropagation(); // no cierra el pop-up
             if (bloque.classList.contains("aplicado")) return;
             // tirada: total de la tirada de ataque (para compararlo con la Defensa); null si no hubo tirada (artes)
             const tirada = evento.tipo === "tirada" && Number.isFinite(Number(evento.datos?.total)) ? Number(evento.datos.total) : null;
-            if (!aplicadorDanno(golpe, { autor, titulo: evento.datos?.titulo ?? "", tirada })) return;
+            // origen: quién ha dado el golpe (para saber quién mata a un NPC del máster)
+            // idPersonaje: en un pop-up propio del máster, su personaje que lo emitió
+            const origen = { jugador: evento.jugador ?? null, instancia: evento.instancia ?? null, nombre: autor, idPersonaje: idAutorPropio };
+            if (!aplicadorDanno(golpe, { autor, titulo: evento.datos?.titulo ?? "", tirada, origen })) return;
             bloque.classList.replace("aplicable", "aplicado");
             bloque.removeAttribute("role");
             bloque.title = "Ya has recibido este golpe";
@@ -249,7 +276,9 @@ function pintarLista({ titulo = "", subtitulo = "", lineas = [] }) {
 /* "recibido": un jugador ha recibido daño (de un pop-up ajeno o del botón Daño).
    "consumido": un jugador ha consumido la comida o poción que le ofrecieron.
    "borracho": una acción ha fallado por la embriaguez y el personaje ha hecho algo absurdo. */
-["arte", "pasiva", "objeto", "reliquia", "recibido", "consumido", "borracho"].forEach(tipo => registrarPintor(tipo, pintarLista));
+/* "derrota": un NPC del máster ha muerto (suena datos.sonido = "muerte" en toda la sala; quien recibe EXP o
+   recompensa lo aplica con registrarAlRecibir) */
+["arte", "pasiva", "objeto", "reliquia", "recibido", "consumido", "borracho", "derrota"].forEach(tipo => registrarPintor(tipo, pintarLista));
 
 /* Ofrecer comida o pociones ___________________________________________________
  * "oferta": { titulo, subtitulo, lineas, para (instancia del personaje destinatario), objeto }. Todos ven quién
@@ -274,15 +303,18 @@ registrarPintor("oferta", (datos) => {
 
 function hacerOfertaConsumible(popup, evento, autor) {
     if (!consumidorOferta || !evento.datos?.objeto) return;
-    const verbo = evento.datos.objeto.tipo === "comida" ? "Comer" : "Beber";
-    popup.insertAdjacentHTML("beforeend",
-        `<button type="button" class="btn-consumir-oferta" title="Gasta la acción de la boca">${verbo} (acción de boca)</button>`);
+    // coger: botín que te ofrece un compañero (va al inventario; si no cabe, se pierde)
+    const coger = Boolean(evento.datos.coger);
+    const verbo = coger ? "Coger" : evento.datos.objeto.tipo === "comida" ? "Comer" : "Beber";
+    popup.insertAdjacentHTML("beforeend", coger
+        ? `<button type="button" class="btn-consumir-oferta" title="Va a tu inventario (lo que no cabe se pierde)">Coger</button>`
+        : `<button type="button" class="btn-consumir-oferta" title="Gasta la acción de la boca">${verbo} (acción de boca)</button>`);
     const boton = popup.querySelector(".btn-consumir-oferta");
     boton.addEventListener("click", (e) => {
         e.stopPropagation(); // no cierra el pop-up
         if (boton.disabled) return;
-        if (!consumidorOferta(evento.datos.objeto, { autor, para: evento.datos.para })) return;
+        if (!consumidorOferta(evento.datos.objeto, { autor, para: evento.datos.para, coger })) return;
         boton.disabled = true;
-        boton.textContent = "✓ Consumida";
+        boton.textContent = coger ? "✓ Cogido" : "✓ Consumida";
     });
 }

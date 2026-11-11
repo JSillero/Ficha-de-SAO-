@@ -6,12 +6,42 @@ import { TURNOS_PERMANENTE } from "./modificador.js";
 import { TIPOS_DOS_MANOS } from "./equipamiento.js";
 import { esZonaSegura } from "./zonas.js";
 import { avanzarEnfriamientos } from "./reliquias.js";
+import { equiposDePartes, aciertoMaximo } from "./npc.js";
 
 /* Máximo de acciones por turno: se pueden usar 3 de los 4 tipos */
 export const ACCIONES_MAX = 3;
 
 /* Tipos de acción (campos booleanos de PJ: true = disponible) */
 export const PARTES_ACCION = ["izquierda", "derecha", "cabeza", "pies"];
+
+/* Un NPC tiene sus propias partes (npc.partes, cada una con disponible): una acción por parte y, por turno,
+   tantas como partes menos una (con las cuatro de siempre, 3). En las cuatro de siempre se mantienen también los
+   campos de PJ, así el muñeco funciona igual. */
+export function partesAccion(pj) {
+    return pj.esNpc ? pj.npc.partes.map(parte => parte.id) : PARTES_ACCION;
+}
+
+export function accionesMax(pj) {
+    return pj.esNpc ? Math.max(0, pj.npc.partes.length - 1) : ACCIONES_MAX;
+}
+
+export function parteDisponible(pj, parte) {
+    if (!pj.esNpc) return Boolean(pj[parte]);
+    return Boolean(pj.npc.partes.find(p => p.id === parte)?.disponible);
+}
+
+export function marcarParte(pj, parte, disponible) {
+    if (PARTES_ACCION.includes(parte)) pj[parte] = disponible;
+    const deNpc = pj.esNpc ? pj.npc.partes.find(p => p.id === parte) : null;
+    if (deNpc) deNpc.disponible = disponible;
+}
+
+/** Todas las acciones disponibles otra vez (inicio de turno, zona segura) */
+export function restablecerAcciones(pj) {
+    PARTES_ACCION.forEach(parte => { pj[parte] = true; });
+    if (pj.esNpc) pj.npc.partes.forEach(parte => { parte.disponible = true; });
+    pj.numeroAcciones = accionesMax(pj);
+}
 
 /* Acciones ____________________________________________________________________ */
 // En zona segura y en la base no se gastan acciones: las comprobaciones dicen que se puede
@@ -25,40 +55,41 @@ export function estaIncapacitado(pj) {
 }
 
 export function accionesUsadas(pj) {
-    return PARTES_ACCION.filter(parte => !pj[parte]).length;
+    return partesAccion(pj).filter(parte => !parteDisponible(pj, parte)).length;
 }
 
 export function accionesRestantes(pj) {
     if (estaIncapacitado(pj)) return 0;
-    const libres = PARTES_ACCION.filter(parte => pj[parte]).length;
+    const libres = partesAccion(pj).filter(parte => parteDisponible(pj, parte)).length;
     return Math.max(0, Math.min(libres, pj.numeroAcciones - accionesUsadas(pj)));
 }
 
 export function puedeGastar(pj, parte) {
     if (estaIncapacitado(pj)) return false;
+    if (!partesAccion(pj).includes(parte)) return false; // un NPC sin esa parte
     if (esZonaSegura(pj)) return true;
-    return Boolean(pj[parte]) && accionesUsadas(pj) < pj.numeroAcciones;
+    return parteDisponible(pj, parte) && accionesUsadas(pj) < pj.numeroAcciones;
 }
 
 /** Gasta la acción de una parte del cuerpo. Devuelve false si no se puede. */
 export function gastarAccion(pj, parte) {
     if (!puedeGastar(pj, parte)) return false;
-    if (!esZonaSegura(pj)) pj[parte] = false;
+    if (!esZonaSegura(pj)) marcarParte(pj, parte, false);
     return true;
 }
 
 /** ¿Se pueden gastar todas estas acciones a la vez? (p. ej. un arma a dos manos gasta ambos brazos) */
 export function puedeGastarVarias(pj, partes) {
-    if (esZonaSegura(pj)) return !estaIncapacitado(pj);
-    return !estaIncapacitado(pj)
-        && partes.every(parte => pj[parte])
+    if (estaIncapacitado(pj) || !partes.every(parte => partesAccion(pj).includes(parte))) return false;
+    if (esZonaSegura(pj)) return true;
+    return partes.every(parte => parteDisponible(pj, parte))
         && accionesUsadas(pj) + partes.length <= pj.numeroAcciones;
 }
 
 /** Gasta varias acciones; no gasta ninguna si no se pueden gastar todas. */
 export function gastarVarias(pj, partes) {
     if (!puedeGastarVarias(pj, partes)) return false;
-    if (!esZonaSegura(pj)) partes.forEach(parte => { pj[parte] = false; });
+    if (!esZonaSegura(pj)) partes.forEach(parte => marcarParte(pj, parte, false));
     return true;
 }
 
@@ -76,7 +107,7 @@ export function puedeGastarTodas(pj) {
 
 export function gastarTodas(pj) {
     if (!puedeGastarTodas(pj)) return false;
-    if (!esZonaSegura(pj)) PARTES_ACCION.forEach(parte => { pj[parte] = false; });
+    if (!esZonaSegura(pj)) partesAccion(pj).forEach(parte => marcarParte(pj, parte, false));
     return true;
 }
 
@@ -102,7 +133,7 @@ export function manoLibre(pj) {
 
 /** Devuelve una acción gastada (para corregir un clic por error). */
 export function devolverAccion(pj, parte) {
-    pj[parte] = true;
+    marcarParte(pj, parte, true);
 }
 
 /* Movimiento __________________________________________________________________ */
@@ -121,19 +152,19 @@ export function puedeMoverse(pj) {
     return puedeGastar(pj, "pies");
 }
 
-/** Correr gasta las tres acciones del turno y no se puede en sigilo. */
+/** Correr gasta las tres acciones del turno y no se puede en sigilo. Un NPC corre con todas sus acciones
+    (necesita piernas). */
 export function puedeCorrer(pj) {
     if (estaIncapacitado(pj) || pj.enSigilo) return false;
-    return esZonaSegura(pj) || (accionesUsadas(pj) === 0 && pj.numeroAcciones >= ACCIONES_MAX);
+    if (pj.esNpc && !partesAccion(pj).includes("pies")) return false;
+    return esZonaSegura(pj) || (accionesUsadas(pj) === 0 && pj.numeroAcciones >= accionesMax(pj));
 }
 
 export function correr(pj) {
     if (!puedeCorrer(pj)) return false;
-    if (!esZonaSegura(pj)) {
-        pj.pies = false;
-        pj.izquierda = false;
-        pj.derecha = false;
-    }
+    if (esZonaSegura(pj)) return true;
+    if (pj.esNpc) partesAccion(pj).forEach(parte => marcarParte(pj, parte, false));
+    else ["pies", "izquierda", "derecha"].forEach(parte => marcarParte(pj, parte, false));
     return true;
 }
 
@@ -160,7 +191,7 @@ export function puedeEntrarEnSigilo(pj) {
 
 export function entrarEnSigilo(pj, valorTirada) {
     if (!puedeEntrarEnSigilo(pj)) return false;
-    if (!esZonaSegura(pj)) pj.pies = false;
+    if (!esZonaSegura(pj)) marcarParte(pj, "pies", false);
     pj.enSigilo = true;
     pj.valorSigilo = valorTirada;
     pj.calcularCaracteristicas(); // los bonificadores de daño pasan a usar Sigilo
@@ -227,12 +258,11 @@ export function iniciarTurno(pj) {
     pj.calcularCaracteristicas();
 
     // 1. Acciones
-    PARTES_ACCION.forEach(parte => { pj[parte] = true; });
-    pj.numeroAcciones = ACCIONES_MAX;
+    restablecerAcciones(pj);
     pj.reaccionGuardada = false;
 
-    // 2. Escudos
-    [pj.manoIzquierda, pj.manoDerecha].forEach(mano => {
+    // 2. Escudos (en un NPC, también los de sus otras partes)
+    [pj.manoIzquierda, pj.manoDerecha, ...equiposDePartes(pj)].forEach(mano => {
         if (mano?.enUso) {
             mano.enUso = false;
             resumen.push(`${mano.nombre || "Escudo"}: deja de sumar defensa`);
@@ -245,10 +275,13 @@ export function iniciarTurno(pj) {
         pj.vida -= valor("veneno");
         resumen.push(`Veneno: −${valor("veneno")} PV`);
     }
-    const sobranteQuemadura = valor("quemadura") > 0 ? Math.max(0, -pj.getGenerico("combate")) : 0;
+    // Quemadura: en un NPC, lo que supere el acierto de su mejor arma; en un personaje, el Combate bajo 0
+    const sobranteQuemadura = valor("quemadura") <= 0 ? 0
+        : pj.esNpc ? Math.max(0, valor("quemadura") - aciertoMaximo(pj))
+        : Math.max(0, -pj.getGenerico("combate"));
     if (sobranteQuemadura > 0) {
         pj.vida -= sobranteQuemadura;
-        resumen.push(`Quemadura: −${sobranteQuemadura} PV (Combate por debajo de 0)`);
+        resumen.push(`Quemadura: −${sobranteQuemadura} PV (${pj.esNpc ? "por encima de su acierto" : "Combate por debajo de 0"})`);
     }
     const sangrado = dannoHemorragia(valor("hemorragia"), pj.aguante);
     if (sangrado > 0) {
@@ -300,7 +333,8 @@ export function iniciarTurno(pj) {
 
     const listasModificadores = [
         pj.modificadores, pj.manoIzquierda?.modificadores, pj.manoDerecha?.modificadores,
-        pj.equipoArmadura?.modificadores, ...(pj.accesorios || []).map(acc => acc.modificadores)
+        pj.equipoArmadura?.modificadores, ...(pj.accesorios || []).map(acc => acc.modificadores),
+        ...equiposDePartes(pj).map(equipo => equipo.modificadores)
     ].filter(Array.isArray);
     for (const lista of listasModificadores) {
         for (let i = lista.length - 1; i >= 0; i--) {

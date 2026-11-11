@@ -7,7 +7,8 @@
 // ninguno de los dos usa lo importado al cargarse, solo dentro de funciones.
 
 import { TURNOS_PERMANENTE } from "./modificador.js";
-import { PARTES_ACCION, ACCIONES_MAX } from "./turno.js";
+import { restablecerAcciones as restablecerPartes } from "./turno.js";
+import { equiposDePartes } from "./npc.js";
 import { quitarComida } from "./objetos.js";
 import { ESTADOS_INFO, quitarEstado } from "./estados.js";
 import { reiniciarEnfriamientos } from "./reliquias.js";
@@ -65,8 +66,7 @@ export function cambiarZona(pj, zona) {
 }
 
 function restablecerAcciones(pj) {
-    PARTES_ACCION.forEach(parte => { pj[parte] = true; });
-    pj.numeroAcciones = ACCIONES_MAX;
+    restablecerPartes(pj);
     pj.reaccionGuardada = false;
 }
 
@@ -74,7 +74,8 @@ function restablecerAcciones(pj) {
 function listasModificadores(pj) {
     return [
         pj.modificadores, pj.manoIzquierda?.modificadores, pj.manoDerecha?.modificadores,
-        pj.equipoArmadura?.modificadores, ...(pj.accesorios || []).map(acc => acc?.modificadores)
+        pj.equipoArmadura?.modificadores, ...(pj.accesorios || []).map(acc => acc?.modificadores),
+        ...equiposDePartes(pj).map(equipo => equipo.modificadores)
     ].filter(Array.isArray);
 }
 

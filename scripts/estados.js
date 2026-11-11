@@ -5,6 +5,10 @@
 import { TURNOS_PERMANENTE } from "./modificador.js";
 import { efectoHielo, salirDeSigilo, dannoHemorragia } from "./turno.js";
 import { ELEMENTOS } from "./equipamiento.js";
+import { aciertoMaximo, defensaParalisisNpc } from "./npc.js";
+
+/* Multiplicador con coma decimal: 1.5 → "1,5" */
+const conComa = (numero) => String(numero).replace(".", ",");
 
 /* Los estados provocados por daño elemental duran 3 turnos y se reinician con cada daño nuevo */
 export const DURACION_ELEMENTAL = 3;
@@ -120,7 +124,26 @@ export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
         }
     }
 
-    switch (tipo) {
+    // NPC con debilidad al elemento: el impacto se multiplica y, además de su efecto, resta PV (al final)
+    let dannoDebilidad = 0;
+    if (ELEMENTOS.includes(tipo) && pj.esNpc) {
+        const multiplicador = pj.getDebilidad(tipo);
+        if (multiplicador > 0) {
+            const multiplicado = Math.floor(cantidad * multiplicador);
+            resumen.push(`Debilidad a ${TIPOS_DANNO[tipo].etiqueta.toLowerCase()} ×${conComa(multiplicador)}: ${cantidad} → ${multiplicado}`);
+            if (multiplicado === 0) return resumen;
+            cantidad = multiplicado;
+            dannoDebilidad = multiplicado;
+        }
+    }
+
+    // En los NPC la luz y la oscuridad van al revés: la luz resta PV máximos y la oscuridad cura y deslumbra
+    const efecto = pj.esNpc && tipo === "luz" ? "oscuridad" : pj.esNpc && tipo === "oscuridad" ? "luz" : tipo;
+    if (efecto !== tipo) {
+        resumen.push(tipo === "luz" ? "Luz en un NPC: quita PV y baja los PV máximos" : "Oscuridad en un NPC: cura PV (lo que sobra deslumbra)");
+    }
+
+    switch (efecto) {
         case "fisico": {
             // La armadura resta daño a cada impacto
             const armadura = opciones.ignorarArmadura ? 0 : Math.max(0, Number(pj.armadura) || 0);
@@ -136,30 +159,48 @@ export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
         }
         case "fuego": {
             const total = sumarElemental(pj, "quemadura", cantidad);
-            resumen.push(`Quemadura ${total}: Combate efectivo ${pj.getGenerico("combate")}`);
-            const sobrante = Math.max(0, -pj.getGenerico("combate"));
-            if (sobrante > 0) resumen.push(`Combate por debajo de 0: −${sobrante} PV cada turno`);
+            if (pj.esNpc) {
+                // NPC: resta acierto; lo que supere el de su mejor arma quita PV cada turno
+                resumen.push(`Quemadura ${total}: −${total} de acierto`);
+                const sobrante = Math.max(0, total - aciertoMaximo(pj));
+                if (sobrante > 0) resumen.push(`Quemadura por encima de su acierto: −${sobrante} PV cada turno`);
+            } else {
+                resumen.push(`Quemadura ${total}: Combate efectivo ${pj.getGenerico("combate")}`);
+                const sobrante = Math.max(0, -pj.getGenerico("combate"));
+                if (sobrante > 0) resumen.push(`Combate por debajo de 0: −${sobrante} PV cada turno`);
+            }
             rompeSigilo = true;
             break;
         }
         case "electricidad": {
             // Atletismo efectivo: base + modificadores (personaje y equipo) − penalización de armadura
             // − electrocutado que ya tuviera. Es lo único que la electricidad puede restar.
-            const atletismoDisponible = Math.max(0, pj.getGenerico("atletismo"));
+            // En un NPC resta Defensa (y Movimiento) en lugar de Atletismo, hasta la que lo paraliza
+            // (5 + penalización de Atletismo de su armadura, defensaParalisisNpc)
+            pj.calcularCaracteristicas();
+            const umbral = pj.esNpc ? defensaParalisisNpc(pj) : 0;
+            const valorAfectado = () => (pj.esNpc ? pj.defensa - umbral : pj.getGenerico("atletismo"));
+            const defensaAntes = pj.defensa;
+            const nombreValor = pj.esNpc ? "Defensa" : "Atletismo";
+            const atletismoDisponible = Math.max(0, valorAfectado());
             const sobrante = Math.max(0, cantidad - atletismoDisponible);
             // El estado guarda todo el daño eléctrico, aunque supere el Atletismo que quedaba
             const total = sumarElemental(pj, "electrocutado", cantidad);
-            const atletismo = pj.getGenerico("atletismo");
-            resumen.push(`Electrocutado ${total}: Atletismo efectivo ${atletismoDisponible} → ${atletismo}`);
+            const atletismo = valorAfectado();
+            resumen.push(pj.esNpc
+                ? `Electrocutado ${total}: Defensa ${defensaAntes} → ${pj.defensa}`
+                : `Electrocutado ${total}: Atletismo efectivo ${atletismoDisponible} → ${atletismo}`);
             // Lo que no encuentra Atletismo que restar daña PV una sola vez (en este momento)
             if (sobrante > 0) {
                 const antes = pj.vida;
                 pj.vida = Math.max(0, pj.vida - sobrante);
-                resumen.push(`Sin Atletismo que restar: ${sobrante} de daño (PV: ${antes} → ${pj.vida})`);
+                resumen.push(`Sin ${nombreValor} que restar: ${sobrante} de daño (PV: ${antes} → ${pj.vida})`);
             }
             if (atletismo <= 0) {
                 pj.estados.paralisis = { valor: 1, turnos: DURACION_ELEMENTAL };
-                resumen.push(`Atletismo a 0: paralizado ${DURACION_ELEMENTAL} turnos`);
+                resumen.push(pj.esNpc
+                    ? `Defensa a ${umbral}${umbral > 5 ? ` (5 + penalización de Atletismo de la armadura)` : ""}: paralizado ${DURACION_ELEMENTAL} turnos`
+                    : `Atletismo a 0: paralizado ${DURACION_ELEMENTAL} turnos`);
             }
             rompeSigilo = true;
             break;
@@ -188,8 +229,9 @@ export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
             const exceso = cantidad - curado;
             if (exceso > 0) {
                 const total = sumarElemental(pj, "deslumbrado", exceso);
-                const percepcion = pj.getGenerico("percepcion");
-                resumen.push(`PV al máximo: deslumbrado ${total}, Percepción efectiva ${percepcion}`);
+                // En un NPC resta Percepción pasiva
+                const percepcion = pj.esNpc ? pj.percepcionPasiva : pj.getGenerico("percepcion");
+                resumen.push(`PV al máximo: deslumbrado ${total}, Percepción${pj.esNpc ? " pasiva" : ""} efectiva ${percepcion}`);
                 if (percepcion <= 0) {
                     pj.estados.cegado = { valor: 1, turnos: DURACION_ELEMENTAL };
                     resumen.push(`Percepción a 0: cegado ${DURACION_ELEMENTAL} turnos`);
@@ -203,9 +245,13 @@ export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
             pj.estados.oscuridad = { ...pj.estados.oscuridad, valor: actual + cantidad, turnos: TURNOS_PERMANENTE };
             pj.calcularCaracteristicas();
             const antes = pj.vida;
-            pj.vida = Math.min(pj.vida, pj.vidaMax);
+            // La luz en un NPC, además de bajar los PV máximos, quita esos PV
+            if (pj.esNpc && tipo === "luz") pj.vida -= cantidad;
+            pj.vida = Math.max(0, Math.min(pj.vida, pj.vidaMax));
             resumen.push(`PV máximos −${cantidad}: ahora ${pj.vidaMax}`);
             if (pj.vida !== antes) resumen.push(`PV: ${antes} → ${pj.vida}`);
+            // Ya ha quitado PV: la debilidad no los vuelve a quitar
+            if (pj.esNpc && tipo === "luz") dannoDebilidad = 0;
             rompeSigilo = true;
             break;
         }
@@ -221,6 +267,13 @@ export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
         }
         default:
             return [`Tipo de daño desconocido: ${tipo}`];
+    }
+
+    // Debilidad: además del efecto del elemento, el daño multiplicado resta PV
+    if (dannoDebilidad > 0) {
+        const antes = pj.vida;
+        pj.vida = Math.max(0, pj.vida - dannoDebilidad);
+        resumen.push(`Debilidad: −${dannoDebilidad} PV (PV: ${antes} → ${pj.vida})`);
     }
 
     if (rompeSigilo && pj.enSigilo) {

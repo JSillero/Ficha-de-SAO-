@@ -10,17 +10,22 @@
 
 import { TIPOS_DOS_MANOS, equipoActivo } from "./equipamiento.js";
 export { cargarReliquia, cargarHabilidadReliquia } from "./equipamiento.js";
-import { partesDeMano, puedeGastar } from "./turno.js";
+import { partesDeMano, puedeGastar, partesAccion } from "./turno.js";
+import { partesExtra, partesDeEquipoNpc, PARTE_DE_MANO } from "./npc.js";
 
 /* Manos donde puede ir una reliquia (= MANOS de turno.js; no se importa por el ciclo de módulos).
    Los accesorios son las ranuras "accesorio-N". */
 export const RANURAS_RELIQUIA = ["manoIzquierda", "manoDerecha"];
 
 const esRanuraAccesorio = (ranura) => String(ranura).startsWith("accesorio-");
+/* En un NPC, sus partes que no son brazos son las ranuras "parte:<id>" (npc.js) */
+export const esRanuraParte = (ranura) => String(ranura).startsWith("parte:");
+export const ranurasDePartes = (pj) => partesExtra(pj).map(parte => `parte:${parte.id}`);
 
-/** Equipo de una ranura: "manoIzquierda", "manoDerecha" o "accesorio-N" */
+/** Equipo de una ranura: "manoIzquierda", "manoDerecha", "accesorio-N" o, en un NPC, "parte:<id>" */
 export function equipoDeRanura(pj, ranura) {
     if (esRanuraAccesorio(ranura)) return pj.accesorios?.[Number(ranura.slice("accesorio-".length))] ?? null;
+    if (esRanuraParte(ranura)) return partesExtra(pj).find(parte => parte.id === ranura.slice(6))?.equipo ?? null;
     return pj[ranura] ?? null;
 }
 
@@ -30,7 +35,7 @@ export function esReliquia(equipo) {
 
 /** Equipos reliquia que lleva puestos el personaje (manos y accesorios): [{ ranura, equipo }] */
 export function reliquiasEquipadas(pj) {
-    const ranuras = [...RANURAS_RELIQUIA, ...(pj.accesorios || []).map((_, i) => `accesorio-${i}`)];
+    const ranuras = [...RANURAS_RELIQUIA, ...(pj.accesorios || []).map((_, i) => `accesorio-${i}`), ...ranurasDePartes(pj)];
     return ranuras
         .map(ranura => ({ ranura, equipo: equipoDeRanura(pj, ranura) }))
         .filter(({ equipo }) => esReliquia(equipo) && equipoActivo(equipo));
@@ -40,7 +45,12 @@ export function reliquiasEquipadas(pj) {
    - en una mano, la de esa mano (las dos si es a dos manos);
    - en un accesorio, la de un brazo (el primero con acción, o el derecho para que la interfaz pregunte). */
 function partesParaUsar(pj, ranura) {
-    if (esRanuraAccesorio(ranura)) return [["derecha", "izquierda"].find(parte => puedeGastar(pj, parte)) ?? "derecha"];
+    if (esRanuraAccesorio(ranura)) {
+        // Un NPC sin brazos usa cualquier parte con acción
+        const candidatas = pj.esNpc ? [...["derecha", "izquierda"].filter(p => partesAccion(pj).includes(p)), ...partesAccion(pj)] : ["derecha", "izquierda"];
+        return [candidatas.find(parte => puedeGastar(pj, parte)) ?? candidatas[0] ?? "derecha"];
+    }
+    if (pj.esNpc) return partesDeEquipoNpc(pj, esRanuraParte(ranura) ? ranura.slice(6) : PARTE_DE_MANO[ranura]);
     return partesDeMano(ranura, TIPOS_DOS_MANOS.includes(pj[ranura]?.tipo));
 }
 

@@ -5,6 +5,7 @@ import { ZONAS, ZONA_POR_DEFECTO } from "./zonas.js";
 import { cargarArtes, modificadorArtes } from "./artes.js";
 import { modificadorEfectosEquipo } from "./efectosEquipo.js";
 import { cargarDiario } from "./diario.js";
+import { crearNpc, cargarNpc, equiposDePartes, DEFENSA_MINIMA_NPC, defensaParalisisNpc } from "./npc.js";
 
 export { TAMANO_INVENTARIO };
 
@@ -40,6 +41,7 @@ const CAMPOS_SIMPLES = [
     'numeroAcciones', 'izquierda', 'derecha', 'cabeza', 'pies', 'reaccionGuardada',
     'enSigilo', 'valorSigilo',
     'comidaActiva', 'tipoProfesion', 'esUnderworld', 'protagonista', 'zona', 'cor',
+    'esNpc', 'idPlantilla',
     'desbloqueosArteExtra', 'desbloqueosArteGastados',
     'notas', 'listadoArtes', 'listaDeAmigos', 'recetasProfesion'
 ];
@@ -82,6 +84,12 @@ export default class PJ {
         this.esUnderworld = false; // perfil: habilita Sacro, daño mágico y habilidades oníricas
         this.protagonista = false; // perfil: tiene diario
 
+        /* NPC del máster (npc.js): sin características ni habilidades; valores de combate a mano en npc.
+           Se decide al crearlo y no cambia. idPlantilla: plantilla del compendio de la que salió (o null). */
+        this.esNpc = false;
+        this.idPlantilla = null;
+        this.npc = crearNpc();
+
         /*Atributos  */
         this.puntosArteMax = 3;
         this.puntosArte = 0;
@@ -115,6 +123,7 @@ export default class PJ {
         this.baul = [];
         this.objetosClave = []; // [{ nombre, descripcion }]: no ocupan hueco ni se usan
         this.armasLanzadas = []; // [{ mano, equipo }]: lanzas y cuchillos lanzados sin recoger (objetos.js)
+        this.botin = []; // objetos de la recompensa de un NPC por recoger (ventana de botín; sin límite)
         this.comidaActiva = ""; // nombre de la comida cuyo efecto está activo (sus modificadores llevan origen "comida")
         this.cor = 0; // monedas: no ocupan hueco, sin límite, nunca negativas
 
@@ -165,6 +174,7 @@ export default class PJ {
             throw TypeError("El valor de experiencia tiene que ser numerico.")
         }
         this.experiencia = experiencia;
+        if (this.esNpc) return; // los NPC no suben de nivel con EXP: el nivel se escribe a mano
 
         while(this.experiencia >= this.experienciaMax && this.nivel <= 150) {
             this.experiencia = this.experiencia - this.experienciaMax;
@@ -175,6 +185,7 @@ export default class PJ {
     }
 
     calcularCaracteristicas() {
+        if (this.esNpc) return this.calcularNpc();
         let nivelSiguiente = this.nivel + 1;
         if (this.nivel >= 150) {
             this.experienciaMax = 99999999999999999;
@@ -210,13 +221,44 @@ export default class PJ {
         this.percepcionPasiva = this.inteligencia + this.getGenerico("percepcion") + 5 + this.getModificador("percepcionPasiva");
     }
 
+    /* NPC: cada valor de combate es el escrito a mano más los modificadores (sin características ni
+       habilidades). Las artes no tienen memoria: siempre queda un hueco libre más (artes.js no la limita). */
+    calcularNpc() {
+        const npc = this.npc;
+        this.experienciaMax = 0;
+        // Los NPC no tienen artes sin equipar: todas están equipadas
+        (this.artes || []).forEach(arte => { arte.equipada = true; });
+        this.puntosArteMax = Math.max(0, npc.puntosArteMax + this.getModificador("arte"));
+        const usadas = (this.artes || []).filter(arte => arte.equipada && !arte.onirica)
+            .reduce((suma, arte) => suma + (Number(arte.ranuras) || 0), 0);
+        this.espaciosArte = usadas + 1;
+        this.aguante = npc.aguante + this.getModificador("aguante");
+        this.vidaMax = Math.max(1, npc.vidaMax + this.getModificador("vidaMax") - (Number(this.estados?.oscuridad?.valor) || 0));
+        this.armadura = (Number(this.equipoArmadura?.armadura) || 0) + this.getModificador("armadura");
+        // Nunca por debajo de DEFENSA_MINIMA_NPC. El electrocutado la baja solo hasta defensaParalisisNpc
+        // (mínimo + penalización de Atletismo de la armadura), donde paraliza
+        const electrocutado = -this.getModificadorEstados("defensa");
+        const sinElectricidad = Math.max(DEFENSA_MINIMA_NPC, npc.defensa + this.getModificador("defensa") + electrocutado + this.getDefensaEscudos());
+        this.defensa = electrocutado > 0
+            ? Math.max(Math.min(sinElectricidad, defensaParalisisNpc(this)), sinElectricidad - electrocutado)
+            : sinElectricidad;
+        this.dFisico = this.getModificador("dFisico");
+        this.dDistancia = this.getModificador("dDistancia");
+        this.dMagico = this.getModificador("dMagico");
+        this.iniciativa = npc.iniciativa + this.getModificador("iniciativa");
+        this.vMovimiento = Math.max(0, npc.vMovimiento + this.getModificador("vMovimiento"));
+        this.perspicacia = npc.perspicacia + this.getModificador("perspicacia");
+        this.percepcionPasiva = npc.percepcionPasiva + this.getModificador("percepcionPasiva");
+    }
+
     /**
      * Introduce el nombre del atributo a obtener y se unen automaticamente los modificadores asociados al nombre 
      * @param {string} atributo 
      */
     /* Suma la defensa de los escudos que están en uso */
     getDefensaEscudos() {
-        return [this.manoIzquierda, this.manoDerecha].reduce((acc, mano) => {
+        // En un NPC también cuentan los escudos de sus otras partes (npc.js)
+        return [this.manoIzquierda, this.manoDerecha, ...equiposDePartes(this)].reduce((acc, mano) => {
             const esEscudo = mano?.tipo === "escudo" || mano?.tipo === "gran_escudo";
             return acc + (esEscudo && mano.enUso ? Number(mano.defensa) || 0 : 0);
         }, 0);
@@ -227,6 +269,14 @@ export default class PJ {
     getResistencia(elemento) {
         const deArmadura = Number(this.equipoArmadura?.resistencias?.[elemento]) || 0;
         return Math.max(0, deArmadura + (Number(this.getModificador("res_" + elemento)) || 0));
+    }
+
+    /* Debilidad de un NPC a un elemento: multiplicador del daño (0 = ninguna). La de la armadura más los
+       modificadores "deb_<elemento>". Los personajes no tienen debilidades. */
+    getDebilidad(elemento) {
+        if (!this.esNpc) return 0;
+        const deArmadura = Number(this.equipoArmadura?.debilidades?.[elemento]) || 0;
+        return Math.max(0, deArmadura + (Number(this.getModificador("deb_" + elemento)) || 0));
     }
 
     /* Habilidad con la que se ataca: Sigilo si está en sigilo, Combate si no */
@@ -341,7 +391,8 @@ export default class PJ {
             return acc + ((obj['modificado'] == atributo) ? obj.numero : 0);
         }, 0));
 
-        this.accesorios.forEach(accesorio => {
+        // Accesorios y, en un NPC, el equipo de sus partes que no son brazos
+        [...this.accesorios, ...equiposDePartes(this)].forEach(accesorio => {
             acumulado += Number(accesorio.modificadores.reduce(function (acc, obj) {
                 return acc + ((obj['modificado'] == atributo) ? obj.numero : 0);
             }, 0));
@@ -363,6 +414,12 @@ export default class PJ {
        electrocutado → Atletismo, deslumbrado → Percepción.
        Embriaguez: +3 Carisma y −1 al resto de habilidades (salvo Sacro). */
     getModificadorEstados(atributo) {
+        // Un NPC no tiene habilidades: quemadura → acierto, electrocutado → Defensa y Movimiento,
+        // deslumbrado → Percepción pasiva
+        if (this.esNpc) {
+            const estado = { acierto: "quemadura", defensa: "electrocutado", vMovimiento: "electrocutado", percepcionPasiva: "deslumbrado" }[atributo];
+            return estado ? -(Number(this.estados?.[estado]?.valor) || 0) : 0;
+        }
         const estadoQueResta = { combate: "quemadura", atletismo: "electrocutado", percepcion: "deslumbrado" }[atributo];
         let total = estadoQueResta ? -(Number(this.estados?.[estadoQueResta]?.valor) || 0) : 0;
         // La potencia multiplica el efecto (como cervezas acumuladas)
@@ -397,6 +454,14 @@ export default class PJ {
         this.esUnderworld = jsonObject.esUnderworld === undefined ? Number(this.sacro) > 0 : Boolean(this.esUnderworld);
         if (!this.esUnderworld) this.sacro = 0;
         this.protagonista = Boolean(this.protagonista);
+        // NPC: sin características ni habilidades (npc.js guarda sus valores)
+        this.esNpc = Boolean(this.esNpc);
+        this.idPlantilla = this.esNpc && this.idPlantilla ? String(this.idPlantilla).slice(0, 60) : null;
+        this.npc = cargarNpc(jsonObject.npc);
+        if (this.esNpc) {
+            this.esUnderworld = false;
+            this.protagonista = false;
+        }
         this.cor = Math.max(0, Math.floor(Number(this.cor) || 0));
         this.desbloqueosArteExtra = Math.trunc(Number(this.desbloqueosArteExtra) || 0);
         this.desbloqueosArteGastados = Math.max(0, Math.trunc(Number(this.desbloqueosArteGastados) || 0));
@@ -430,6 +495,9 @@ export default class PJ {
 
         /* Objetos clave (las fichas antiguas no tienen: lista vacía) */
         this.objetosClave = cargarObjetosClave(jsonObject.objetosClave);
+
+        /* Botín de NPC por recoger (las fichas antiguas no tienen) */
+        this.botin = (Array.isArray(jsonObject.botin) ? jsonObject.botin : []).map(cargarObjeto).filter(Boolean);
 
         /* Lanzas y cuchillos lanzados sin recoger */
         this.armasLanzadas = cargarArmasLanzadas(jsonObject.armasLanzadas);
@@ -469,6 +537,8 @@ export default class PJ {
 
     toJSONString() {
         this.calcularCaracteristicas();
+        // El inventario del NPC no tiene huecos fijos: se guarda ya ajustado (un hueco libre)
+        if (this.esNpc) ajustarInventario(this);
         const datos = {};
         for (const campo of CAMPOS_SIMPLES) {
             datos[campo] = this[campo];
@@ -498,6 +568,7 @@ export default class PJ {
             baul: this.baul,
             objetosClave: this.objetosClave,
             armasLanzadas: this.armasLanzadas,
+            botin: this.botin,
 
             /* Equipo */
             equipoArmadura: this.equipoArmadura,
@@ -511,7 +582,10 @@ export default class PJ {
 
             amigos: this.amigos,
 
-            diario: this.diario
+            diario: this.diario,
+
+            // Solo los NPC (npc.js)
+            ...(this.esNpc ? { npc: this.npc } : {})
         });
     }
 

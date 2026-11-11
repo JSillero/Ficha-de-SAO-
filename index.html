@@ -37,7 +37,7 @@
                         </div>
                     </div>
                     <div class="sao-bar-bottom">
-                        <div class="sao-exp-container">
+                        <div class="sao-exp-container ficha-personaje">
                             <div class="sao-exp-track" id="sao-exp-track">
                                 <div class="sao-exp-fill" id="exp-bar-fill"></div>
                                 <div class="sao-track-glass"></div>
@@ -100,8 +100,8 @@
 
             <!-- Columna 1: Características y Acciones -->
             <div class="columnaIzquierda">
-                    <h2>Caracteristicas<span id="contadorPuntosCar" class="contador-puntos-hab">(Puntos: <strong id="puntosCarDisponibles">12</strong> / <span id="puntosCarTotal">12</span>)</span></h2>
-                    <div id="atributosDiv">
+                    <h2 class="ficha-personaje">Caracteristicas<span id="contadorPuntosCar" class="contador-puntos-hab">(Puntos: <strong id="puntosCarDisponibles">12</strong> / <span id="puntosCarTotal">12</span>)</span></h2>
+                    <div id="atributosDiv" class="ficha-personaje">
                         <div class="atributo-fila">
                             <div class="atributo-info">
                                 <img class="atributo-icono" id="icono-fortaleza" data-atributo="fortaleza"
@@ -159,7 +159,7 @@
                         </button>
                         <div id="menuInventario" class="menu-sao" role="menu" aria-label="Inventario y baúl" hidden></div>
                         <!-- Social: abre un menú (amigos y grupo, con submenús; inicializarSocial en interfazOnline.js) -->
-                        <button type="button" id="btnSocial" class="btn-icono-sao btn-menu-amigos" title="Social" aria-label="Social"
+                        <button type="button" id="btnSocial" class="btn-icono-sao btn-menu-amigos ficha-personaje" title="Social" aria-label="Social"
                             aria-controls="menuSocial">
                             <img class="icono-off" src="./imgs/amigos.svg" alt="">
                             <img class="icono-on" src="./imgs/amigos_on.svg" alt="">
@@ -217,12 +217,17 @@
                                     d="m 4162.357,6081.7222 c -78.8656,-283.0101 -144.0242,-574.7703 -214.9999,-861 l -197,-793 h -127 -127 l 59,308 c 242,1265 456.9999,2373.9997 460.9999,2377.9997 1,2 142,40 312,85 130.3695,-899.8752 -104.878,-1131.472 -166,-1116.9997 z" />
                             </g>
                         </svg>
+                        <!-- NPC con partes distintas de las cuatro de siempre: una casilla por parte en lugar del muñeco
+                             (pintarAccionesNpc en interfaz.js; body.npc-sin-muneco oculta el muñeco) -->
+                        <div id="accionesPartesNpc" class="acciones-partes" hidden></div>
                         </div>
                         <div id="estadoTurno" class="estado-turno"></div>
                         <div class="acciones-movimiento">
                             <button type="button" id="btnMover" class="btn-accion" title="Gasta la acción de piernas">Mover <span id="casillasMover"></span></button>
                             <button type="button" id="btnCorrer" class="btn-accion" title="Gasta las tres acciones del turno">Correr <span id="casillasCorrer"></span></button>
-                            <button type="button" id="btnSigilo" class="btn-accion" title="Entrar en sigilo gasta la acción de piernas">Sigilo</button>
+                            <!-- NPC a 0 PV: abrir la ventana de derrota (abrirMuerteNpc) -->
+                            <button type="button" id="btnDerrotarNpc" class="btn-accion ficha-npc" hidden title="El NPC está a 0 PV: derrotarlo">Derrotar</button>
+                            <button type="button" id="btnSigilo" class="btn-accion ficha-personaje" title="Entrar en sigilo gasta la acción de piernas">Sigilo</button>
                         </div>
                         <!-- Panel de Modo de Tirada SAO -->
                         <div id="panelTiradas" class="bloque-tiradas-sao">
@@ -263,11 +268,17 @@
                 <div class="columnaCentral">
                     <div id="divEquipamiento">
                         <!-- A la derecha del título, un botón por arma lanzada para recogerla (pintarArmasLanzadas), como el + de Modificadores -->
-                        <h2 class="h2-con-boton">Equipamiento <span id="armasLanzadas" class="armas-lanzadas" hidden></span></h2>
+                        <h2 class="h2-con-boton">Equipamiento <span id="armasLanzadas" class="armas-lanzadas" hidden></span><button type="button" id="anadirParteNpc" class="btn-h2 ficha-npc" title="Añadir parte del cuerpo" aria-label="Añadir parte del cuerpo">+</button></h2>
+                        <!-- NPC: sus partes del cuerpo (renombrar, quitar) y el equipo de las que no son brazos (pintarPartesNpc) -->
+                        <div id="partesNpc" class="partes-npc ficha-npc">
+                            <div id="listaPartesNpc" class="lista-partes-npc"></div>
+                        </div>
 
                         <div class="equipamiento-manos-grid">
                             <!-- Generado dinámicamente mediante templateManoEquipamiento -->
                         </div>
+                        <!-- NPC: tarjetas de equipo de sus partes que no son brazos (boca, piernas, cola...) -->
+                        <div id="tarjetasPartesNpc" class="equipamiento-manos-grid partes-extra-npc ficha-npc"></div>
 
                         <!-- Template reutilizable para manos de equipamiento -->
                         <template id="templateManoEquipamiento">
@@ -304,6 +315,20 @@
                                             <label>Defensa:</label>
                                             <input type="number" class="inputDefensaEquipo" min="0" value="0">
                                         </div>
+                                        <!-- Solo NPC: acierto que suma a la tirada y dado del arma (ataque.js, prepararAtaqueNpc) -->
+                                        <div class="campo-numero campo-acierto ficha-npc">
+                                            <label>Acierto:</label>
+                                            <input type="number" class="inputAciertoEquipo" value="0">
+                                        </div>
+                                        <div class="campo-numero campo-dado ficha-npc">
+                                            <label>Dado:</label>
+                                            <select class="selectDadoEquipo">
+                                                <option value="">Del tipo</option>
+                                                <option value="0">Bajo</option>
+                                                <option value="1">Medio</option>
+                                                <option value="2">Alto</option>
+                                            </select>
+                                        </div>
                                         <!-- Atacar y, en lanzas y cuchillos, lanzar (actualizarBotonLanzar): siempre juntos -->
                                         <span class="acciones-arma">
                                             <button type="button" class="btn-usar-equipo" title="Usar">Usar</button>
@@ -323,6 +348,11 @@
                                         <button type="button" class="btn-anadir-mod-equipo">+</button>
                                     </div>
                                     <ul class="mods-equipo"></ul>
+                                    <!-- Solo NPC: hacer el arma reliquia y añadirle efectos desde la ficha (pintarExtrasArmaNpc) -->
+                                    <div class="extras-arma-npc ficha-npc">
+                                        <label><input type="checkbox" class="check-reliquia-npc"> Es reliquia</label>
+                                        <button type="button" class="btn-cabecera btn-efecto-npc">+ Crear efecto</button>
+                                    </div>
                                     <!-- Si el arma es reliquia: sus habilidades se editan y se usan aquí (pintarHabilidadesReliquia) -->
                                     <div class="reliquia-habilidades" hidden></div>
                                     <!-- Efectos del equipo (pasivos y activos, efectosEquipo.js; pintarEfectosEquipo) -->
@@ -364,6 +394,11 @@
                                     <span class="subtitulo-elemental">Resistencias elementales:</span>
                                     <div class="valores-elementales"></div>
                                 </div>
+                                <!-- Solo NPC: multiplicador del daño de cada elemento; además de su efecto, resta PV -->
+                                <div class="bloque-elemental" data-elemental="debilidades" title="Multiplican el daño de cada elemento, que además resta PV">
+                                    <span class="subtitulo-elemental">Debilidades elementales (×):</span>
+                                    <div class="valores-elementales"></div>
+                                </div>
                                 <p class="equipamiento-descripcion"></p>
                                 <div class="equipamiento-mods-header">
                                     <span>Modificadores:</span>
@@ -381,8 +416,8 @@
                         </div>
 
                     </div>
-                    <h2>Habilidades <span id="contadorPuntosHab" class="contador-puntos-hab">(Puntos: <strong id="puntosHabDisponibles">40</strong> / <span id="puntosHabTotal">40</span>)</span><span id="avisoZonaHab" class="aviso-zona-hab" hidden>Solo en zona segura</span></h2>
-                    <div id="habilidadesDiv">
+                    <h2 class="ficha-personaje">Habilidades <span id="contadorPuntosHab" class="contador-puntos-hab">(Puntos: <strong id="puntosHabDisponibles">40</strong> / <span id="puntosHabTotal">40</span>)</span><span id="avisoZonaHab" class="aviso-zona-hab" hidden>Solo en zona segura</span></h2>
+                    <div id="habilidadesDiv" class="ficha-personaje">
 
                         <div>
                             <img src="./imgs/atletismo.svg" onmouseover="this.src='./imgs/atletismo_on.svg'"
@@ -482,6 +517,9 @@
                             <span class="hab-efectivo" data-hab="sacro" aria-live="polite"></span>
                         </div>
                     </div>
+                    <!-- NPC (body.modo-npc): tiradas libres en lugar de las habilidades (pintarTiradasNpc en interfaz.js) -->
+                    <h2 class="h2-con-boton ficha-npc">Tiradas <button type="button" id="anadirTiradaNpc" class="btn-h2" title="Añadir tirada" aria-label="Añadir tirada">+</button></h2>
+                    <div id="tiradasNpcDiv" class="lista-tiradas-npc tiradas-ficha ficha-npc"></div>
                 </div>
 
                 <!-- Columna 3: Inventario y Valores de combate -->
@@ -505,7 +543,7 @@
             </div>
         </div>
         <!-- Oculto en los protagonistas, que usan el diario (actuaizarTextos en interfaz.js) -->
-        <div class="seccion-notas" id="seccionNotas">
+        <div class="seccion-notas ficha-personaje" id="seccionNotas">
             <h2>Notas</h2>
             <div class="seccion-notas-grid">
                 <div>
@@ -667,6 +705,25 @@
     </div>
 
     <!-- Baúl: sin límite de objetos ni de pila -->
+    <!-- Botín de un NPC derrotado (pintarBotin en interfaz.js): coger al inventario, ofrecer a un compañero del grupo
+         o descartar. Se guarda en la ficha hasta recogerlo -->
+    <div class="modal fade modal-sao" id="modalBotin" tabindex="-1" aria-labelledby="modalBotinLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalBotinLabel">Botín <span id="contadorBotin" class="contador-objetos"></span></h5>
+                    <button type="button" class="btn-crear-objeto" id="btnCogerTodoBotin">Coger todo</button>
+                </div>
+                <div class="modal-body">
+                    <div id="listaBotin" class="lista-objetos"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade modal-sao" id="modalBaul" tabindex="-1" aria-labelledby="modalBaulLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
             <div class="modal-content">
@@ -687,17 +744,80 @@
 
     <!-- Modo máster: personajes guardados en local que no están en la sesión, y crear uno (interfazMaster.js) -->
     <div class="modal fade modal-sao" id="modalPersonajesMaster" tabindex="-1" aria-labelledby="modalPersonajesMasterLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="modalPersonajesMasterLabel">Añadir personaje</h5>
-                    <button type="button" class="btn-crear-objeto" id="btnCrearPersonajeMaster">+ Crear personaje</button>
+                    <div class="botones-cabecera-modal">
+                        <button type="button" class="btn-cabecera" id="btnAbrirCompendio">Compendio de NPC</button>
+                        <button type="button" class="btn-cabecera" id="btnCrearPersonajeMaster">+ Crear personaje</button>
+                    </div>
                 </div>
                 <div class="modal-body">
                     <div id="listaPersonajesMaster" class="lista-objetos"></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modo máster: compendio de NPC (plantillas; compendio.js, pintarCompendio en interfazMaster.js). Se guarda en
+         el navegador y, con sesión, en la nube. Añadir a la sesión crea una copia -->
+    <div class="modal fade modal-sao" id="modalCompendio" tabindex="-1" aria-labelledby="modalCompendioLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalCompendioLabel">Compendio de NPC</h5>
+                    <div class="botones-cabecera-modal">
+                        <button type="button" class="btn-cabecera" id="btnImportarCompendio">Importar</button>
+                        <button type="button" class="btn-cabecera" id="btnExportarCompendio">Exportar</button>
+                        <button type="button" class="btn-cabecera" id="btnCrearNpcCompendio">+ Crear NPC</button>
+                    </div>
+                    <input type="file" id="fileCompendio" accept=".json" hidden>
+                </div>
+                <div class="modal-body">
+                    <p id="estadoCompendio" class="aviso-zona" role="status"></p>
+                    <div class="fila-campos filtros-compendio">
+                        <label>Piso <select id="filtroPisoCompendio"></select></label>
+                        <label class="buscar-compendio">Buscar <input type="search" id="buscarCompendio" maxlength="60"></label>
+                    </div>
+                    <div id="listaCompendio" class="lista-compendio"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modo máster: un NPC ha llegado a 0 PV (abrirMuerteNpc en interfaz.js). Al aceptar sale de la sesión y se
+         borra; se elige quién recibe la EXP (el último atacante, preseleccionado) -->
+    <div class="modal fade modal-sao" id="modalMuerteNpc" tabindex="-1" aria-labelledby="modalMuerteNpcLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalMuerteNpcLabel">NPC derrotado</h5>
+                </div>
+                <div class="modal-body">
+                    <form id="formMuerteNpc" class="form-objeto" novalidate>
+                        <p id="textoMuerteNpc"></p>
+                        <div class="campo-objeto" id="campoExpMuerteNpc">
+                            <label for="selectExpMuerteNpc">EXP para</label>
+                            <select id="selectExpMuerteNpc"></select>
+                            <p id="mitadMuerteNpc" class="aviso-objeto-info"></p>
+                        </div>
+                        <div class="campo-objeto">
+                            <label>Recompensa</label>
+                            <div id="recompensaMuerteNpc" class="lista-objetos"></div>
+                        </div>
+                        <p id="avisoMuerteNpc" class="aviso-zona"></p>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Todavía no (queda a 0 PV)" aria-label="Todavía no (queda a 0 PV)"></button>
+                    <button type="button" class="btn-modal-sao aceptar" id="btnAceptarMuerteNpc" title="Derrotar" aria-label="Derrotar"></button>
                 </div>
             </div>
         </div>
@@ -712,31 +832,67 @@
                 </div>
                 <div class="modal-body">
                     <form id="formPerfilMaster" class="form-objeto perfil-master" novalidate>
+                        <!-- Solo al crear: personaje o NPC (no se cambia después). Con NPC (.modo-npc) se ocultan los
+                             .solo-personaje y se ven los .solo-npc -->
+                        <div class="perfil-master-tipo" id="perfilMasterTipo" role="radiogroup" aria-label="Tipo">
+                            <button type="button" class="btn-eleccion" data-tipo="personaje" aria-pressed="true">Personaje</button>
+                            <button type="button" class="btn-eleccion" data-tipo="npc" aria-pressed="false">NPC</button>
+                        </div>
                         <div class="campo-objeto">
                             <label for="perfilMasterNombre">Nombre</label>
                             <input type="text" id="perfilMasterNombre" maxlength="60" required>
                         </div>
                         <div class="fila-campos">
                             <label>Nivel <input type="number" id="perfilMasterNivel" min="1" max="150"></label>
-                            <label>Profesión <select id="perfilMasterProfesion"></select></label>
-                            <label><input type="checkbox" id="perfilMasterUnderworld"> Underworld</label>
-                            <label><input type="checkbox" id="perfilMasterProtagonista"> Protagonista</label>
+                            <label class="solo-personaje">Profesión <select id="perfilMasterProfesion"></select></label>
+                            <label class="solo-personaje"><input type="checkbox" id="perfilMasterUnderworld"> Underworld</label>
+                            <label class="solo-personaje"><input type="checkbox" id="perfilMasterProtagonista"> Protagonista</label>
+                            <label class="solo-npc">EXP que da <input type="number" data-npc="expRecompensa" min="0"></label>
+                            <label class="solo-npc" title="Piso del compendio (vacío = sin piso)">Piso <input type="number" data-npc="piso" min="1" max="100"></label>
                         </div>
-                        <div class="campo-objeto">
+                        <div class="campo-objeto solo-personaje">
                             <label>Características <span class="perfil-master-puntos" id="perfilMasterPuntosCar"></span></label>
                             <div class="fila-campos" id="perfilMasterCaracteristicas"></div>
                         </div>
-                        <div class="campo-objeto">
+                        <div class="campo-objeto solo-personaje">
                             <label>Habilidades <span class="perfil-master-puntos" id="perfilMasterPuntosHab"></span></label>
                             <div class="fila-campos" id="perfilMasterHabilidades"></div>
                         </div>
                         <div class="fila-campos">
                             <label>PV <input type="number" id="perfilMasterVida" min="0"> / <span id="perfilMasterVidaMax"></span></label>
                             <label>PA <input type="number" id="perfilMasterPA" min="0"> / <span id="perfilMasterPAMax"></span></label>
-                            <label>Cor <input type="number" id="perfilMasterCor" min="0"></label>
+                            <label class="solo-personaje">Cor <input type="number" id="perfilMasterCor" min="0"></label>
+                        </div>
+                        <!-- NPC: valores de combate escritos a mano (VALORES_NPC en npc.js; los modificadores se suman en la ficha) -->
+                        <div class="campo-objeto solo-npc">
+                            <label>Valores de combate</label>
+                            <div class="fila-campos" id="perfilMasterValoresNpc"></div>
+                        </div>
+                        <!-- NPC: tiradas libres (nombre y valor; se tiran con 3d10 + valor) -->
+                        <div class="campo-objeto solo-npc">
+                            <div class="perfil-master-titulo">
+                                <label>Tiradas <span class="perfil-master-puntos" id="perfilMasterContadorTiradas"></span></label>
+                                <button type="button" class="btn-crear-objeto" data-crear="tirada">+ Crear tirada</button>
+                            </div>
+                            <div id="perfilMasterTiradas" class="lista-tiradas-npc"></div>
+                        </div>
+                        <!-- NPC: recompensa al morir (Cor, objetos y objetos clave) -->
+                        <div class="campo-objeto solo-npc">
+                            <div class="perfil-master-titulo">
+                                <label>Recompensa <span class="perfil-master-puntos" id="perfilMasterContadorRecompensa"></span></label>
+                                <span class="d-flex gap-2 flex-wrap justify-content-end">
+                                    <button type="button" class="btn-crear-objeto" data-crear="recompensa">+ Crear objeto</button>
+                                    <button type="button" class="btn-crear-objeto" data-crear="recompensaClave">+ Crear objeto clave</button>
+                                </span>
+                            </div>
+                            <div class="fila-campos">
+                                <label>Cor <input type="number" data-npc="recompensaCor" min="0"></label>
+                            </div>
+                            <div id="perfilMasterRecompensa" class="lista-objetos" data-lista="recompensa"></div>
+                            <div id="perfilMasterRecompensaClave" class="lista-objetos" data-lista="recompensaClave"></div>
                         </div>
                         <!-- Valores de combate del borrador (solo lectura; pintarPerfil los recalcula en cada cambio) -->
-                        <div class="campo-objeto ficha-resumen">
+                        <div class="campo-objeto ficha-resumen solo-personaje">
                             <label>Valores de combate</label>
                             <div id="perfilMasterCombate" class="resumen-rejilla"></div>
                         </div>
@@ -748,14 +904,14 @@
                             </div>
                             <div id="perfilMasterInventario" class="lista-objetos" data-lista="inventario"></div>
                         </div>
-                        <div class="campo-objeto">
+                        <div class="campo-objeto solo-personaje">
                             <div class="perfil-master-titulo">
                                 <label>Baúl <span class="perfil-master-puntos" id="perfilMasterContadorBaul"></span></label>
                                 <button type="button" class="btn-crear-objeto" data-crear="baul">+ Crear objeto</button>
                             </div>
                             <div id="perfilMasterBaul" class="lista-objetos" data-lista="baul"></div>
                         </div>
-                        <div class="campo-objeto">
+                        <div class="campo-objeto solo-personaje">
                             <div class="perfil-master-titulo">
                                 <label>Objetos clave <span class="perfil-master-puntos" id="perfilMasterContadorClave"></span></label>
                                 <button type="button" class="btn-crear-objeto" data-crear="objetosClave">+ Crear objeto clave</button>
@@ -773,6 +929,14 @@
                                 </span>
                             </div>
                             <div id="perfilMasterArtes" class="lista-objetos" data-lista="artes"></div>
+                        </div>
+                        <!-- Copia de un NPC en juego: pasar sus cambios al compendio (sin PV, PA ni estados) -->
+                        <div class="campo-objeto solo-npc" id="perfilMasterCompendio">
+                            <label>Compendio <span class="perfil-master-puntos" id="perfilMasterPlantilla"></span></label>
+                            <span class="d-flex gap-2 flex-wrap">
+                                <button type="button" class="btn-eleccion" data-compendio="sobrescribir">Sobrescribir su plantilla</button>
+                                <button type="button" class="btn-eleccion" data-compendio="nueva">Guardar como plantilla nueva</button>
+                            </span>
                         </div>
                         <p id="avisoPerfilMaster" class="aviso-objeto" role="alert"></p>
                     </form>
@@ -831,6 +995,11 @@
                             <details id="detallesResistenciasObjeto" class="acordeon-elemental" data-equipo="armadura">
                                 <summary>Resistencias elementales</summary>
                                 <div id="objetoResistencias" class="valores-elementales"></div>
+                            </details>
+                            <!-- Solo modo máster: debilidades de la armadura de un NPC (multiplicadores) -->
+                            <details id="detallesDebilidadesObjeto" class="acordeon-elemental solo-master" data-equipo="armadura">
+                                <summary>Debilidades elementales (NPC)</summary>
+                                <div id="objetoDebilidades" class="valores-elementales"></div>
                             </details>
                             <details id="detallesDannoElementalObjeto" class="acordeon-elemental" data-equipo="arma">
                                 <summary>Daño elemental</summary>
@@ -1053,6 +1222,11 @@
                     <h5 class="modal-title" id="modalArtesEquipadasLabel">Artes equipadas <span id="memoriaArtes" class="contador-objetos" title="Memoria de artes usada / total"></span></h5>
                     <!-- Solo Underworld: no gasta desbloqueos ni memoria -->
                     <button type="button" id="btnCrearOnirica" class="btn-crear-objeto" hidden>+ Crear habilidad onírica</button>
+                    <!-- Solo NPC: no tienen artes sin equipar, se añaden aquí ya equipadas -->
+                    <div class="botones-cabecera-modal ficha-npc">
+                        <button type="button" id="btnCatalogoArtesNpc" class="btn-cabecera">+ Catálogo</button>
+                        <button type="button" id="btnCrearArteNpc" class="btn-cabecera">+ Crear arte</button>
+                    </div>
                 </div>
                 <div class="modal-body">
                     <p id="avisoArtesEquipadas" class="aviso-zona" hidden></p>

@@ -31,8 +31,10 @@ export function crearInventarioVacio(tamano = TAMANO_INVENTARIO) {
     return Array.from({ length: tamano }, () => null);
 }
 
-/** Huecos que permite el personaje: los base más los modificadores `inventario` */
+/** Huecos que permite el personaje: los base más los modificadores `inventario`.
+    Los NPC no tienen límite: siempre les queda un hueco libre más que los ocupados. */
 export function capacidadInventario(pj) {
+    if (pj.esNpc) return (pj.inventario ?? []).filter(Boolean).length + 1;
     return Math.max(0, TAMANO_INVENTARIO + (Number(pj.getModificador("inventario")) || 0));
 }
 
@@ -182,6 +184,11 @@ const huecoInventario = (capacidad) => (lista) => lista.findIndex((hueco, i) => 
 
 /* Mete el objeto en una lista con huecos de inventario (la del personaje o una copia) */
 function apilarEnInventario(pj, lista, objeto) {
+    // NPC: sin límite, cada pila nueva va a un hueco vacío o al final
+    if (pj.esNpc) return apilar(lista, objeto, MAX_PILA_INVENTARIO, (l) => {
+        const i = l.findIndex(hueco => !hueco);
+        return i >= 0 ? i : l.length;
+    });
     const capacidad = capacidadInventario(pj);
     while (lista.length < capacidad) lista.push(null);
     return apilar(lista, objeto, MAX_PILA_INVENTARIO, huecoInventario(capacidad), capacidad);
@@ -521,9 +528,20 @@ export function accesorioVacio(accesorio) {
     return !accesorio || (!accesorio.nombre?.trim() && !(accesorio.modificadores?.length));
 }
 
+/* Los NPC no tienen límite de accesorios (salvo este máximo): siempre les queda una ranura libre más */
+export const MAX_ACCESORIOS_NPC = 20;
+
+/** Ranuras de accesorio del personaje: las que permite su armadura; en un NPC, las ocupadas + 1 */
+export function ranurasAccesorio(pj) {
+    if (!pj.esNpc) return getCantidadAccesoriosPorArmadura(pj.equipoArmadura?.tipo);
+    let ultima = -1;
+    (pj.accesorios ?? []).forEach((accesorio, i) => { if (!accesorioVacio(accesorio)) ultima = i; });
+    return Math.min(MAX_ACCESORIOS_NPC, ultima + 2);
+}
+
 /** Primera ranura de accesorio libre que permite la armadura, o -1 */
 export function ranuraAccesorioLibre(pj) {
-    const ranuras = getCantidadAccesoriosPorArmadura(pj.equipoArmadura?.tipo);
+    const ranuras = ranurasAccesorio(pj);
     return Array.from({ length: ranuras }, (_, i) => pj.accesorios[i]).findIndex(accesorioVacio);
 }
 
@@ -560,7 +578,7 @@ export function motivoNoEquipar(pj, objeto) {
                 : null;
         }
         case "accesorio": {
-            const ranuras = getCantidadAccesoriosPorArmadura(pj.equipoArmadura?.tipo);
+            const ranuras = ranurasAccesorio(pj);
             if (ranuraAccesorioLibre(pj) < 0) return ranuras ? "No quedan ranuras de accesorio libres." : "Tu armadura no permite accesorios.";
             return manoParaUsar(pj) ? null : "Necesitas una mano libre para ponerte el accesorio.";
         }
