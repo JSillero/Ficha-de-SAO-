@@ -2553,7 +2553,7 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
 
 .accesorios-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 10px;
 }
 
@@ -3593,4 +3593,993 @@ body:not(.modo-master) .solo-master {
 .fila-ranura-npc .nombre-parte-perfil {
     flex: 1;
     min-width: 0;
+}
+
+/* Formularios SAO, estilo "tarjeta de objeto" (.claude/12-estilo.md §5 bis; piezas en formularioSao.js).
+   De momento solo #formCrearObjeto (.form-sao): vista previa, ranuras con icono, ranuras dobles, ranuras
+   desplegables, fichas, rejilla de iconos, − / + e interruptores. Va al final para mandar sobre .form-objeto. */
+.form-objeto.form-sao {
+    gap: 10px;
+}
+
+/* Los selects de verdad quedan ocultos: los visten las fichas o la rejilla */
+.form-sao .select-vestido,
+.form-sao .fichas-sao[hidden] {
+    display: none;
+}
+
+/* Vista previa: la fila tal como saldrá en el inventario */
+.form-sao .vista-previa-sao {
+    border: none;
+    border-radius: 8px;
+    padding: 10px 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.form-sao .vista-previa-sao .objeto-icono {
+    width: 48px;
+    height: 48px;
+}
+
+.form-sao .vista-previa-sao .objeto-nombre {
+    font-size: 17px;
+}
+
+.form-sao .vista-previa-sao:empty {
+    display: none;
+}
+
+/* Ranura: pastilla blanca con su icono, la etiqueta y el valor */
+.form-sao .ranura {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 42px;
+    min-width: 0;
+    padding: 4px 14px 4px 4px;
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.form-sao .ranura:focus-within {
+    box-shadow: 0 0 0 2px #EBA601, 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.form-sao .ranura-icono {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+}
+
+.form-sao .ranura-etiqueta {
+    flex-shrink: 0;
+    min-width: 72px;
+    font-size: 14px;
+    font-weight: normal;
+    color: #666;
+}
+
+.form-sao .ranura > .paso,
+.form-sao .ranura > input[type="checkbox"] {
+    margin-left: auto;
+}
+
+/* Descripción: la etiqueta junto al icono y el texto debajo, a lo ancho, en su caja */
+.form-sao .ranura.ranura-alta {
+    flex-wrap: wrap;
+    border-radius: 18px;
+    padding: 4px 10px 10px 4px;
+}
+
+.form-objeto.form-sao .ranura.ranura-alta textarea {
+    flex-basis: 100%;
+    margin-left: 6px;
+}
+
+/* Ranura con fichas (uso del material, provoca / cura): las fichas pasan abajo si no caben */
+.form-sao .ranura.ranura-fichas {
+    flex-wrap: wrap;
+    border-radius: 21px;
+}
+
+.form-sao .ranura.ranura-fichas .fichas-sao {
+    flex: 1;
+}
+
+/* Dos campos cortos en la misma línea; con uno solo visible ocupa todo */
+.form-sao .ranuras-dobles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 8px;
+}
+
+/* En las ranuras estrechas la etiqueta cede sitio al valor */
+.form-sao .ranuras-dobles .ranura-etiqueta {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.form-sao .ranuras-extras {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Texto: sin caja, línea inferior que se vuelve dorada */
+.form-objeto.form-sao input[type="text"],
+.form-objeto.form-sao textarea {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 2px;
+    border: none;
+    border-bottom: 2px solid #c9c9c9;
+    border-radius: 0;
+    background: transparent;
+    font-size: 14px;
+}
+
+/* Textos largos: caja gris claro con la línea inferior, para que se vea dónde empieza y acaba */
+.form-objeto.form-sao textarea {
+    min-height: 54px;
+    padding: 6px 10px;
+    border-radius: 8px 8px 0 0;
+    background: #f4f4f4;
+    resize: vertical;
+    line-height: 1.4;
+}
+
+/* Dentro de una ranura desplegable las filas van en gris claro y la caja de texto en blanco */
+.form-sao .ranura-cuerpo .habilidad-reliquia {
+    border: none;
+    background: #f4f4f4;
+    box-shadow: none;
+}
+
+.form-objeto.form-sao .ranura-cuerpo textarea {
+    background: #fff;
+}
+
+.form-objeto.form-sao input[type="text"]:focus,
+.form-objeto.form-sao textarea:focus {
+    outline: none;
+    border-bottom-color: #EBA601;
+}
+
+/* Números: − valor + */
+.form-sao .paso {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 999px;
+    background: #f4f4f4;
+}
+
+.form-sao .paso-boton {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: #4D4D4D;
+    color: #FBFBFB;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    transition: transform 0.1s;
+}
+
+.form-sao .paso-boton:hover {
+    background: #FBFBFB;
+    color: #EBA601;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    transform: scale(1.08);
+}
+
+.form-sao .paso-boton:active {
+    transform: scale(0.95);
+}
+
+.form-objeto.form-sao .paso input[type="number"] {
+    width: 46px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    text-align: center;
+    font-size: 15px;
+    font-variant-numeric: tabular-nums;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.form-sao .paso input[type="number"]::-webkit-inner-spin-button,
+.form-sao .paso input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.form-sao .paso input[type="number"]:focus {
+    outline: none;
+}
+
+.form-sao .paso:has(input:disabled) {
+    opacity: 0.4;
+}
+
+.form-sao .paso:has(input:disabled) .paso-boton {
+    cursor: not-allowed;
+}
+
+/* En los valores elementales los números van más apretados */
+/* Valores elementales: sin − / +, un número corto en blanco junto a su icono */
+.form-objeto.form-sao .campo-elemental input[type="number"] {
+    width: 48px;
+    padding: 3px 4px;
+    border: none;
+    border-radius: 4px;
+    background: #f4f4f4;
+    text-align: center;
+    font-size: 15px;
+}
+
+/* Interruptor: la casilla de verdad con otro aspecto */
+.form-sao input[type="checkbox"] {
+    -webkit-appearance: none;
+    appearance: none;
+    flex-shrink: 0;
+    width: 40px;
+    height: 22px;
+    margin: 0;
+    border-radius: 999px;
+    background: radial-gradient(circle, #FBFBFB 7px, transparent 8px) no-repeat 0 0 / 22px 22px, #c9c9c9;
+    cursor: pointer;
+    transition: background-position 0.2s, background-color 0.2s;
+}
+
+.form-sao input[type="checkbox"]:checked {
+    background-color: #EBA601;
+    background-position: 18px 0, 0 0;
+}
+
+.form-sao input[type="checkbox"]:focus-visible {
+    outline: 2px solid #EBA601;
+    outline-offset: 2px;
+}
+
+.form-sao input[type="checkbox"]:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Fichas (pocas opciones) */
+.form-sao .fichas-sao {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.form-sao .ficha-sao {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 12px 3px 3px;
+    border: none;
+    border-radius: 999px;
+    background: #f4f4f4;
+    color: #4D4D4D;
+    font-size: 13px;
+    cursor: pointer;
+    transition: transform 0.1s;
+}
+
+.form-sao .ficha-sao:not(:has(.ficha-icono)) {
+    padding: 5px 12px;
+}
+
+.form-sao .ficha-sao:hover {
+    transform: scale(1.04);
+}
+
+.form-sao .ficha-icono {
+    display: block;
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
+.form-sao .ficha-sao[aria-checked="true"] {
+    background: #4D4D4D;
+    color: #FBFBFB;
+}
+
+.form-sao .ficha-sao[aria-checked="true"] .icono-sao,
+.form-sao .rejilla-opcion[aria-pressed="true"] .icono-sao {
+    --fondo: #FBFBFB;
+    --glifo: #EBA601;
+}
+
+/* Fichas grandes (tipo de objeto): icono con el nombre debajo */
+.form-sao .fichas-sao.grandes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(44px, 1fr));
+    gap: 6px;
+}
+
+.form-sao .fichas-sao.grandes .ficha-sao {
+    flex-direction: column;
+    gap: 4px;
+    padding: 0;
+    background: none;
+    color: #5a5a5a;
+    font-size: 11px;
+}
+
+.form-sao .fichas-sao.grandes .ficha-icono {
+    width: 40px;
+    height: 40px;
+}
+
+.form-sao .fichas-sao.grandes .ficha-sao[aria-checked="true"] {
+    background: none;
+    color: #4D4D4D;
+}
+
+/* Rejilla (muchas opciones): botón con la elegida y panel de iconos por grupos */
+.form-sao .rejilla-boton {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 2px 0;
+    border: none;
+    background: none;
+    color: #4D4D4D;
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.form-sao .rejilla-texto {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.form-sao .rejilla-flecha,
+.form-sao .ranura-desplegable > summary::after {
+    width: 8px;
+    height: 8px;
+    flex-shrink: 0;
+    border-right: 2px solid #EBA601;
+    border-bottom: 2px solid #EBA601;
+    transform: rotate(45deg) translate(-2px, -2px);
+    transition: transform 0.2s;
+}
+
+.form-sao .rejilla-boton[aria-expanded="true"] .rejilla-flecha,
+.form-sao .ranura-desplegable[open] > summary::after {
+    transform: rotate(-135deg) translate(-2px, -2px);
+}
+
+.form-sao .rejilla-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.form-sao .rejilla-panel[hidden] {
+    display: none;
+}
+
+.form-sao .rejilla-grupo {
+    font-size: 11px;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.form-sao .rejilla-opciones {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+    gap: 6px;
+}
+
+.form-sao .rejilla-opcion {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 6px 4px;
+    border: none;
+    border-radius: 8px;
+    background: #f4f4f4;
+    color: #4D4D4D;
+    font-size: 11px;
+    line-height: 1.15;
+    cursor: pointer;
+}
+
+.form-sao .rejilla-opcion .ficha-icono {
+    width: 30px;
+    height: 30px;
+}
+
+.form-sao .rejilla-opcion.sin-icono {
+    justify-content: center;
+    min-height: 34px;
+    font-size: 12px;
+}
+
+.form-sao .rejilla-opcion:hover {
+    transform: scale(1.04);
+}
+
+.form-sao .rejilla-opcion[aria-pressed="true"] {
+    background: #4D4D4D;
+    color: #FBFBFB;
+}
+
+/* Ranura desplegable: plegada muestra un resumen; abierta, su contenido debajo */
+.form-sao .ranura-desplegable {
+    border-radius: 21px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.form-sao .ranura-desplegable > summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 42px;
+    padding: 4px 18px 4px 4px;
+    list-style: none;
+    cursor: pointer;
+}
+
+.form-sao .ranura-desplegable > summary::-webkit-details-marker {
+    display: none;
+}
+
+.form-sao .ranura-desplegable > summary::after {
+    content: "";
+}
+
+.form-sao .ranura-desplegable > summary .ranura-etiqueta {
+    font-size: 15px;
+    color: #4D4D4D;
+}
+
+.form-sao .ranura-resumen {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: right;
+    font-size: 12px;
+    color: #8a6d2a;
+}
+
+.form-sao .ranura-desplegable > summary:hover .icono-sao,
+.form-sao .ranura-desplegable[open] > summary .icono-sao {
+    --fondo: #FBFBFB;
+    --glifo: #EBA601;
+}
+
+.form-sao .ranura-cuerpo {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 2px 12px 12px;
+}
+
+/* Dentro de una ranura desplegable las ranuras y filas van en gris claro, sin sombra */
+.form-sao .ranura-cuerpo .ranura,
+.form-sao .ranura-cuerpo .fila-estado-acertar,
+.form-sao .ranura-cuerpo .mod-equipo {
+    background: #f4f4f4;
+    box-shadow: none;
+}
+
+.form-sao .ranura-cuerpo .ranura:focus-within {
+    box-shadow: 0 0 0 2px #EBA601;
+}
+
+.form-sao .ranura-cuerpo .paso,
+.form-sao .ranura-cuerpo .ficha-sao {
+    background: #fff;
+}
+
+.form-sao .ranura-cuerpo .ficha-sao[aria-checked="true"] {
+    background: #4D4D4D;
+}
+
+.form-sao .ranura-cuerpo .rejilla-panel {
+    box-shadow: none;
+    background: #f4f4f4;
+}
+
+.form-sao .ranura-cuerpo .rejilla-opcion:not([aria-pressed="true"]) {
+    background: #fff;
+}
+
+.form-sao .ranura-cuerpo .valores-elementales {
+    gap: 8px 12px;
+}
+
+.form-sao .ranura-cuerpo > .btn-cabecera {
+    align-self: flex-start;
+}
+
+/* Añadir una fila (modificador, habilidad, efecto, estado al acertar): un + redondo centrado bajo la lista.
+   Global: el editor de estados al acertar también sale en otras ventanas */
+.btn-anadir-ranura {
+    align-self: center;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    margin-inline: auto;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: #4D4D4D;
+    color: #FBFBFB;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 2px 3px rgba(0, 0, 0, 0.3);
+    transition: transform 0.1s;
+}
+
+.btn-anadir-ranura:hover,
+.btn-anadir-ranura:focus-visible {
+    background: #FBFBFB;
+    color: #EBA601;
+    transform: scale(1.08);
+}
+
+.btn-anadir-ranura:active {
+    transform: scale(0.95);
+}
+
+/* Botón de quitar de las filas del formulario (icono de descartar) */
+.form-sao .mod-equipo .btn-objeto,
+.form-sao .habilidad-reliquia .btn-objeto {
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    padding: 0;
+    border: none;
+    background: none;
+}
+
+.form-sao .habilidad-reliquia .btn-objeto.quitar-habilidad {
+    order: 10;
+}
+
+/* Filas de modificadores y de "Al acertar": el atributo o el estado ocupa lo que sobra (con sitio para su nombre) */
+.form-sao .mod-equipo .rejilla-boton,
+.form-sao .fila-estado-acertar .rejilla-boton {
+    flex: 1 1 130px;
+}
+
+.form-sao .fichas-sao.grandes .ficha-sao span:last-child {
+    overflow-wrap: anywhere;
+    text-align: center;
+}
+
+@media (max-width: 600px) {
+    .form-sao .ranuras-dobles {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Formularios SAO: lo que añade el de artes (#formCrearArte, inicializarFormularioArte) ______________________ */
+/* Cualquier elemento oculto con [hidden] (p. ej. "Compartir" fuera de una sala) se oculta aunque sea una ranura */
+.form-sao [hidden] {
+    display: none !important;
+}
+
+/* Casillas de tipos (armas con las que se usa, tipos de un requisito, "Alternativo"): fichas que se encienden */
+.form-sao .casillas-tipos {
+    gap: 6px;
+}
+
+.form-sao .casilla-tipo {
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: #f4f4f4;
+    color: #4D4D4D;
+    cursor: pointer;
+    transition: transform 0.1s;
+}
+
+.form-sao .ranura-cuerpo .casilla-tipo {
+    background: #fff;
+}
+
+.form-sao .casilla-tipo:hover {
+    transform: scale(1.04);
+}
+
+.form-sao .casilla-tipo input[type="checkbox"] {
+    display: none;
+}
+
+.form-sao .casilla-tipo:has(input:checked) {
+    background: #4D4D4D;
+    color: #FBFBFB;
+}
+
+.form-sao .casilla-tipo:has(input:focus-visible) {
+    outline: 2px solid #EBA601;
+    outline-offset: 2px;
+}
+
+/* Las fichas de armas ocupan lo que sobra de su ranura */
+.form-sao .ranura-fichas .casillas-tipos {
+    flex: 1;
+}
+
+/* Filas de requisito: en gris claro dentro de la ranura desplegable; el tipo y el cuál con su rejilla */
+.form-sao .ranura-cuerpo .requisito-arte {
+    border: none;
+    background: #f4f4f4;
+}
+
+.form-sao .requisito-arte .rejilla-boton {
+    flex: 0 1 150px;
+}
+
+.form-sao .requisito-arte .btn-objeto {
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    margin-left: auto;
+    padding: 0;
+    border: none;
+    background: none;
+}
+
+.form-sao .ranura-cuerpo .pista-form {
+    margin: 0;
+    font-size: 12px;
+    color: #5a5a5a;
+}
+
+/* "Otros requisitos": texto de una línea bajo la etiqueta, como la descripción */
+.form-objeto.form-sao .ranura.ranura-alta input[type="text"] {
+    flex-basis: 100%;
+    margin-left: 6px;
+}
+
+/* Filas de efectos del formulario de objetos: editar y quitar con iconos */
+.form-sao .ranura-cuerpo .efecto-objeto {
+    border: none;
+    background: #f4f4f4;
+}
+
+.form-sao .efecto-objeto .btn-objeto {
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    padding: 0;
+    border: none;
+    background: none;
+}
+
+/* Ranura desplegable dentro de otra (Daño elemental y Efectos al acertar dentro de Daño): un nivel más gris, y lo
+   de dentro vuelve a blanco */
+.form-sao .ranura-cuerpo .ranura-desplegable {
+    background: #f4f4f4;
+    box-shadow: none;
+}
+
+.form-sao .ranura-cuerpo .ranura-cuerpo .ranura,
+.form-sao .ranura-cuerpo .ranura-cuerpo .fila-estado-acertar,
+.form-sao .ranura-cuerpo .ranura-cuerpo .rejilla-panel {
+    background: #fff;
+}
+
+.form-objeto.form-sao .ranura-cuerpo .ranura-cuerpo .campo-elemental input[type="number"] {
+    background: #fff;
+}
+
+.form-sao .ranura-cuerpo .ranura-cuerpo .paso,
+.form-sao .ranura-cuerpo .ranura-cuerpo .ficha-sao:not([aria-checked="true"]),
+.form-sao .ranura-cuerpo .ranura-cuerpo .rejilla-opcion:not([aria-pressed="true"]) {
+    background: #f4f4f4;
+}
+
+/* Ranura con su número desactivado (p. ej. daño extra y golpes de un arte sin daño físico): en gris */
+.form-sao .ranura:has(> .paso input:disabled) {
+    opacity: 0.55;
+}
+
+.form-sao .ranura:has(> .paso input:disabled) .paso {
+    opacity: 1;
+}
+
+/* Tres campos en la misma fila (hace daño, daño extra y golpes de un arte): columnas más estrechas */
+.form-sao .ranuras-dobles.ranuras-triples {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.form-sao .ranuras-triples .ranura-etiqueta {
+    min-width: 0;
+}
+
+/* Formularios SAO, 7c: perfil del máster, objeto clave, experiencia, muerte de un NPC (interfazMaster.js, interfaz.js) */
+.form-sao .campo-sao {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.form-sao .titulo-ranuras {
+    margin: 0;
+    font-size: 15px;
+    font-weight: normal;
+    color: #4D4D4D;
+}
+
+/* Valor máximo junto a la etiqueta (PV / 24) y textos secundarios dentro de una etiqueta */
+.form-sao .ranura-maximo {
+    font-size: 12px;
+    color: #888;
+}
+
+/* Varios números con su nombre (características, habilidades, valores de un NPC): pastillas en rejilla */
+.form-sao .campos-sao {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 8px;
+}
+
+.form-sao .campos-sao > label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 3px 4px 3px 14px;
+    border-radius: 999px;
+    background: #f4f4f4;
+    color: #4D4D4D;
+    font-size: 14px;
+    font-weight: normal;
+}
+
+.form-sao .campos-sao > label .paso {
+    margin-left: auto;
+    background: #fff;
+}
+
+/* Botones de varias acciones bajo una lista (artes: catálogo, crear, onírica; recompensa; acciones de un NPC) */
+.form-sao .botones-ranura {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+}
+
+.form-sao .ranura .botones-ranura {
+    margin-left: auto;
+}
+
+.btn-pastilla-sao,
+.form-sao .botones-ranura .btn-crear-objeto {
+    position: static;
+    translate: none;
+    padding: 5px 14px;
+    border: none;
+    border-radius: 999px;
+    background: #4D4D4D;
+    color: #FBFBFB;
+    font-size: 13px;
+    font-weight: normal;
+    cursor: pointer;
+    box-shadow: 0 2px 3px rgba(0, 0, 0, 0.3);
+    transition: transform 0.1s;
+}
+
+.btn-pastilla-sao:hover:not(:disabled),
+.form-sao .botones-ranura .btn-crear-objeto:hover:not(:disabled) {
+    background: #FBFBFB;
+    color: #EBA601;
+    transform: scale(1.04);
+}
+
+.btn-pastilla-sao:disabled,
+.form-sao .botones-ranura .btn-crear-objeto:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Tiradas de un NPC: nombre y valor en una pastilla, con su papelera */
+.form-sao .fila-tirada-npc {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 6px 3px 14px;
+    border-radius: 999px;
+    background: #f4f4f4;
+}
+
+.form-sao .fila-tirada-npc .btn-objeto {
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+}
+
+.form-sao .lista-tiradas-npc {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* Correo y contraseña (cuenta) con el mismo aspecto que el texto: sin caja y con línea inferior */
+.form-objeto.form-sao input[type="email"],
+.form-objeto.form-sao input[type="password"] {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 2px;
+    border: none;
+    border-bottom: 2px solid #c9c9c9;
+    border-radius: 0;
+    background: transparent;
+    font-size: 14px;
+}
+
+.form-objeto.form-sao input[type="email"]:focus,
+.form-objeto.form-sao input[type="password"]:focus {
+    outline: none;
+    border-bottom-color: #EBA601;
+}
+
+/* Botón de acción dentro de una ranura (entrar en una sala, cambiar el nombre): a la derecha */
+.form-sao .ranura > .btn-cabecera {
+    flex-shrink: 0;
+}
+
+/* Ventana de daño (inicializarDanno): cada cantidad en una ranura con − / + */
+.form-sao .fila-cantidad-danno {
+    display: flex;
+    border-left: none;
+    align-items: center;
+    gap: 10px;
+    min-height: 42px;
+    padding: 4px 14px 4px 4px;
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.form-sao .fila-cantidad-danno .opcion-icono {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+}
+
+.form-sao .fila-cantidad-danno .nombre-danno {
+    min-width: 80px;
+    font-size: 14px;
+    color: #666;
+}
+
+.form-sao .fila-cantidad-danno .danno-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    font-size: 13px;
+    color: #666;
+}
+
+.form-sao .fila-cantidad-danno .danno-check + .paso,
+.form-sao .fila-cantidad-danno .paso {
+    margin-left: auto;
+}
+
+.form-sao .fila-cantidad-danno .paso + .danno-check {
+    margin-left: 10px;
+}
+
+/* Tu perfil y la ficha resumida (htmlFichaResumen en interfaz.js), estilo SAO: tarjeta arriba, ranuras para lo
+   editable y ranuras desplegables para habilidades, valores, artes y equipo */
+.ficha-resumen.form-sao .tarjeta-perfil .objeto-icono {
+    width: 52px;
+    height: 52px;
+}
+
+.ficha-resumen.form-sao .tarjeta-perfil .objeto-nombre {
+    font-size: 20px;
+}
+
+/* Valor de solo lectura a la derecha de una ranura (amigos, sala, grupo, puntos de ego) */
+.form-sao .ranura-valor {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: right;
+    font-size: 15px;
+    color: #4D4D4D;
+}
+
+/* Puntos de ego: el total, la cantidad con − / + y añadir / quitar */
+.form-sao .barra-ego {
+    flex-wrap: wrap;
+    border-radius: 21px;
+    margin: 0;
+}
+
+.form-sao .barra-ego .ranura-valor {
+    flex: 1 1 auto;
+    font-size: 18px;
+}
+
+.form-sao .barra-ego .btn-cor {
+    width: 32px;
+    height: 32px;
+}
+
+/* Dentro de las ranuras desplegables, los valores y las artes o piezas plegables en gris claro */
+.ficha-resumen.form-sao .ranura-cuerpo .resumen-valor,
+.ficha-resumen.form-sao .ranura-cuerpo .resumen-plegable {
+    background: #f4f4f4;
+    box-shadow: none;
+}
+
+.ficha-resumen.form-sao .ranura-cuerpo .resumen-rejilla {
+    margin-bottom: 0;
+}
+
+.ficha-resumen.form-sao .ranura-cuerpo .resumen-comportamiento {
+    margin: 0;
+}
+
+/* Nombre en tu perfil: como el resto de textos (el estilo antiguo lo hacía corto y en negrita) */
+.ficha-resumen.form-sao .input-nombre-perfil {
+    width: auto;
+    max-width: none;
+    font-weight: normal;
+    font-size: 14px;
+}
+
+/* Amigos, sala y grupo: dos columnas; el último ocupa la fila entera si queda solo */
+.ficha-resumen.form-sao .resumen-perfil {
+    grid-template-columns: 1fr 1fr;
+    margin: 0;
+}
+
+.ficha-resumen.form-sao .resumen-perfil > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+}
+
+/* Cantidad de ego con − / + y los botones de añadir y quitar, siempre juntos */
+.form-sao .ego-controles {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+
+@media (max-width: 600px) {
+    .ficha-resumen.form-sao .resumen-perfil {
+        grid-template-columns: 1fr;
+    }
 }

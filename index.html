@@ -583,8 +583,14 @@
                     <h5 class="modal-title" id="modalExperienciaLabel">Modificar experiencia</h5>
                 </div>
                 <div class="modal-body">
-                    <label for="inputModExp" class="form-label">Introduce la cantidad a sumar (usa negativos para restar):</label>
-                    <input type="number" class="form-control" id="inputModExp" value="0">
+                    <!-- Estilo SAO: una ranura con − / + (negativo resta) -->
+                    <div class="form-objeto form-sao" id="formExperiencia">
+                        <div class="ranura" title="Usa negativos para restar">
+                            <span class="ranura-icono" data-icono="artes"></span>
+                            <label class="ranura-etiqueta" for="inputModExp">EXP a sumar (negativo resta)</label>
+                            <input type="number" id="inputModExp" value="0">
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn-modal-sao aceptar" id="btnAplicarExp" title="Aplicar" aria-label="Aplicar"></button>
@@ -636,7 +642,7 @@
                         <label class="opcion-danno"><input type="checkbox" name="elementoDanno" value="oscuridad"> Oscuridad</label>
                     </div>
                     <!-- Una fila de cantidad por tipo marcado (generadas en inicializarDanno) -->
-                    <div id="dannoCantidades" class="danno-cantidades"></div>
+                    <div id="dannoCantidades" class="danno-cantidades form-objeto form-sao"></div>
                     <ul id="previewDanno" class="danno-preview"></ul>
                 </div>
                 <div class="modal-footer">
@@ -704,10 +710,16 @@
                     <h5 class="modal-title" id="modalObjetoClaveLabel">Crear objeto clave</h5>
                 </div>
                 <div class="modal-body">
-                    <form id="formObjetoClave" class="form-objeto" novalidate>
-                        <label class="campo-crece">Nombre <input type="text" id="objetoClaveNombre" required></label>
-                        <div class="campo-objeto">
-                            <label for="objetoClaveDescripcion">Descripción</label>
+                    <!-- Estilo SAO (.claude/12-estilo.md §5 bis): ranuras con icono -->
+                    <form id="formObjetoClave" class="form-objeto form-sao" novalidate>
+                        <div class="ranura">
+                            <span class="ranura-icono" data-icono="llave"></span>
+                            <label class="ranura-etiqueta" for="objetoClaveNombre">Nombre</label>
+                            <input type="text" id="objetoClaveNombre" required>
+                        </div>
+                        <div class="ranura ranura-alta">
+                            <span class="ranura-icono" data-icono="diario"></span>
+                            <label class="ranura-etiqueta" for="objetoClaveDescripcion">Descripción</label>
                             <textarea id="objetoClaveDescripcion" rows="3"></textarea>
                         </div>
                         <p id="avisoObjetoClave" class="aviso-objeto" role="alert"></p>
@@ -771,7 +783,7 @@
                     <h5 class="modal-title" id="modalEstadosAcertarLabel">Estados al acertar</h5>
                 </div>
                 <div class="modal-body">
-                    <div id="editorEstadosAcertarNpc">
+                    <div id="editorEstadosAcertarNpc" class="form-objeto form-sao">
                         <div class="editor-estados-acertar"></div>
                     </div>
                 </div>
@@ -873,15 +885,18 @@
                     <h5 class="modal-title" id="modalMuerteNpcLabel">NPC derrotado</h5>
                 </div>
                 <div class="modal-body">
-                    <form id="formMuerteNpc" class="form-objeto" novalidate>
+                    <form id="formMuerteNpc" class="form-objeto form-sao" novalidate>
                         <p id="textoMuerteNpc"></p>
-                        <div class="campo-objeto" id="campoExpMuerteNpc">
-                            <label for="selectExpMuerteNpc">EXP para</label>
-                            <select id="selectExpMuerteNpc"></select>
+                        <div id="campoExpMuerteNpc" class="campo-sao">
+                            <div class="ranura">
+                                <span class="ranura-icono" data-icono="personaje"></span>
+                                <span class="ranura-etiqueta">EXP para</span>
+                                <select id="selectExpMuerteNpc" aria-label="Quién recibe la EXP"></select>
+                            </div>
                             <p id="mitadMuerteNpc" class="aviso-objeto-info"></p>
                         </div>
-                        <div class="campo-objeto">
-                            <label>Recompensa</label>
+                        <div class="campo-sao">
+                            <h6 class="titulo-ranuras">Recompensa</h6>
                             <div id="recompensaMuerteNpc" class="lista-objetos"></div>
                         </div>
                         <p id="avisoMuerteNpc" class="aviso-zona"></p>
@@ -903,135 +918,189 @@
                     <h5 class="modal-title" id="modalPerfilMasterLabel">Nuevo personaje</h5>
                 </div>
                 <div class="modal-body">
-                    <form id="formPerfilMaster" class="form-objeto perfil-master" novalidate>
+                    <!-- Estilo SAO (.claude/12-estilo.md §5 bis): lo básico en ranuras arriba y cada apartado en una ranura
+                         desplegable con su contador. Los controles conservan sus ids y data-* (interfazMaster.js) -->
+                    <form id="formPerfilMaster" class="form-objeto form-sao perfil-master" novalidate>
                         <!-- Solo al crear: personaje o NPC (no se cambia después). Con NPC (.modo-npc) se ocultan los
                              .solo-personaje y se ven los .solo-npc -->
                         <div class="perfil-master-tipo" id="perfilMasterTipo" role="radiogroup" aria-label="Tipo">
                             <button type="button" class="btn-eleccion" data-tipo="personaje" aria-pressed="true">Personaje</button>
                             <button type="button" class="btn-eleccion" data-tipo="npc" aria-pressed="false">NPC</button>
                         </div>
-                        <div class="campo-objeto">
-                            <label for="perfilMasterNombre">Nombre</label>
+                        <div class="ranura">
+                            <span class="ranura-icono" data-icono="editar"></span>
+                            <label class="ranura-etiqueta" for="perfilMasterNombre">Nombre</label>
                             <input type="text" id="perfilMasterNombre" maxlength="60" required>
                         </div>
-                        <div class="campo-objeto solo-personaje">
-                            <label for="perfilMasterNombreReal">Nombre real</label>
+                        <div class="ranura solo-personaje">
+                            <span class="ranura-icono" data-icono="personaje"></span>
+                            <label class="ranura-etiqueta" for="perfilMasterNombreReal">Nombre real</label>
                             <input type="text" id="perfilMasterNombreReal" maxlength="60">
                         </div>
-                        <div class="fila-campos">
-                            <label>Nivel <input type="number" id="perfilMasterNivel" min="1" max="150"></label>
-                            <label class="solo-personaje">Profesión <select id="perfilMasterProfesion"></select></label>
-                            <label class="solo-personaje"><input type="checkbox" id="perfilMasterUnderworld"> Underworld</label>
-                            <label class="solo-personaje"><input type="checkbox" id="perfilMasterProtagonista"> Protagonista</label>
-                            <label class="solo-npc" title="Piso del compendio (vacío = sin piso)">Piso <input type="number" data-npc="piso" min="1" max="100"></label>
+                        <div class="ranuras-dobles">
+                            <div class="ranura">
+                                <span class="ranura-icono" data-icono="artes"></span>
+                                <label class="ranura-etiqueta" for="perfilMasterNivel">Nivel</label>
+                                <input type="number" id="perfilMasterNivel" min="1" max="150">
+                            </div>
+                            <div class="ranura solo-npc" title="Piso del compendio (vacío = sin piso)">
+                                <span class="ranura-icono" data-icono="mapa"></span>
+                                <label class="ranura-etiqueta" for="perfilMasterPiso">Piso</label>
+                                <input type="number" id="perfilMasterPiso" data-npc="piso" min="1" max="100">
+                            </div>
+                            <div class="ranura solo-personaje" title="Sacro, daño mágico y habilidades oníricas">
+                                <span class="ranura-icono" data-icono="onirica"></span>
+                                <label class="ranura-etiqueta" for="perfilMasterUnderworld">Underworld</label>
+                                <input type="checkbox" id="perfilMasterUnderworld">
+                            </div>
+                            <div class="ranura solo-personaje" title="Tiene diario">
+                                <span class="ranura-icono" data-icono="diario"></span>
+                                <label class="ranura-etiqueta" for="perfilMasterProtagonista">Protagonista</label>
+                                <input type="checkbox" id="perfilMasterProtagonista">
+                            </div>
                         </div>
-                        <div class="campo-objeto solo-personaje">
-                            <label>Características <span class="perfil-master-puntos" id="perfilMasterPuntosCar"></span></label>
-                            <div class="fila-campos" id="perfilMasterCaracteristicas"></div>
+                        <div class="ranura ranura-fichas solo-personaje">
+                            <span class="ranura-icono" data-icono="material"></span>
+                            <span class="ranura-etiqueta">Profesión</span>
+                            <select id="perfilMasterProfesion" aria-label="Profesión"></select>
                         </div>
-                        <div class="campo-objeto solo-personaje">
-                            <label>Habilidades <span class="perfil-master-puntos" id="perfilMasterPuntosHab"></span></label>
-                            <div class="fila-campos" id="perfilMasterHabilidades"></div>
+                        <div class="ranuras-dobles">
+                            <div class="ranura">
+                                <span class="ranura-icono" data-icono="regeneracion"></span>
+                                <label class="ranura-etiqueta" for="perfilMasterVida">PV <span class="ranura-maximo">/ <span id="perfilMasterVidaMax"></span></span></label>
+                                <input type="number" id="perfilMasterVida" min="0">
+                            </div>
+                            <div class="ranura">
+                                <span class="ranura-icono" data-icono="artes"></span>
+                                <label class="ranura-etiqueta" for="perfilMasterPA">PA <span class="ranura-maximo">/ <span id="perfilMasterPAMax"></span></span></label>
+                                <input type="number" id="perfilMasterPA" min="0">
+                            </div>
+                            <div class="ranura solo-personaje">
+                                <span class="ranura-icono" data-icono="cor"></span>
+                                <label class="ranura-etiqueta" for="perfilMasterCor">Cor</label>
+                                <input type="number" id="perfilMasterCor" min="0">
+                            </div>
+                            <div class="ranura solo-personaje">
+                                <span class="ranura-icono" data-icono="ego"></span>
+                                <label class="ranura-etiqueta" for="perfilMasterEgo">Ego</label>
+                                <input type="number" id="perfilMasterEgo" min="0">
+                            </div>
                         </div>
-                        <div class="fila-campos">
-                            <label>PV <input type="number" id="perfilMasterVida" min="0"> / <span id="perfilMasterVidaMax"></span></label>
-                            <label>PA <input type="number" id="perfilMasterPA" min="0"> / <span id="perfilMasterPAMax"></span></label>
-                            <label class="solo-personaje">Cor <input type="number" id="perfilMasterCor" min="0"></label>
-                            <label class="solo-personaje">Ego <input type="number" id="perfilMasterEgo" min="0"></label>
-                        </div>
+
+                        <!-- Personaje: características y habilidades (con los puntos en el resumen) -->
+                        <details class="ranura-desplegable solo-personaje" open>
+                            <summary><span class="ranura-icono" data-icono="aguante"></span><span class="ranura-etiqueta">Características</span><span class="ranura-resumen" id="perfilMasterPuntosCar"></span></summary>
+                            <div class="ranura-cuerpo"><div class="fila-campos campos-sao" id="perfilMasterCaracteristicas"></div></div>
+                        </details>
+                        <details class="ranura-desplegable solo-personaje" open>
+                            <summary><span class="ranura-icono" data-icono="percepcion"></span><span class="ranura-etiqueta">Habilidades</span><span class="ranura-resumen" id="perfilMasterPuntosHab"></span></summary>
+                            <div class="ranura-cuerpo"><div class="fila-campos campos-sao" id="perfilMasterHabilidades"></div></div>
+                        </details>
+                        <!-- Valores de combate del borrador (solo lectura; pintarPerfil los recalcula en cada cambio) -->
+                        <details class="ranura-desplegable solo-personaje">
+                            <summary><span class="ranura-icono" data-icono="escudo"></span><span class="ranura-etiqueta">Valores de combate</span><span class="ranura-resumen"></span></summary>
+                            <div class="ranura-cuerpo ficha-resumen"><div id="perfilMasterCombate" class="resumen-rejilla"></div></div>
+                        </details>
+
                         <!-- NPC: valores de combate escritos a mano (VALORES_NPC en npc.js; los modificadores se suman en la ficha) -->
-                        <div class="campo-objeto solo-npc">
-                            <label>Valores de combate</label>
-                            <div class="fila-campos" id="perfilMasterValoresNpc"></div>
-                        </div>
+                        <details class="ranura-desplegable solo-npc" open>
+                            <summary><span class="ranura-icono" data-icono="escudo"></span><span class="ranura-etiqueta">Valores de combate</span><span class="ranura-resumen"></span></summary>
+                            <div class="ranura-cuerpo"><div class="fila-campos campos-sao" id="perfilMasterValoresNpc"></div></div>
+                        </details>
                         <!-- NPC: tiradas libres (nombre y valor; se tiran con 3d10 + valor) -->
-                        <div class="campo-objeto solo-npc">
-                            <div class="perfil-master-titulo">
-                                <label>Tiradas <span class="perfil-master-puntos" id="perfilMasterContadorTiradas"></span></label>
-                                <button type="button" class="btn-crear-objeto" data-crear="tirada">+ Crear tirada</button>
+                        <details class="ranura-desplegable solo-npc" open>
+                            <summary><span class="ranura-icono" data-icono="iniciativa"></span><span class="ranura-etiqueta">Tiradas</span><span class="ranura-resumen" id="perfilMasterContadorTiradas"></span></summary>
+                            <div class="ranura-cuerpo">
+                                <div id="perfilMasterTiradas" class="lista-tiradas-npc"></div>
+                                <button type="button" class="btn-anadir-ranura" data-crear="tirada" title="Crear tirada" aria-label="Crear tirada">+</button>
                             </div>
-                            <div id="perfilMasterTiradas" class="lista-tiradas-npc"></div>
-                        </div>
+                        </details>
                         <!-- NPC: acciones (partes del cuerpo, npc.partes) con su arma o escudo (pintarPartesPerfil en interfazMaster.js) -->
-                        <div class="campo-objeto solo-npc">
-                            <div class="perfil-master-titulo">
-                                <label>Acciones <span class="perfil-master-puntos" id="perfilMasterContadorPartes"></span></label>
-                                <span class="d-flex gap-2 flex-wrap justify-content-end" id="perfilMasterBotonesPartes"></span>
+                        <details class="ranura-desplegable solo-npc" open>
+                            <summary><span class="ranura-icono" data-icono="espada"></span><span class="ranura-etiqueta">Acciones</span><span class="ranura-resumen" id="perfilMasterContadorPartes"></span></summary>
+                            <div class="ranura-cuerpo">
+                                <div id="perfilMasterPartes" class="lista-objetos" data-lista="partesNpc"></div>
+                                <span class="botones-ranura" id="perfilMasterBotonesPartes"></span>
                             </div>
-                            <div id="perfilMasterPartes" class="lista-objetos" data-lista="partesNpc"></div>
-                        </div>
+                        </details>
                         <!-- NPC: armadura y accesorios (pintarEquipoPerfil en interfazMaster.js) -->
-                        <div class="campo-objeto solo-npc">
-                            <div class="perfil-master-titulo">
-                                <label>Equipamiento</label>
-                                <button type="button" class="btn-crear-objeto" data-crear="accesorioNpc">+ Crear accesorio</button>
+                        <details class="ranura-desplegable solo-npc">
+                            <summary><span class="ranura-icono" data-icono="armadura"></span><span class="ranura-etiqueta">Equipamiento</span><span class="ranura-resumen"></span></summary>
+                            <div class="ranura-cuerpo">
+                                <div id="perfilMasterEquipoNpc" class="lista-objetos" data-lista="equipoNpc"></div>
+                                <button type="button" class="btn-anadir-ranura" data-crear="accesorioNpc" title="Crear accesorio" aria-label="Crear accesorio">+</button>
                             </div>
-                            <div id="perfilMasterEquipoNpc" class="lista-objetos" data-lista="equipoNpc"></div>
-                        </div>
+                        </details>
                         <!-- NPC: comportamiento en combate (campo comportamientoCombate, el mismo que bajo Acciones) -->
-                        <div class="campo-objeto solo-npc">
-                            <label for="perfilMasterComportamiento">Comportamiento en combate</label>
+                        <div class="ranura ranura-alta solo-npc">
+                            <span class="ranura-icono" data-icono="diario"></span>
+                            <label class="ranura-etiqueta" for="perfilMasterComportamiento">Comportamiento en combate</label>
                             <textarea id="perfilMasterComportamiento" rows="4"></textarea>
                         </div>
-                        <!-- Valores de combate del borrador (solo lectura; pintarPerfil los recalcula en cada cambio) -->
-                        <div class="campo-objeto ficha-resumen solo-personaje">
-                            <label>Valores de combate</label>
-                            <div id="perfilMasterCombate" class="resumen-rejilla"></div>
-                        </div>
+
                         <!-- Inventario, baúl y objetos clave (pintarObjetosPerfil): sin acciones ni restricciones de zona -->
-                        <div class="campo-objeto">
-                            <div class="perfil-master-titulo">
-                                <label>Inventario <span class="perfil-master-puntos" id="perfilMasterContadorInventario"></span></label>
-                                <button type="button" class="btn-crear-objeto" data-crear="inventario">+ Crear objeto</button>
+                        <details class="ranura-desplegable">
+                            <summary><span class="ranura-icono" data-icono="inventario"></span><span class="ranura-etiqueta">Inventario</span><span class="ranura-resumen" id="perfilMasterContadorInventario"></span></summary>
+                            <div class="ranura-cuerpo">
+                                <div id="perfilMasterInventario" class="lista-objetos" data-lista="inventario"></div>
+                                <button type="button" class="btn-anadir-ranura" data-crear="inventario" title="Crear objeto" aria-label="Crear objeto">+</button>
                             </div>
-                            <div id="perfilMasterInventario" class="lista-objetos" data-lista="inventario"></div>
-                        </div>
-                        <div class="campo-objeto solo-personaje">
-                            <div class="perfil-master-titulo">
-                                <label>Baúl <span class="perfil-master-puntos" id="perfilMasterContadorBaul"></span></label>
-                                <button type="button" class="btn-crear-objeto" data-crear="baul">+ Crear objeto</button>
+                        </details>
+                        <details class="ranura-desplegable solo-personaje">
+                            <summary><span class="ranura-icono" data-icono="baul"></span><span class="ranura-etiqueta">Baúl</span><span class="ranura-resumen" id="perfilMasterContadorBaul"></span></summary>
+                            <div class="ranura-cuerpo">
+                                <div id="perfilMasterBaul" class="lista-objetos" data-lista="baul"></div>
+                                <button type="button" class="btn-anadir-ranura" data-crear="baul" title="Crear objeto en el baúl" aria-label="Crear objeto en el baúl">+</button>
                             </div>
-                            <div id="perfilMasterBaul" class="lista-objetos" data-lista="baul"></div>
-                        </div>
-                        <div class="campo-objeto solo-personaje">
-                            <div class="perfil-master-titulo">
-                                <label>Objetos clave <span class="perfil-master-puntos" id="perfilMasterContadorClave"></span></label>
-                                <button type="button" class="btn-crear-objeto" data-crear="objetosClave">+ Crear objeto clave</button>
+                        </details>
+                        <details class="ranura-desplegable solo-personaje">
+                            <summary><span class="ranura-icono" data-icono="llave"></span><span class="ranura-etiqueta">Objetos clave</span><span class="ranura-resumen" id="perfilMasterContadorClave"></span></summary>
+                            <div class="ranura-cuerpo">
+                                <div id="perfilMasterObjetosClave" class="lista-objetos" data-lista="objetosClave"></div>
+                                <button type="button" class="btn-anadir-ranura" data-crear="objetosClave" title="Crear objeto clave" aria-label="Crear objeto clave">+</button>
                             </div>
-                            <div id="perfilMasterObjetosClave" class="lista-objetos" data-lista="objetosClave"></div>
-                        </div>
+                        </details>
                         <!-- Artes (pintarArtesPerfil): equipadas, sin equipar y oníricas; sin gastar desbloqueos ni zona -->
-                        <div class="campo-objeto">
-                            <div class="perfil-master-titulo">
-                                <label>Artes <span class="perfil-master-puntos" id="perfilMasterMemoria"></span></label>
-                                <span class="d-flex gap-2 flex-wrap justify-content-end">
-                                    <button type="button" class="btn-crear-objeto" data-crear="catalogo">+ Catálogo</button>
-                                    <button type="button" class="btn-crear-objeto" data-crear="arte">+ Crear arte</button>
-                                    <button type="button" class="btn-crear-objeto" data-crear="onirica" id="perfilMasterCrearOnirica">+ Crear habilidad onírica</button>
+                        <details class="ranura-desplegable">
+                            <summary><span class="ranura-icono" data-icono="artes"></span><span class="ranura-etiqueta">Artes</span><span class="ranura-resumen" id="perfilMasterMemoria"></span></summary>
+                            <div class="ranura-cuerpo">
+                                <div id="perfilMasterArtes" class="lista-objetos" data-lista="artes"></div>
+                                <span class="botones-ranura">
+                                    <button type="button" class="btn-pastilla-sao" data-crear="catalogo">+ Catálogo</button>
+                                    <button type="button" class="btn-pastilla-sao" data-crear="arte">+ Crear arte</button>
+                                    <button type="button" class="btn-pastilla-sao" data-crear="onirica" id="perfilMasterCrearOnirica">+ Crear habilidad onírica</button>
                                 </span>
                             </div>
-                            <div id="perfilMasterArtes" class="lista-objetos" data-lista="artes"></div>
-                        </div>
+                        </details>
                         <!-- NPC: recompensa al morir (EXP, Cor, objetos y objetos clave), al final del perfil -->
-                        <div class="campo-objeto solo-npc">
-                            <div class="perfil-master-titulo">
-                                <label>Recompensa <span class="perfil-master-puntos" id="perfilMasterContadorRecompensa"></span></label>
-                                <span class="d-flex gap-2 flex-wrap justify-content-end">
-                                    <button type="button" class="btn-crear-objeto" data-crear="recompensa">+ Crear objeto</button>
-                                    <button type="button" class="btn-crear-objeto" data-crear="recompensaClave">+ Crear objeto clave</button>
+                        <details class="ranura-desplegable solo-npc">
+                            <summary><span class="ranura-icono" data-icono="cor"></span><span class="ranura-etiqueta">Recompensa</span><span class="ranura-resumen" id="perfilMasterContadorRecompensa"></span></summary>
+                            <div class="ranura-cuerpo">
+                                <div class="ranuras-dobles">
+                                    <div class="ranura">
+                                        <span class="ranura-icono" data-icono="artes"></span>
+                                        <label class="ranura-etiqueta" for="perfilMasterExpRecompensa">EXP</label>
+                                        <input type="number" id="perfilMasterExpRecompensa" data-npc="expRecompensa" min="0">
+                                    </div>
+                                    <div class="ranura">
+                                        <span class="ranura-icono" data-icono="cor"></span>
+                                        <label class="ranura-etiqueta" for="perfilMasterCorRecompensa">Cor</label>
+                                        <input type="number" id="perfilMasterCorRecompensa" data-npc="recompensaCor" min="0">
+                                    </div>
+                                </div>
+                                <div id="perfilMasterRecompensa" class="lista-objetos" data-lista="recompensa"></div>
+                                <div id="perfilMasterRecompensaClave" class="lista-objetos" data-lista="recompensaClave"></div>
+                                <span class="botones-ranura">
+                                    <button type="button" class="btn-pastilla-sao" data-crear="recompensa">+ Crear objeto</button>
+                                    <button type="button" class="btn-pastilla-sao" data-crear="recompensaClave">+ Crear objeto clave</button>
                                 </span>
                             </div>
-                            <div class="fila-campos">
-                                <label>EXP <input type="number" data-npc="expRecompensa" min="0"></label>
-                                <label>Cor <input type="number" data-npc="recompensaCor" min="0"></label>
-                            </div>
-                            <div id="perfilMasterRecompensa" class="lista-objetos" data-lista="recompensa"></div>
-                            <div id="perfilMasterRecompensaClave" class="lista-objetos" data-lista="recompensaClave"></div>
-                        </div>
+                        </details>
                         <!-- Copia de un NPC en juego: pasar sus cambios al compendio (sin PV, PA ni estados) -->
-                        <div class="campo-objeto solo-npc" id="perfilMasterCompendio">
-                            <label>Compendio <span class="perfil-master-puntos" id="perfilMasterPlantilla"></span></label>
-                            <span class="d-flex gap-2 flex-wrap">
+                        <div class="ranura ranura-fichas solo-npc" id="perfilMasterCompendio">
+                            <span class="ranura-icono" data-icono="compendio"></span>
+                            <span class="ranura-etiqueta">Compendio <span class="ranura-maximo" id="perfilMasterPlantilla"></span></span>
+                            <span class="botones-ranura">
                                 <button type="button" class="btn-eleccion" data-compendio="sobrescribir">Sobrescribir su plantilla</button>
                                 <button type="button" class="btn-eleccion" data-compendio="nueva">Guardar como plantilla nueva</button>
                             </span>
@@ -1055,117 +1124,197 @@
                     <h5 class="modal-title" id="modalCrearObjetoLabel">Crear objeto</h5>
                 </div>
                 <div class="modal-body">
-                    <form id="formCrearObjeto" class="form-objeto" novalidate>
-                        <div class="campo-objeto">
-                            <label for="objetoTipo">Tipo</label>
-                            <select id="objetoTipo"></select>
-                        </div>
-                        <div class="campo-objeto">
-                            <label for="objetoNombre">Nombre</label>
+                    <!-- Estilo SAO "tarjeta de objeto" (.claude/12-estilo.md §5 bis): vista previa arriba, cada campo en una
+                         ranura con su icono y los extras en ranuras desplegables. Los controles de verdad (input, select,
+                         checkbox) siguen aquí con sus ids; formularioSao.js los viste (fichas, rejilla, − / +) -->
+                    <form id="formCrearObjeto" class="form-objeto form-sao" novalidate>
+                        <!-- El objeto como saldrá en el inventario (pintarVistaPrevia en inicializarCrearObjeto) -->
+                        <div id="vistaPreviaObjeto" class="fila-objeto vista-previa-sao" aria-live="polite"></div>
+
+                        <select id="objetoTipo" aria-label="Tipo de objeto"></select>
+
+                        <div class="ranura">
+                            <span class="ranura-icono" data-icono="editar"></span>
+                            <label class="ranura-etiqueta" for="objetoNombre">Nombre</label>
                             <input type="text" id="objetoNombre" required>
                         </div>
-                        <div class="campo-objeto" data-campos="comida pocion cristal material arrojadiza">
-                            <label for="objetoCantidad">Cantidad</label>
-                            <input type="number" id="objetoCantidad" min="1" value="1">
+                        <div class="ranuras-dobles">
+                            <div class="ranura" data-campos="comida pocion cristal material arrojadiza">
+                                <span class="ranura-icono" data-icono="inventario"></span>
+                                <label class="ranura-etiqueta" for="objetoCantidad">Cantidad</label>
+                                <input type="number" id="objetoCantidad" min="1" value="1">
+                            </div>
+                            <!-- Material: potencia (TIPOS_MATERIAL en objetos.js) -->
+                            <div class="ranura" data-campos="material" title="Potencia del material (distinta potencia no se apila)">
+                                <span class="ranura-icono" data-icono="magia"></span>
+                                <label class="ranura-etiqueta" for="objetoPotencia">Potencia</label>
+                                <input type="number" id="objetoPotencia" min="0" value="0">
+                            </div>
                         </div>
-                        <!-- Material: para qué sirve y su potencia (TIPOS_MATERIAL en objetos.js) -->
-                        <div class="fila-campos" data-campos="material">
-                            <label>Uso <select id="objetoSubtipoMaterial"></select></label>
-                            <label title="Potencia del material (distinta potencia no se apila)">Potencia <input type="number" id="objetoPotencia" min="0" value="0"></label>
-                        </div>
-                        <div class="campo-objeto">
-                            <label for="objetoDescripcion" id="labelObjetoDescripcion">Descripción</label>
-                            <textarea id="objetoDescripcion" rows="2"></textarea>
+                        <!-- Material: para qué sirve -->
+                        <div class="ranura ranura-fichas" data-campos="material">
+                            <span class="ranura-icono" data-icono="material"></span>
+                            <span class="ranura-etiqueta">Uso</span>
+                            <select id="objetoSubtipoMaterial" aria-label="Uso del material"></select>
                         </div>
 
-                        <!-- Equipamiento -->
-                        <div class="campo-objeto" data-campos="equipo">
-                            <label for="objetoTipoEquipo">Tipo de equipo</label>
-                            <select id="objetoTipoEquipo"></select>
+                        <!-- Equipamiento: tipo (rejilla de iconos) y valores -->
+                        <div class="ranura" data-campos="equipo">
+                            <span class="ranura-icono" data-icono="espada" id="iconoTipoEquipo"></span>
+                            <span class="ranura-etiqueta">Equipo</span>
+                            <select id="objetoTipoEquipo" aria-label="Tipo de equipo"></select>
                         </div>
-                        <div class="fila-campos" data-campos="equipo">
-                            <label data-equipo="arma">Daño <input type="number" id="objetoEquipoDanno" min="0" value="0"></label>
-                            <label data-equipo="escudo">Defensa <input type="number" id="objetoEquipoDefensa" min="0" value="0"></label>
-                            <label data-equipo="armadura">Armadura <input type="number" id="objetoEquipoArmadura" min="0" value="0"></label>
-                            <label data-equipo="armadura">Pen. Atletismo <input type="number" id="objetoEquipoPenalizacion" min="0" value="0"></label>
-                            <label data-equipo="arma accesorio" title="Una reliquia tiene habilidades con enfriamiento; se editan en la tarjeta del arma o del accesorio"><input type="checkbox" id="objetoEsReliquia"> Es reliquia</label>
-                        </div>
-                        <!-- Armadura elemental: resta el daño de cada elemento a cada impacto -->
-                        <!-- Resistencias (armaduras) y daño elemental (armas): plegados; se abren solos al editar
-                             un objeto que ya tiene alguno. Campos generados en inicializarBloquesElementales
-                             (ids objetoRes_<elemento> y objetoElem_<elemento>) -->
-                        <div data-campos="equipo">
-                            <details id="detallesResistenciasObjeto" class="acordeon-elemental" data-equipo="armadura">
-                                <summary>Resistencias elementales</summary>
-                                <div id="objetoResistencias" class="valores-elementales"></div>
-                            </details>
-                            <!-- Solo modo máster: debilidades de la armadura de un NPC (multiplicadores) -->
-                            <details id="detallesDebilidadesObjeto" class="acordeon-elemental solo-master" data-equipo="armadura">
-                                <summary>Debilidades elementales (NPC)</summary>
-                                <div id="objetoDebilidades" class="valores-elementales"></div>
-                            </details>
-                            <details id="detallesDannoElementalObjeto" class="acordeon-elemental" data-equipo="arma">
-                                <summary>Daño elemental</summary>
-                                <div id="objetoDannoElemental" class="valores-elementales"></div>
-                            </details>
-                            <!-- Estados que provoca el arma al acertar, cada uno con su probabilidad (crearEditorEstadosAlAcertar) -->
-                            <details id="detallesEstadosObjeto" class="acordeon-elemental" data-equipo="arma">
-                                <summary>Estados al acertar</summary>
-                                <div class="editor-estados-acertar"></div>
-                            </details>
-                        </div>
-                        <!-- Habilidades de reliquia (tipo Reliquia, o arma marcada como reliquia) -->
-                        <div class="campo-objeto" id="campoHabilidadesReliquia">
-                            <div class="equipamiento-mods-header">
-                                <span>Habilidades de reliquia:</span>
-                                <button type="button" id="btnAnadirHabilidadObjeto" class="btn-anadir-mod-objeto" title="Añadir habilidad" aria-label="Añadir habilidad">+</button>
+                        <div class="ranuras-dobles" data-campos="equipo">
+                            <div class="ranura" data-equipo="arma">
+                                <span class="ranura-icono" data-icono="fisico"></span>
+                                <label class="ranura-etiqueta" for="objetoEquipoDanno">Daño</label>
+                                <input type="number" id="objetoEquipoDanno" min="0" value="0">
                             </div>
-                            <ul id="listaHabilidadesObjeto" class="lista-habilidades-reliquia"></ul>
-                        </div>
-                        <!-- Efectos del equipo: pasivas y activas como las artes (efectosEquipo.js); se editan en #modalCrearArte -->
-                        <div class="campo-objeto" data-campos="equipo">
-                            <div class="equipamiento-mods-header">
-                                <span>Efectos (pasivos o activos con PA):</span>
-                                <button type="button" id="btnAnadirEfectoObjeto" class="btn-anadir-mod-objeto" title="Añadir efecto" aria-label="Añadir efecto">+</button>
+                            <div class="ranura" data-equipo="escudo">
+                                <span class="ranura-icono" data-icono="escudo"></span>
+                                <label class="ranura-etiqueta" for="objetoEquipoDefensa">Defensa</label>
+                                <input type="number" id="objetoEquipoDefensa" min="0" value="0">
                             </div>
-                            <ul id="listaEfectosObjeto" class="lista-efectos-objeto"></ul>
+                            <div class="ranura" data-equipo="armadura">
+                                <span class="ranura-icono" data-icono="armadura"></span>
+                                <label class="ranura-etiqueta" for="objetoEquipoArmadura">Armadura</label>
+                                <input type="number" id="objetoEquipoArmadura" min="0" value="0">
+                            </div>
+                            <div class="ranura" data-equipo="armadura" title="Atletismo que resta la armadura">
+                                <span class="ranura-icono" data-icono="movimiento"></span>
+                                <label class="ranura-etiqueta" for="objetoEquipoPenalizacion">Pen. Atletismo</label>
+                                <input type="number" id="objetoEquipoPenalizacion" min="0" value="0">
+                            </div>
+                            <div class="ranura" data-equipo="arma accesorio" title="Una reliquia tiene habilidades con enfriamiento; se editan en la tarjeta del arma o del accesorio">
+                                <span class="ranura-icono" data-icono="reliquia"></span>
+                                <label class="ranura-etiqueta" for="objetoEsReliquia">Es reliquia</label>
+                                <input type="checkbox" id="objetoEsReliquia">
+                            </div>
                         </div>
 
                         <!-- Poción -->
-                        <div class="fila-campos" data-campos="pocion">
-                            <label title="Positivo cura, negativo quita PV">PV <input type="number" id="objetoPv" value="0"></label>
-                            <label title="PA que recupera. Solo se puede beber en zona segura o en la base">PA <input type="number" id="objetoPa" min="0" value="0"></label>
+                        <div class="ranuras-dobles" data-campos="pocion">
+                            <div class="ranura" title="Positivo cura, negativo quita PV">
+                                <span class="ranura-icono" data-icono="regeneracion"></span>
+                                <label class="ranura-etiqueta" for="objetoPv">PV</label>
+                                <input type="number" id="objetoPv" value="0">
+                            </div>
+                            <div class="ranura" title="PA que recupera. Solo se puede beber en zona segura o en la base">
+                                <span class="ranura-icono" data-icono="artes"></span>
+                                <label class="ranura-etiqueta" for="objetoPa">PA</label>
+                                <input type="number" id="objetoPa" min="0" value="0">
+                            </div>
                         </div>
 
-                        <!-- Arrojadiza -->
-                        <div class="fila-campos" data-campos="arrojadiza">
-                            <label title="Se le suma el bonificador de daño a distancia">Daño fijo <input type="number" id="objetoDanno" min="0" value="0"></label>
-                            <label>Daño elemental <select id="objetoElemental"></select></label>
-                            <label>Cantidad <input type="number" id="objetoElementalCantidad" min="0" value="0"></label>
+                        <!-- Arrojadiza: daño fijo y un daño elemental -->
+                        <div class="ranura" data-campos="arrojadiza" title="Se le suma el bonificador de daño a distancia">
+                            <span class="ranura-icono" data-icono="fisico"></span>
+                            <label class="ranura-etiqueta" for="objetoDanno">Daño fijo</label>
+                            <input type="number" id="objetoDanno" min="0" value="0">
+                        </div>
+                        <details class="ranura-desplegable" id="detallesElementalArrojadiza" data-campos="arrojadiza">
+                            <summary><span class="ranura-icono" data-icono="elemental"></span><span class="ranura-etiqueta">Daño elemental</span><span class="ranura-resumen"></span></summary>
+                            <div class="ranura-cuerpo">
+                                <select id="objetoElemental" aria-label="Elemento"></select>
+                                <div class="ranura">
+                                    <span class="ranura-icono" data-icono="elemental"></span>
+                                    <label class="ranura-etiqueta" for="objetoElementalCantidad">Cantidad</label>
+                                    <input type="number" id="objetoElementalCantidad" min="0" value="0">
+                                </div>
+                            </div>
+                        </details>
+
+                        <div class="ranura ranura-alta">
+                            <span class="ranura-icono" data-icono="diario"></span>
+                            <label class="ranura-etiqueta" for="objetoDescripcion" id="labelObjetoDescripcion">Descripción</label>
+                            <textarea id="objetoDescripcion" rows="2"></textarea>
                         </div>
 
                         <!-- Estado (comida, poción y arrojadiza). El de la comida dura lo que dure la comida -->
-                        <div class="fila-campos" data-campos="comida pocion arrojadiza">
-                            <label>Estado <select id="objetoEstado"></select></label>
-                            <label data-campos="comida pocion">Efecto
-                                <select id="objetoEstadoAccion">
-                                    <option value="activar">Provoca</option>
-                                    <option value="quitar">Cura</option>
-                                </select>
-                            </label>
-                            <label class="campo-estado-valor">Valor <input type="number" id="objetoEstadoValor" min="0" value="1"></label>
-                            <label class="campo-estado-valor">Turnos <input type="number" id="objetoEstadoTurnos" min="0" value="3"></label>
-                            <label class="campo-estado-valor"><input type="checkbox" id="objetoEstadoPermanente"> Permanente</label>
+                        <details class="ranura-desplegable" id="detallesEstadoObjeto" data-campos="comida pocion arrojadiza">
+                            <summary><span class="ranura-icono" data-icono="veneno"></span><span class="ranura-etiqueta">Estado</span><span class="ranura-resumen"></span></summary>
+                            <div class="ranura-cuerpo">
+                                <div class="ranura">
+                                    <span class="ranura-icono" data-icono="veneno" id="iconoEstadoObjeto"></span>
+                                    <span class="ranura-etiqueta">Estado</span>
+                                    <select id="objetoEstado" aria-label="Estado"></select>
+                                </div>
+                                <div class="ranura ranura-fichas" data-campos="comida pocion">
+                                    <span class="ranura-icono" data-icono="regeneracion"></span>
+                                    <span class="ranura-etiqueta">Efecto</span>
+                                    <select id="objetoEstadoAccion" aria-label="Efecto sobre el estado">
+                                        <option value="activar">Provoca</option>
+                                        <option value="quitar">Cura</option>
+                                    </select>
+                                </div>
+                                <div class="ranuras-dobles">
+                                    <div class="ranura campo-estado-valor">
+                                        <span class="ranura-icono" data-icono="magia"></span>
+                                        <label class="ranura-etiqueta" for="objetoEstadoValor">Valor</label>
+                                        <input type="number" id="objetoEstadoValor" min="0" value="1">
+                                    </div>
+                                    <div class="ranura campo-estado-valor">
+                                        <span class="ranura-icono" data-icono="iniciativa"></span>
+                                        <label class="ranura-etiqueta" for="objetoEstadoTurnos">Turnos</label>
+                                        <input type="number" id="objetoEstadoTurnos" min="0" value="3">
+                                    </div>
+                                    <div class="ranura campo-estado-valor">
+                                        <span class="ranura-icono" data-icono="bloqueado"></span>
+                                        <label class="ranura-etiqueta" for="objetoEstadoPermanente">Permanente</label>
+                                        <input type="checkbox" id="objetoEstadoPermanente">
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
+
+                        <!-- Equipamiento: extras desplegables. Resistencias (armaduras) y daño elemental (armas) se abren
+                             solos al editar un objeto que ya tiene alguno. Campos generados en inicializarBloquesElementales
+                             (ids objetoRes_<elemento>, objetoElem_<elemento> y objetoDeb_<elemento>) -->
+                        <div class="ranuras-extras" data-campos="equipo">
+                            <details id="detallesResistenciasObjeto" class="ranura-desplegable" data-equipo="armadura">
+                                <summary><span class="ranura-icono" data-icono="armadura"></span><span class="ranura-etiqueta">Resistencias elementales</span><span class="ranura-resumen"></span></summary>
+                                <div class="ranura-cuerpo"><div id="objetoResistencias" class="valores-elementales"></div></div>
+                            </details>
+                            <!-- Solo modo máster: debilidades de la armadura de un NPC (multiplicadores) -->
+                            <details id="detallesDebilidadesObjeto" class="ranura-desplegable solo-master" data-equipo="armadura">
+                                <summary><span class="ranura-icono" data-icono="elemental"></span><span class="ranura-etiqueta">Debilidades (NPC)</span><span class="ranura-resumen"></span></summary>
+                                <div class="ranura-cuerpo"><div id="objetoDebilidades" class="valores-elementales"></div></div>
+                            </details>
+                            <details id="detallesDannoElementalObjeto" class="ranura-desplegable" data-equipo="arma">
+                                <summary><span class="ranura-icono" data-icono="elemental"></span><span class="ranura-etiqueta">Daño elemental</span><span class="ranura-resumen"></span></summary>
+                                <div class="ranura-cuerpo"><div id="objetoDannoElemental" class="valores-elementales"></div></div>
+                            </details>
+                            <!-- Estados que provoca el arma al acertar, cada uno con su probabilidad (crearEditorEstadosAlAcertar) -->
+                            <details id="detallesEstadosObjeto" class="ranura-desplegable" data-equipo="arma">
+                                <summary><span class="ranura-icono" data-icono="veneno"></span><span class="ranura-etiqueta">Efectos al acertar</span><span class="ranura-resumen"></span></summary>
+                                <div class="ranura-cuerpo editor-estados-acertar"></div>
+                            </details>
+                            <!-- Habilidades de reliquia (tipo Reliquia, o arma marcada como reliquia) -->
+                            <details class="ranura-desplegable" id="campoHabilidadesReliquia">
+                                <summary><span class="ranura-icono" data-icono="reliquia"></span><span class="ranura-etiqueta">Habilidades de reliquia</span><span class="ranura-resumen"></span></summary>
+                                <div class="ranura-cuerpo">
+                                    <ul id="listaHabilidadesObjeto" class="lista-habilidades-reliquia"></ul>
+                                    <button type="button" id="btnAnadirHabilidadObjeto" class="btn-anadir-ranura" title="Añadir habilidad" aria-label="Añadir habilidad">+</button>
+                                </div>
+                            </details>
+                            <!-- Efectos del equipo: pasivas y activas como las artes (efectosEquipo.js); se editan en #modalCrearArte -->
+                            <details class="ranura-desplegable" id="detallesEfectosObjeto">
+                                <summary><span class="ranura-icono" data-icono="artePasiva"></span><span class="ranura-etiqueta">Efectos</span><span class="ranura-resumen"></span></summary>
+                                <div class="ranura-cuerpo">
+                                    <ul id="listaEfectosObjeto" class="lista-efectos-objeto"></ul>
+                                    <button type="button" id="btnAnadirEfectoObjeto" class="btn-anadir-ranura" title="Añadir efecto" aria-label="Añadir efecto">+</button>
+                                </div>
+                            </details>
                         </div>
 
                         <!-- Modificadores (comida y equipamiento) -->
-                        <div class="campo-objeto" data-campos="comida equipo">
-                            <div class="equipamiento-mods-header">
-                                <span>Modificadores:</span>
-                                <button type="button" id="btnAnadirModObjeto" class="btn-anadir-mod-objeto" title="Añadir modificador" aria-label="Añadir modificador">+</button>
+                        <details class="ranura-desplegable" id="detallesModsObjeto" data-campos="comida equipo">
+                            <summary><span class="ranura-icono" data-icono="ajustes"></span><span class="ranura-etiqueta">Modificadores</span><span class="ranura-resumen"></span></summary>
+                            <div class="ranura-cuerpo">
+                                <ul id="listaModsObjeto" class="mods-equipo"></ul>
+                                <button type="button" id="btnAnadirModObjeto" class="btn-anadir-ranura" title="Añadir modificador" aria-label="Añadir modificador">+</button>
                             </div>
-                            <ul id="listaModsObjeto" class="mods-equipo"></ul>
-                        </div>
+                        </details>
                         <p id="avisoCrearObjeto" class="aviso-objeto" role="alert"></p>
                     </form>
                 </div>
@@ -1240,7 +1389,7 @@
                     <h5 class="modal-title" id="modalFichaResumenLabel">Ficha</h5>
                 </div>
                 <div class="modal-body">
-                    <div id="contenidoFichaResumen" class="ficha-resumen"></div>
+                    <div id="contenidoFichaResumen" class="ficha-resumen form-objeto form-sao"></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
@@ -1398,80 +1547,149 @@
                     <h5 class="modal-title" id="modalCrearArteLabel">Crear arte</h5>
                 </div>
                 <div class="modal-body">
-                    <form id="formCrearArte" class="form-objeto" novalidate>
-                        <div class="fila-campos">
-                            <label class="campo-crece">Nombre <input type="text" id="arteNombre" required></label>
-                            <label>Tipo
-                                <select id="arteTipo">
+                    <!-- Estilo SAO "tarjeta de objeto" (.claude/12-estilo.md §5 bis), como #formCrearObjeto: vista previa, lo
+                         básico arriba (nombre, tipo, ranuras, coste, requisitos), la descripción y luego "Uso" y "Daño" como
+                         bloques plegables con su resumen. Los controles conservan sus ids -->
+                    <form id="formCrearArte" class="form-objeto form-sao" novalidate>
+                        <!-- El arte como saldrá en la lista (pintarVistaPrevia en inicializarFormularioArte) -->
+                        <div id="vistaPreviaArte" class="fila-objeto fila-arte vista-previa-sao" aria-live="polite"></div>
+
+                        <div class="ranura">
+                            <span class="ranura-icono" data-icono="editar"></span>
+                            <label class="ranura-etiqueta" for="arteNombre">Nombre</label>
+                            <input type="text" id="arteNombre" required>
+                        </div>
+                        <div class="ranuras-dobles">
+                            <div class="ranura ranura-fichas">
+                                <span class="ranura-icono" data-icono="artes"></span>
+                                <span class="ranura-etiqueta">Tipo</span>
+                                <select id="arteTipo" aria-label="Tipo de arte">
                                     <option value="activa">Activa</option>
                                     <option value="pasiva">Pasiva</option>
                                 </select>
-                            </label>
-                            <label class="solo-arte no-onirica" title="Memoria de artes que ocupa">Ranuras <input type="number" id="arteRanuras" min="1" value="1"></label>
+                            </div>
+                            <div class="ranura solo-arte no-onirica" title="Memoria de artes que ocupa">
+                                <span class="ranura-icono" data-icono="artesSinEquipar"></span>
+                                <label class="ranura-etiqueta" for="arteRanuras">Ranuras</label>
+                                <input type="number" id="arteRanuras" min="1" value="1">
+                            </div>
                         </div>
-                        <div class="campo-objeto">
-                            <label for="arteDescripcion">Descripción (sale en la notificación al usarla)</label>
-                            <textarea id="arteDescripcion" rows="3"></textarea>
+                        <!-- Activa: coste y combo -->
+                        <div class="ranuras-dobles" data-tipo-arte="activa">
+                            <div class="ranura">
+                                <span class="ranura-icono" data-icono="artes"></span>
+                                <label class="ranura-etiqueta" for="arteCostePA">Coste PA</label>
+                                <input type="number" id="arteCostePA" min="0" value="1">
+                            </div>
+                            <div class="ranura solo-arte" title="No gasta acción">
+                                <span class="ranura-icono" data-icono="iniciativa"></span>
+                                <label class="ranura-etiqueta" for="arteCombo">Combo</label>
+                                <input type="checkbox" id="arteCombo">
+                            </div>
                         </div>
 
                         <!-- Requisitos: obligatorios y alternativos (basta con cumplir uno de los alternativos) -->
-                        <div class="campo-objeto solo-arte no-onirica">
-                            <div class="equipamiento-mods-header">
-                                <span>Requisitos:</span>
-                                <button type="button" id="btnAnadirRequisitoArte" class="btn-anadir-mod-objeto" title="Añadir requisito" aria-label="Añadir requisito">+</button>
+                        <details class="ranura-desplegable solo-arte no-onirica" id="detallesRequisitosArte">
+                            <summary><span class="ranura-icono" data-icono="bloqueado"></span><span class="ranura-etiqueta">Requisitos</span><span class="ranura-resumen"></span></summary>
+                            <div class="ranura-cuerpo">
+                                <p class="pista-form">Hay que cumplir todos los requisitos obligatorios y, si hay alternativos, al menos uno de ellos. Habilidades y características se comparan con su valor base.</p>
+                                <ul id="listaRequisitosArte" class="lista-requisitos-arte"></ul>
+                                <button type="button" id="btnAnadirRequisitoArte" class="btn-anadir-ranura" title="Añadir requisito" aria-label="Añadir requisito">+</button>
+                                <div class="ranura ranura-alta">
+                                    <span class="ranura-icono" data-icono="diario"></span>
+                                    <label class="ranura-etiqueta" for="arteNotaRequisitos">Otros requisitos (no se comprueban: hazañas, artes previas, profesión…)</label>
+                                    <input type="text" id="arteNotaRequisitos">
+                                </div>
                             </div>
-                            <ul id="listaRequisitosArte" class="lista-requisitos-arte"></ul>
-                            <p class="pista-form">Hay que cumplir todos los requisitos obligatorios y, si hay alternativos, al menos uno de ellos. Habilidades y características se comparan con su valor base.</p>
-                        </div>
-                        <div class="campo-objeto solo-arte no-onirica">
-                            <label for="arteNotaRequisitos">Otros requisitos (no se comprueban: hazañas, artes previas, profesión…)</label>
-                            <input type="text" id="arteNotaRequisitos">
+                        </details>
+
+                        <div class="ranura ranura-alta">
+                            <span class="ranura-icono" data-icono="diario"></span>
+                            <label class="ranura-etiqueta" for="arteDescripcion">Descripción (sale en la notificación al usarla)</label>
+                            <textarea id="arteDescripcion" rows="3"></textarea>
                         </div>
 
                         <!-- Pasiva: modificadores (también regeneración y resistencias) -->
-                        <div class="campo-objeto" data-tipo-arte="pasiva">
-                            <div class="equipamiento-mods-header">
-                                <span>Modificadores (mientras esté equipada y activa):</span>
-                                <button type="button" id="btnAnadirModArte" class="btn-anadir-mod-objeto" title="Añadir modificador" aria-label="Añadir modificador">+</button>
+                        <details class="ranura-desplegable" id="detallesModsArte" data-tipo-arte="pasiva">
+                            <summary><span class="ranura-icono" data-icono="ajustes"></span><span class="ranura-etiqueta">Modificadores</span><span class="ranura-resumen"></span></summary>
+                            <div class="ranura-cuerpo">
+                                <p class="pista-form">Cuentan mientras esté equipada y activa.</p>
+                                <ul id="listaModsArte" class="mods-equipo"></ul>
+                                <button type="button" id="btnAnadirModArte" class="btn-anadir-ranura" title="Añadir modificador" aria-label="Añadir modificador">+</button>
                             </div>
-                            <ul id="listaModsArte" class="mods-equipo"></ul>
-                        </div>
+                        </details>
 
-                        <!-- Activa: coste, qué usa y daño -->
-                        <div class="fila-campos" data-tipo-arte="activa">
-                            <label>Coste PA <input type="number" id="arteCostePA" min="0" value="1"></label>
-                            <label class="solo-arte" title="No gasta acción"><input type="checkbox" id="arteCombo"> Combo</label>
-                            <label class="solo-arte">Usa
-                                <select id="arteUsoTipo">
-                                    <option value="parte">Una parte del cuerpo</option>
-                                    <option value="arma">Un arma</option>
-                                </select>
-                            </label>
-                            <label class="solo-arte" data-uso="parte">Parte <select id="arteUsoParte"></select></label>
+                        <!-- Activa: qué usa (parte del cuerpo o armas) -->
+                        <details class="ranura-desplegable solo-arte" id="detallesUsoArte" data-tipo-arte="activa">
+                            <summary><span class="ranura-icono" data-icono="usar"></span><span class="ranura-etiqueta">Uso</span><span class="ranura-resumen"></span></summary>
+                            <div class="ranura-cuerpo">
+                                <div class="ranura ranura-fichas">
+                                    <span class="ranura-icono" data-icono="usar"></span>
+                                    <span class="ranura-etiqueta">Usa</span>
+                                    <select id="arteUsoTipo" aria-label="Qué usa">
+                                        <option value="parte">Una parte del cuerpo</option>
+                                        <option value="arma">Un arma</option>
+                                    </select>
+                                </div>
+                                <div class="ranura ranura-fichas" data-uso="parte">
+                                    <span class="ranura-icono" data-icono="personaje"></span>
+                                    <span class="ranura-etiqueta">Parte</span>
+                                    <select id="arteUsoParte" aria-label="Parte del cuerpo"></select>
+                                </div>
+                                <!-- Armas con las que se usa: fichas que se encienden (casillas por debajo) -->
+                                <div class="ranura ranura-fichas" data-uso="arma" title="Gasta la acción de la mano que la lleve">
+                                    <span class="ranura-icono" data-icono="espada"></span>
+                                    <span class="ranura-etiqueta">Armas</span>
+                                    <div id="arteUsoArmas" class="casillas-tipos"></div>
+                                </div>
+                                <div class="ranura" data-uso="arma">
+                                    <span class="ranura-icono" data-icono="cuchillo"></span>
+                                    <label class="ranura-etiqueta" for="arteUsoAmbasManos">Con las dos manos (armas duales)</label>
+                                    <input type="checkbox" id="arteUsoAmbasManos">
+                                </div>
+                            </div>
+                        </details>
+
+                        <!-- Activa: daño físico, daño elemental y efectos al acertar (estos dos cuentan aunque no haga daño físico) -->
+                        <details class="ranura-desplegable" id="detallesDannoArte" data-tipo-arte="activa">
+                            <summary><span class="ranura-icono" data-icono="fisico"></span><span class="ranura-etiqueta">Daño</span><span class="ranura-resumen"></span></summary>
+                            <div class="ranura-cuerpo">
+                                <!-- Hace daño, daño extra y golpes en la misma fila (en móvil, una por línea) -->
+                                <div class="ranuras-dobles ranuras-triples">
+                                    <div class="ranura" title="Daño físico. Sin él, el arte puede seguir haciendo daño elemental y efectos al acertar">
+                                        <span class="ranura-icono" data-icono="fisico"></span>
+                                        <label class="ranura-etiqueta" for="arteHaceDanno">Hace daño</label>
+                                        <input type="checkbox" id="arteHaceDanno" checked>
+                                    </div>
+                                    <div class="ranura" id="ranuraDannoArte" title="Con arma se suma al daño del arma y al bonificador CaC">
+                                        <span class="ranura-icono" data-icono="fisico"></span>
+                                        <label class="ranura-etiqueta" for="arteDanno">Daño extra</label>
+                                        <input type="number" id="arteDanno" min="0" value="0">
+                                    </div>
+                                    <div class="ranura" id="ranuraGolpesArte" title="Ataques separados al usarla, cada uno con su daño. Con las dos manos, cada golpe usa un arma">
+                                        <span class="ranura-icono" data-icono="espada"></span>
+                                        <label class="ranura-etiqueta" for="arteGolpes">Golpes</label>
+                                        <input type="number" id="arteGolpes" min="1" value="1">
+                                    </div>
+                                </div>
+                                <p class="pista-form solo-efecto">En las manos gasta además la acción de esa mano; en la armadura o un accesorio solo los PA. En un arma, el daño es el del arma + bonificador CaC + el daño extra.</p>
+                                <details id="detallesDannoElementalArte" class="ranura-desplegable">
+                                    <summary><span class="ranura-icono" data-icono="elemental"></span><span class="ranura-etiqueta">Daño elemental</span><span class="ranura-resumen"></span></summary>
+                                    <div class="ranura-cuerpo"><div id="arteDannoElemental" class="valores-elementales"></div></div>
+                                </details>
+                                <!-- Estados que provoca cada golpe al acertar (crearEditorEstadosAlAcertar) -->
+                                <details id="detallesEstadosArte" class="ranura-desplegable">
+                                    <summary><span class="ranura-icono" data-icono="veneno"></span><span class="ranura-etiqueta">Efectos al acertar</span><span class="ranura-resumen"></span></summary>
+                                    <div class="ranura-cuerpo editor-estados-acertar"></div>
+                                </details>
+                            </div>
+                        </details>
+
+                        <div class="ranura solo-arte no-onirica" id="filaCompartirArte" hidden title="Los demás jugadores de la sala la verán en su catálogo">
+                            <span class="ranura-icono" data-icono="online"></span>
+                            <label class="ranura-etiqueta" for="arteCompartir">Compartir en el catálogo de la sala</label>
+                            <input type="checkbox" id="arteCompartir">
                         </div>
-                        <div class="campo-objeto solo-arte" data-tipo-arte="activa" data-uso="arma">
-                            <span class="etiqueta-campo">Armas con las que se usa (gasta la acción de la mano que la lleve)</span>
-                            <div id="arteUsoArmas" class="casillas-tipos"></div>
-                            <label><input type="checkbox" id="arteUsoAmbasManos"> Con las dos manos (armas duales)</label>
-                        </div>
-                        <div class="fila-campos" data-tipo-arte="activa">
-                            <label title="Si no hace daño, al usarla solo sale la descripción"><input type="checkbox" id="arteHaceDanno" checked> Hace daño</label>
-                            <label data-danno title="Con arma se suma al daño del arma y al bonificador CaC">Daño extra <input type="number" id="arteDanno" min="0" value="0"></label>
-                            <label data-danno title="Ataques separados al usarla, cada uno con su daño. Con las dos manos, cada golpe usa un arma">Golpes <input type="number" id="arteGolpes" min="1" value="1"></label>
-                        </div>
-                        <p class="pista-form solo-efecto" data-tipo-arte="activa">En las manos gasta además la acción de esa mano; en la armadura o un accesorio solo los PA. En un arma, el daño es el del arma + bonificador CaC + el daño extra.</p>
-                        <div data-tipo-arte="activa" data-danno>
-                            <details id="detallesDannoElementalArte" class="acordeon-elemental">
-                                <summary>Daño elemental del arte</summary>
-                                <div id="arteDannoElemental" class="valores-elementales"></div>
-                            </details>
-                            <!-- Estados que provoca cada golpe al acertar (crearEditorEstadosAlAcertar) -->
-                            <details id="detallesEstadosArte" class="acordeon-elemental">
-                                <summary>Estados al acertar</summary>
-                                <div class="editor-estados-acertar"></div>
-                            </details>
-                        </div>
-                        <label id="filaCompartirArte" class="solo-arte no-onirica" hidden title="Los demás jugadores de la sala la verán en su catálogo"><input type="checkbox" id="arteCompartir"> Compartir en el catálogo de la sala</label>
                         <p id="avisoCrearArte" class="aviso-objeto" role="alert"></p>
                     </form>
                 </div>
@@ -1538,20 +1756,31 @@
                     <h5 class="modal-title" id="modalCuentaLabel">Iniciar sesión</h5>
                 </div>
                 <div class="modal-body">
-                    <form id="formSesion" class="form-objeto form-online" novalidate>
-                        <label data-solo-registro hidden>Nombre de jugador (sale en tus tiradas)
+                    <form id="formSesion" class="form-objeto form-online form-sao" novalidate>
+                        <div class="ranura" data-solo-registro hidden>
+                            <span class="ranura-icono" data-icono="personaje"></span>
+                            <label class="ranura-etiqueta" for="sesionNombre">Nombre de jugador (sale en tus tiradas)</label>
                             <input type="text" id="sesionNombre" maxlength="40" autocomplete="nickname">
-                        </label>
-                        <label>Correo <input type="email" id="sesionEmail" autocomplete="email"></label>
-                        <label>Contraseña <input type="password" id="sesionContrasena" autocomplete="current-password"></label>
+                        </div>
+                        <div class="ranura">
+                            <span class="ranura-icono" data-icono="online"></span>
+                            <label class="ranura-etiqueta" for="sesionEmail">Correo</label>
+                            <input type="email" id="sesionEmail" autocomplete="email">
+                        </div>
+                        <div class="ranura">
+                            <span class="ranura-icono" data-icono="bloqueado"></span>
+                            <label class="ranura-etiqueta" for="sesionContrasena">Contraseña</label>
+                            <input type="password" id="sesionContrasena" autocomplete="current-password">
+                        </div>
                         <div class="enlaces-online">
                             <button type="button" class="btn-enlace" id="btnCambiarModoSesion">Crear una cuenta</button>
                             <button type="button" class="btn-enlace" id="btnRecuperarContrasena">He olvidado la contraseña</button>
                         </div>
                     </form>
-                    <div id="panelCuenta" class="form-objeto form-online" hidden>
+                    <div id="panelCuenta" class="form-objeto form-online form-sao" hidden>
                         <p>Conectado como <b id="cuentaNombre"></b> <span id="cuentaEmail" class="texto-online-secundario"></span></p>
-                        <div class="fila-online">
+                        <div class="ranura">
+                            <span class="ranura-icono" data-icono="personaje"></span>
                             <input type="text" id="cuentaNuevoNombre" maxlength="40" aria-label="Nombre de jugador" placeholder="Nombre de jugador">
                             <button type="button" class="btn-cabecera" id="btnCambiarNombre">Cambiar nombre</button>
                         </div>
@@ -1573,7 +1802,7 @@
                 <div class="modal-header">
                     <h5 class="modal-title" id="modalSalaLabel">Sala</h5>
                 </div>
-                <div class="modal-body form-online">
+                <div class="modal-body form-online form-objeto form-sao" id="cuerpoSala">
                     <div id="salaActual" class="sala-actual" hidden>
                         <p>Estás en <b id="salaActualNombre"></b>. Código para invitar: <code id="salaActualCodigo"></code></p>
                         <div class="fila-online">
@@ -1584,12 +1813,14 @@
                         <div id="listaJugadoresSala" class="lista-online"></div>
                     </div>
                     <h6 class="titulo-online">Entrar con un código</h6>
-                    <form class="fila-online" id="formEntrarSala">
+                    <form class="ranura" id="formEntrarSala">
+                        <span class="ranura-icono" data-icono="llave"></span>
                         <input type="text" id="salaCodigo" maxlength="6" placeholder="ABC123" aria-label="Código de la sala" autocomplete="off">
                         <button type="submit" class="btn-cabecera">Entrar</button>
                     </form>
                     <h6 class="titulo-online">Crear una sala</h6>
-                    <form class="fila-online" id="formCrearSala">
+                    <form class="ranura" id="formCrearSala">
+                        <span class="ranura-icono" data-icono="casa"></span>
                         <input type="text" id="salaNombreNueva" maxlength="60" placeholder="Nombre de la sala" aria-label="Nombre de la sala">
                         <button type="submit" class="btn-cabecera">Crear</button>
                     </form>

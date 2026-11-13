@@ -54,6 +54,7 @@ import { inicializarMaster, restaurarMaster, guardarActivo as guardarActivoMaste
 import * as compendio from "./compendio.js";
 import * as compendioObjetos from "./compendioObjetos.js";
 import { inicializarCompendioObjetos, anadirAlCompendio } from "./interfazCompendioObjetos.js";
+import { pintarIconos, crearFichas, crearRejilla, ponerResumen, prepararFormularioSao } from "./formularioSao.js";
 import { reproducir, iniciarBucle, pararBucle, precargarSonidos, estaSilenciado, setSilenciado } from "./sonidos.js";
 import { ejecutarDebug, crearPersonajePrueba, validarFicha } from "./debug.js";
 import {
@@ -516,6 +517,7 @@ function pintarMuerteNpc() {
         .map(p => `<option value="${escaparHtml(p.instancia)}">${escaparHtml(p.nombre || "Sin nombre")}</option>`).join("");
     const preseleccionado = candidatos.find(p => p.instancia === atacante?.instancia);
     select.value = preseleccionado?.instancia ?? "";
+    sincronizarExpMuerteNpc?.(); // la rejilla que viste el select (formularioSao.js)
     document.getElementById("campoExpMuerteNpc").hidden = !enSala;
     const avisos = [];
     if (!enSala) avisos.push(`Sin sala: reparte a mano la EXP (${expRecompensa}) y la recompensa.`);
@@ -731,8 +733,13 @@ function inicializarBotin() {
     document.getElementById("modalBotin").addEventListener("show.bs.modal", () => { eleccionBotin = null; pintarBotin(); });
 }
 
+let sincronizarExpMuerteNpc = null;
+
 function inicializarMuerteNpc() {
     const modalEl = document.getElementById("modalMuerteNpc");
+    // Estilo SAO: "EXP para" como rejilla (sin iconos), sincronizada al rellenarla en abrirMuerteNpc
+    prepararFormularioSao(document.getElementById("formMuerteNpc"));
+    sincronizarExpMuerteNpc = crearRejilla(document.getElementById("selectExpMuerteNpc"));
     document.getElementById("selectExpMuerteNpc").addEventListener("change", pintarMitadMuerteNpc);
     document.getElementById("formMuerteNpc").addEventListener("submit", (e) => e.preventDefault());
     modalEl.addEventListener("hidden.bs.modal", () => { muerteNpcAbierta = null; });
@@ -2124,7 +2131,7 @@ function campoElemental(campo, elemento, atributosInput = "") {
     const nombre = TEXTO_ELEMENTAL[campo](info.etiqueta.toLowerCase());
     return `<label class="campo-elemental" title="${nombre}" style="${estiloColor(info)}">
         <span class="icono-elemental">${iconoSao(info.icono)}</span>
-        <input type="number" min="0" value="0" data-elemento="${elemento}" aria-label="${nombre}" ${campo === "debilidades" ? 'step="0.25" data-decimal' : ""} ${atributosInput}>
+        <input type="number" class="sin-paso" min="0" value="0" data-elemento="${elemento}" aria-label="${nombre}" ${campo === "debilidades" ? 'step="0.25" data-decimal' : ""} ${atributosInput}>
     </label>`;
 }
 
@@ -2217,11 +2224,11 @@ function crearEditorEstadosAlAcertar(acordeon) {
                         <input type="number" data-campo="valor" min="1" value="${estado.valor}" ${conValor ? "" : "disabled"}></label>
                     <label>Turnos <input type="number" data-campo="turnos" min="1" value="${permanente ? 3 : estado.turnos}" ${permanente ? "disabled" : ""}></label>
                     <label><input type="checkbox" data-campo="permanente" ${permanente ? "checked" : ""}> Permanente</label>
-                    <label title="Probabilidad de que se aplique al acertar">% <input type="number" data-campo="probabilidad" min="1" max="100" value="${estado.probabilidad}"></label>
+                    <label title="Probabilidad de que se aplique al acertar">% <input type="number" data-campo="probabilidad" data-incremento="5" min="1" max="100" value="${estado.probabilidad}"></label>
                     <button type="button" class="btn-objeto" data-accion="quitar" title="Quitar estado" aria-label="Quitar estado">${iconoSao("descartar")}</button>
                 </li>`;
             }).join("")}</ul>
-            ${estados.length < MAX_ESTADOS_AL_ACERTAR ? `<button type="button" class="btn-cabecera" data-accion="anadir">+ Añadir estado</button>` : ""}`;
+            ${estados.length < MAX_ESTADOS_AL_ACERTAR ? `<button type="button" class="btn-anadir-ranura" data-accion="anadir" title="Añadir estado" aria-label="Añadir estado">+</button>` : ""}`;
     };
     contenedor.addEventListener("click", (e) => {
         const accion = e.target.closest("[data-accion]")?.dataset.accion;
@@ -2668,7 +2675,10 @@ function filaHabilidadReliquia(indice, conUsar = true, editable = true) {
             <label class="habilidad-enfriamiento" title="Turnos de enfriamiento tras usarla">Enfr.
                 <input type="number" min="0" class="enfriamientoHabilidad" aria-label="Enfriamiento en turnos" ${soloLectura}></label>
             ${conUsar ? `<button type="button" class="btn-usar-habilidad"></button>` : ""}
-            ${editable ? `<button type="button" class="quitar-habilidad" title="Eliminar habilidad" aria-label="Eliminar habilidad">×</button>` : ""}
+            ${!editable ? "" : conUsar
+                ? `<button type="button" class="quitar-habilidad" title="Eliminar habilidad" aria-label="Eliminar habilidad">×</button>`
+                // En el formulario de objetos (sin usar): icono de descartar, como el resto de filas
+                : `<button type="button" class="btn-objeto quitar-habilidad" title="Eliminar habilidad" aria-label="Eliminar habilidad">${iconoSao("descartar")}</button>`}
         </div>
         <textarea class="descripcionHabilidad" rows="2" placeholder="Qué hace (sale como notificación al usarla)" aria-label="Descripción de la habilidad" ${soloLectura}></textarea>
     </li>`;
@@ -2831,12 +2841,13 @@ function detalleEfecto(efecto) {
     const partes = [`${efecto.costePA} PA`];
     if (efecto.haceDanno) {
         if (efecto.danno > 0) partes.push(`Daño +${efecto.danno}`);
-        const elemental = textoElemental(efecto.dannoElemental, "+");
-        if (elemental) partes.push(elemental);
         if (efecto.golpes > 1) partes.push(`${efecto.golpes} golpes`);
-        const estados = describirEstadosAlAcertar(efecto.estadosAlAcertar);
-        if (estados) partes.push(`Al acertar: ${estados}`);
     }
+    // El daño elemental y los efectos al acertar cuentan aunque no haga daño físico
+    const elemental = textoElemental(efecto.dannoElemental, "+");
+    if (elemental) partes.push(elemental);
+    const estados = describirEstadosAlAcertar(efecto.estadosAlAcertar);
+    if (estados) partes.push(`Al acertar: ${estados}`);
     return partes.join(" · ");
 }
 
@@ -3860,7 +3871,7 @@ function inicializarDanno() {
         <div class="fila-cantidad-danno" data-tipo="${tipo}" style="${estiloColor(info)}" hidden>
             <span class="opcion-icono">${iconoSao(info.icono)}</span>
             <label class="nombre-danno" for="cantidadDanno-${tipo}">${info.etiqueta}</label>
-            <input type="number" class="form-control cantidad-danno" id="cantidadDanno-${tipo}" min="0" placeholder="0">
+            <input type="number" class="cantidad-danno" id="cantidadDanno-${tipo}" min="0" placeholder="0">
             ${tipo === "fisico" ? `<label class="danno-check"><input type="checkbox" id="checkIgnorarArmadura"> Ignorar armadura</label>` : ""}
         </div>`;
     }).join("");
@@ -4466,12 +4477,13 @@ function detalleArte(arte) {
         const extra = arte.danno > 0 ? ` + ${arte.danno}` : "";
         if (arte.uso.tipo === "arma") partes.push(`Daño: arma + CaC${extra}`);
         else if (arte.danno > 0) partes.push(`Daño ${arte.danno}`);
-        const elemental = textoElemental(arte.dannoElemental, "+");
-        if (elemental) partes.push(elemental);
         if (arte.golpes > 1) partes.push(`${arte.golpes} golpes`);
-        const estados = describirEstadosAlAcertar(arte.estadosAlAcertar);
-        if (estados) partes.push(`Al acertar: ${estados}`);
     }
+    // El daño elemental y los efectos al acertar cuentan aunque no haga daño físico
+    const elemental = textoElemental(arte.dannoElemental, "+");
+    if (elemental) partes.push(elemental);
+    const estados = describirEstadosAlAcertar(arte.estadosAlAcertar);
+    if (estados) partes.push(`Al acertar: ${estados}`);
     return partes.join(" · ");
 }
 
@@ -4854,7 +4866,7 @@ function filaRequisitoArte(req, i) {
         <select class="req-tipo" aria-label="Tipo de requisito">${opciones(ETIQUETAS_TIPO_REQUISITO, req.tipo)}</select>
         ${campos}
         <label class="casilla-tipo" title="Basta con cumplir uno de los alternativos"><input type="checkbox" class="req-alternativo" ${req.alternativo ? "checked" : ""}> Alternativo</label>
-        <button type="button" class="quitar-mod" title="Eliminar requisito" aria-label="Eliminar requisito">×</button>
+        <button type="button" class="btn-objeto quitar-mod" title="Eliminar requisito" aria-label="Eliminar requisito">${iconoSao("descartar")}</button>
     </li>`;
 }
 
@@ -4902,30 +4914,106 @@ function inicializarFormularioArte() {
     campo("arteDannoElemental").innerHTML = ELEMENTOS.map(e => campoElemental("dannoElemental", e, `id="arteElem_${e}"`)).join("");
     campo("arteDannoElemental").addEventListener("input", () => marcarElementalesActivos(campo("arteDannoElemental")));
 
+    /* Estilo SAO (formularioSao.js): fichas para tipo, uso y parte; − / + y rejillas con prepararFormularioSao */
+    const form = campo("formCrearArte");
+    const ICONOS_PARTE = { izquierda: "fisico", derecha: "fisico", cabeza: "personaje", pies: "movimiento", ninguna: null };
+    const sincronizadores = [
+        crearFichas(campo("arteTipo"), { icono: (v) => (v === "pasiva" ? "artePasiva" : "arteActiva") }),
+        crearFichas(campo("arteUsoTipo"), { icono: (v) => (v === "arma" ? "espada" : "personaje") }),
+        crearFichas(campo("arteUsoParte"), { icono: (v) => ICONOS_PARTE[v] ?? null })
+    ];
+    prepararFormularioSao(form);
+
     const pintarRequisitos = () => {
         listaRequisitos.innerHTML = requisitos.map(filaRequisitoArte).join("")
             || `<li class="lista-vacia">Sin requisitos: cualquiera puede equiparla.</li>`;
+        pintarResumenesYVista();
     };
     const pintarMods = () => {
         listaMods.innerHTML = mods.map((mod, i) => `
             <li class="mod-equipo" data-index="${i}">
                 <select class="listValores" aria-label="Atributo">${opcionesAtributo(mod.modificado)}</select>
                 <input type="number" class="cantidadMod" aria-label="Cantidad" value="${mod.numero}">
-                <button type="button" class="quitar-mod" title="Eliminar modificador" aria-label="Eliminar modificador">×</button>
+                <button type="button" class="btn-objeto quitar-mod" title="Eliminar modificador" aria-label="Eliminar modificador">${iconoSao("descartar")}</button>
             </li>`).join("");
+        pintarResumenesYVista();
     };
+
+    /* Resúmenes de las ranuras desplegables y vista previa del arte (en el siguiente fotograma tras cada cambio) */
+    const pintarResumenes = () => {
+        const elemental = Object.fromEntries(ELEMENTOS.map(e => [e, Number(campo(`arteElem_${e}`).value) || 0]));
+        ponerResumen(campo("detallesDannoElementalArte"), textoElemental(elemental, "+") || "Ninguno");
+        ponerResumen(campo("detallesEstadosArte"), describirEstadosAlAcertar(editorEstados.leer()) || "Ninguno");
+        ponerResumen(campo("detallesModsArte"), textoModificadores(mods) || "Ninguno");
+        // Uso: la parte del cuerpo o las armas; Daño: físico, golpes, elemental y efectos al acertar
+        const armasUso = [...campo("arteUsoArmas").querySelectorAll(".uso-arma:checked")].map(c => ARMAS[c.value]?.etiqueta ?? c.value);
+        ponerResumen(campo("detallesUsoArte"), campo("arteUsoTipo").value === "arma"
+            ? (armasUso.length ? `${armasUso.join(", ")}${campo("arteUsoAmbasManos").checked ? " (dos manos)" : ""}` : "Elige las armas")
+            : PARTES_USO_ARTE[campo("arteUsoParte").value] ?? "");
+        const partesDanno = [];
+        if (campo("arteHaceDanno").checked) {
+            partesDanno.push(`Daño +${Number(campo("arteDanno").value) || 0}`);
+            const golpes = Number(campo("arteGolpes").value) || 1;
+            if (golpes > 1) partesDanno.push(`${golpes} golpes`);
+        } else partesDanno.push("Sin daño físico");
+        if (textoElemental(elemental, "+")) partesDanno.push(textoElemental(elemental, "+"));
+        const estadosArte = editorEstados.leer();
+        if (estadosArte.length) partesDanno.push(`${estadosArte.length} efecto${estadosArte.length === 1 ? "" : "s"} al acertar`);
+        ponerResumen(campo("detallesDannoArte"), partesDanno.join(" · "));
+        const alternativos = requisitos.filter(req => req.alternativo).length;
+        ponerResumen(campo("detallesRequisitosArte"), requisitos.length
+            ? `${requisitos.length} requisito${requisitos.length === 1 ? "" : "s"}${alternativos ? ` (${alternativos} alternativo${alternativos === 1 ? "" : "s"})` : ""}`
+            : (campo("arteNotaRequisitos").value.trim() ? "Solo otros requisitos" : "Ninguno"));
+    };
+    const pintarVistaPrevia = () => {
+        let arte = null;
+        try { arte = cargarArte({ ...datosFormulario(), ...(modoOnirica ? { onirica: true } : {}) }); } catch { arte = null; }
+        const vista = campo("vistaPreviaArte");
+        if (!arte) { vista.innerHTML = ""; return; }
+        const activa = arte.tipo === "activa";
+        const coste = [activa ? `${arte.costePA} PA` : "Pasiva",
+            ...(alGuardarEfecto ? [] : [arte.onirica ? "Onírica" : `${arte.ranuras} ranura${arte.ranuras === 1 ? "" : "s"}`])].join(" · ");
+        const html = `<span class="objeto-icono">${iconoSao(arte.onirica ? "onirica" : activa ? "arteActiva" : "artePasiva")}</span>
+            <div class="objeto-info">
+                <div class="objeto-cabecera"><span class="objeto-nombre">${escaparHtml(arte.nombre || "Sin nombre")}</span>
+                    <span class="objeto-cantidad">${coste}</span></div>
+                <div class="objeto-detalle">${escaparHtml(alGuardarEfecto ? detalleEfecto(arte) : detalleArte(arte))}</div>
+                ${alGuardarEfecto || arte.onirica ? "" : requisitosArteHtml(arte)}
+                ${arte.descripcion ? `<div class="objeto-descripcion">${escaparHtml(arte.descripcion)}</div>` : ""}
+            </div>`;
+        if (vista.dataset.html !== html) {
+            vista.dataset.html = html;
+            vista.innerHTML = html;
+        }
+    };
+    let repintoPendiente = false;
+    const pintarResumenesYVista = () => {
+        if (repintoPendiente) return;
+        repintoPendiente = true;
+        requestAnimationFrame(() => {
+            repintoPendiente = false;
+            pintarResumenes();
+            pintarVistaPrevia();
+        });
+    };
+    form.addEventListener("input", pintarResumenesYVista);
+    form.addEventListener("click", pintarResumenesYVista);
 
     // Muestra los campos del tipo (activa / pasiva), del uso (parte / arma) y del daño
     const actualizarCampos = () => {
+        sincronizadores.forEach(sincronizar => sincronizar()); // por si el código ha cambiado algún select
         const tipo = campo("arteTipo").value;
         const uso = campo("arteUsoTipo").value;
         const haceDanno = campo("arteHaceDanno").checked;
-        modalEl.querySelectorAll("[data-tipo-arte], [data-uso], [data-danno]").forEach(el => {
+        modalEl.querySelectorAll("[data-tipo-arte], [data-uso]").forEach(el => {
             const visible = (!el.dataset.tipoArte || el.dataset.tipoArte === tipo)
-                && (!el.dataset.uso || el.dataset.uso === uso)
-                && (el.dataset.danno === undefined || haceDanno);
+                && (!el.dataset.uso || el.dataset.uso === uso);
             el.style.display = visible ? "" : "none";
         });
+        // Sin daño físico, daño extra y golpes salen desactivados (el elemental y los efectos al acertar siguen)
+        campo("arteDanno").disabled = !haceDanno;
+        campo("arteGolpes").disabled = !haceDanno;
+        pintarResumenesYVista();
     };
     modalEl.addEventListener("change", actualizarCampos);
 
@@ -5004,6 +5092,12 @@ function inicializarFormularioArte() {
         aviso.textContent = "";
         pintarRequisitos();
         pintarMods();
+        // Las ranuras desplegables que ya tienen algo se abren solas (elemental y estados ya lo hacen arriba)
+        campo("detallesModsArte").open = mods.length > 0;
+        campo("detallesRequisitosArte").open = requisitos.length > 0 || Boolean(datos.notaRequisitos);
+        // Uso y Daño empiezan plegados: su resumen ya dice lo que tienen
+        campo("detallesUsoArte").open = false;
+        campo("detallesDannoArte").open = false;
         actualizarCampos();
         const textoBoton = arte ? "Guardar" : "Crear";
         const nombreTipo = alGuardarEfecto ? "efecto" : modoOnirica ? "habilidad onírica" : "arte";
@@ -5027,15 +5121,23 @@ function inicializarFormularioArte() {
             aviso.textContent = "Marca al menos un tipo en cada requisito de armadura, arma o escudo.";
             return;
         }
+        const datos = datosFormulario();
+        if (datos.tipo === "activa" && datos.uso.tipo === "arma" && datos.uso.armas.length === 0) {
+            aviso.textContent = "Marca al menos un arma con la que se usa el arte.";
+            campo("detallesUsoArte").open = true;
+            return;
+        }
+        guardarDatos(datos);
+    };
+
+    /* Los datos del formulario, listos para cargarArte (también para la vista previa, sin validar) */
+    const datosFormulario = () => {
+        const nombre = campo("arteNombre").value.trim();
         const tipo = campo("arteTipo").value;
         const usoTipo = alGuardarEfecto ? "parte" : campo("arteUsoTipo").value;
         const armas = [...campo("arteUsoArmas").querySelectorAll(".uso-arma:checked")].map(c => c.value);
-        if (tipo === "activa" && usoTipo === "arma" && armas.length === 0) {
-            aviso.textContent = "Marca al menos un arma con la que se usa el arte.";
-            return;
-        }
         const numero = (id) => parseInt(campo(id).value) || 0;
-        const datos = {
+        return {
             // Al editar se conservan id, origen del catálogo, si está equipada, grupo y etiquetas
             ...(edicion ? { id: edicion.id, idCatalogo: edicion.idCatalogo, equipada: edicion.equipada, grupo: edicion.grupo, etiquetas: edicion.etiquetas } : { grupo: "propia" }),
             nombre, tipo,
@@ -5055,6 +5157,9 @@ function inicializarFormularioArte() {
             dannoElemental: Object.fromEntries(ELEMENTOS.map(e => [e, campo(`arteElem_${e}`).value])),
             estadosAlAcertar: editorEstados.leer()
         };
+    };
+
+    const guardarDatos = (datos) => {
         // Efecto de equipo: lo recibe el formulario de objetos (no es un arte de la lista ni gasta desbloqueo)
         if (alGuardarEfecto) {
             alGuardarEfecto(cargarEfectos([{ ...datos, id: edicion?.id }])[0]);
@@ -5736,63 +5841,97 @@ function htmlFichaResumen(resumen, { perfil = false } = {}) {
         return plegable(`${item.ranura}: ${item.nombre}`, [item.tipo, item.valores].filter(Boolean).join(" · "), cuerpo);
     }).join("");
 
-    const profesion = perfil
-        ? `<label class="resumen-profesion-editable">Profesión
-            <select class="select-profesion-perfil" aria-label="Profesión">${Object.entries(PROFESIONES).map(([clave, etiqueta]) =>
-                `<option value="${clave}" ${clave === resumen.profesion ? "selected" : ""}>${etiqueta}</option>`).join("")}</select></label>`
-        : `<span class="resumen-profesion">${e(PROFESIONES[resumen.profesion] ?? "Sin profesión")}</span>`;
-    // Casillas del perfil (se leen del personaje: no viajan en el resumen)
-    const casillas = perfil
-        ? `<span class="resumen-casillas-perfil">
-            <label class="casilla-tipo" title="Personaje del Underworld: Sacro, daño mágico y habilidades oníricas">
-                <input type="checkbox" class="check-perfil" data-campo="esUnderworld" ${personaje.esUnderworld ? "checked" : ""}> Underworld</label>
-            <label class="casilla-tipo" title="Protagonista: tiene diario (menú Social)">
-                <input type="checkbox" class="check-perfil" data-campo="protagonista" ${personaje.protagonista ? "checked" : ""}> Protagonista</label>
-        </span>`
-        : "";
-    // Nombre real y puntos de ego: solo en tu perfil (no van en el resumen, así el grupo no los ve); los NPC no tienen
-    const privado = perfil && !personaje.esNpc
-        ? `<div class="resumen-privado-perfil">
-            <label class="resumen-nombre-real" title="Solo lo ves tú">Nombre real
-                <input type="text" class="input-nombre-real-perfil" maxlength="60" value="${e(personaje.nombreReal)}" aria-label="Nombre real"></label>
-            <div class="barra-cor barra-ego" title="Puntos de ego: solo los ves tú">
-                <span class="cor-icono" aria-hidden="true">${iconoSao("ego")}</span>
-                <span class="cor-total"><span>${personaje.puntosEgo}</span> puntos de ego</span>
+    // Tarjeta de arriba (como la vista previa de los formularios): nombre, nivel, profesión y, en tu perfil, las marcas
+    const marcas = perfil
+        ? [personaje.esUnderworld ? "Underworld" : "", personaje.protagonista ? "Protagonista" : ""].filter(Boolean) : [];
+    const tarjeta = `<div class="fila-objeto vista-previa-sao tarjeta-perfil">
+            <span class="objeto-icono">${iconoSao("personaje")}</span>
+            <div class="objeto-info">
+                <div class="objeto-cabecera"><span class="objeto-nombre">${e(resumen.nombre || "Sin nombre")}</span><span class="objeto-cantidad">LV ${resumen.nivel}</span></div>
+                <div class="objeto-detalle">${[e(PROFESIONES[resumen.profesion] ?? "Sin profesión"), ...marcas].join(" · ")}</div>
+            </div>
+        </div>`;
+
+    // Tu perfil: lo que se puede cambiar, en ranuras (estilo SAO). Nombre real, ego y las casillas son solo tuyos
+    // (no van en el resumen, así el grupo no los ve); los NPC no los tienen
+    const deJugador = perfil && !personaje.esNpc;
+    const interruptor = (campo, etiqueta, icono, ayuda, valor) => `<div class="ranura" title="${ayuda}">
+            <span class="ranura-icono" data-icono="${icono}"></span>
+            <label class="ranura-etiqueta" for="perfil-${campo}">${etiqueta}</label>
+            <input type="checkbox" class="check-perfil" id="perfil-${campo}" data-campo="${campo}" ${valor ? "checked" : ""}>
+        </div>`;
+    const editable = perfil ? `
+        <div class="ranura" title="Nombre del personaje">
+            <span class="ranura-icono" data-icono="editar"></span>
+            <label class="ranura-etiqueta" for="perfilNombre">Nombre</label>
+            <input type="text" id="perfilNombre" class="input-nombre-perfil" maxlength="60" value="${e(personaje.nombre)}">
+        </div>
+        ${deJugador ? `<div class="ranura" title="Solo lo ves tú">
+            <span class="ranura-icono" data-icono="personaje"></span>
+            <label class="ranura-etiqueta" for="perfilNombreReal">Nombre real</label>
+            <input type="text" id="perfilNombreReal" class="input-nombre-real-perfil" maxlength="60" value="${e(personaje.nombreReal)}">
+        </div>` : ""}
+        <div class="ranura ranura-fichas">
+            <span class="ranura-icono" data-icono="material"></span>
+            <span class="ranura-etiqueta">Profesión</span>
+            <select class="select-profesion-perfil" aria-label="Profesión">
+                <option value="" hidden disabled ${PROFESIONES[resumen.profesion] ? "" : "selected"}>Sin profesión</option>${Object.entries(PROFESIONES).map(([clave, etiqueta]) =>
+                `<option value="${clave}" ${clave === resumen.profesion ? "selected" : ""}>${etiqueta}</option>`).join("")}</select>
+        </div>
+        ${deJugador ? `<div class="ranuras-dobles">
+            ${interruptor("esUnderworld", "Underworld", "onirica", "Personaje del Underworld: Sacro, daño mágico y habilidades oníricas", personaje.esUnderworld)}
+            ${interruptor("protagonista", "Protagonista", "diario", "Protagonista: tiene diario (menú Social)", personaje.protagonista)}
+        </div>
+        <div class="ranura barra-ego" title="Puntos de ego: solo los ves tú">
+            <span class="ranura-icono" data-icono="ego"></span>
+            <span class="ranura-etiqueta">Puntos de ego</span>
+            <b class="cor-total ranura-valor"><span>${personaje.puntosEgo}</span></b>
+            <span class="ego-controles">
                 <input type="number" class="input-ego" min="1" step="1" value="1" aria-label="Cantidad de puntos de ego">
                 <button type="button" class="btn-cor anadir" data-ego="anadir" title="Añadir esta cantidad" aria-label="Añadir puntos de ego">${iconoSao("egoMas")}</button>
                 <button type="button" class="btn-cor gastar" data-ego="gastar" title="Quitar esta cantidad" aria-label="Quitar puntos de ego">${iconoSao("egoMenos")}</button>
-            </div>
-        </div>`
-        : "";
+            </span>
+        </div>` : ""}
+        ${htmlDatosPerfil()}` : "";
+
+    // Lo que ven también tus compañeros, en ranuras desplegables (habilidades y valores abiertos)
+    const bloque = (icono, titulo, resumenTexto, cuerpo, abierto) => `<details class="ranura-desplegable"${abierto ? " open" : ""}>
+            <summary><span class="ranura-icono" data-icono="${icono}"></span><span class="ranura-etiqueta">${titulo}</span><span class="ranura-resumen">${e(resumenTexto)}</span></summary>
+            <div class="ranura-cuerpo">${cuerpo}</div>
+        </details>`;
+    const cuantos = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
 
     return `
-        <div class="resumen-cabecera">${perfil
-            ? `<input type="text" class="input-nombre-perfil" maxlength="60" value="${e(personaje.nombre)}" aria-label="Nombre del personaje" title="Nombre del personaje">`
-            : `<b>${e(resumen.nombre || "Sin nombre")}</b>`} <span>LV ${resumen.nivel}</span>${profesion}${casillas}</div>
-        ${privado}
-        ${perfil ? htmlDatosPerfil() : ""}
-        ${resumen.comportamiento ? `<h6 class="titulo-online">Comportamiento en combate</h6><p class="resumen-comportamiento">${e(resumen.comportamiento)}</p>` : ""}
-        <h6 class="titulo-online">Habilidades</h6><div class="resumen-rejilla">${habilidades}</div>
-        <h6 class="titulo-online">Valores de combate</h6><div class="resumen-rejilla">${combate}</div>
-        <h6 class="titulo-online">Artes equipadas</h6>${artes || `<p class="lista-vacia">Ninguna.</p>`}
-        <h6 class="titulo-online">Equipamiento</h6>${equipo || `<p class="lista-vacia">Nada equipado.</p>`}`;
+        ${tarjeta}
+        ${editable}
+        ${resumen.comportamiento ? bloque("diario", "Comportamiento en combate", "", `<p class="resumen-comportamiento">${e(resumen.comportamiento)}</p>`, true) : ""}
+        ${bloque("percepcion", "Habilidades", "", `<div class="resumen-rejilla">${habilidades}</div>`, true)}
+        ${bloque("escudo", "Valores de combate", "", `<div class="resumen-rejilla">${combate}</div>`, true)}
+        ${bloque("artes", "Artes equipadas", cuantos(resumen.artes.length, "arte", "artes"), artes || `<p class="lista-vacia">Ninguna.</p>`, false)}
+        ${bloque("armadura", "Equipamiento", cuantos(resumen.equipo.length, "pieza", "piezas"), equipo || `<p class="lista-vacia">Nada equipado.</p>`, false)}`;
 }
 
-/* Perfil: amigos, sala y grupo (sin pedir nada a la red: lo que ya se sabe) */
+/* Perfil: amigos, sala y grupo (sin pedir nada a la red: lo que ya se sabe), en ranuras de solo lectura */
 function htmlDatosPerfil() {
     const { sala } = getEstadoOnline();
     const grupo = getGrupoSala();
     const companeros = (grupo?.miembros ?? []).map(m => m.nombre || "Sin nombre");
-    const fila = (etiqueta, valor) => `<div class="resumen-valor"><span>${etiqueta}</span><b>${escaparHtml(valor)}</b></div>`;
-    return `<div class="resumen-rejilla resumen-perfil">
-        ${fila("Amigos", String(personaje.amigos.length))}
-        ${fila("Sala", sala ? [sala.nombre, sala.codigo].filter(Boolean).join(" · ") : "Sin sala")}
-        ${fila("Grupo", companeros.length ? companeros.join(", ") : "Sin grupo")}
+    const fila = (icono, etiqueta, valor) => `<div class="ranura" title="${escaparHtml(valor)}">
+            <span class="ranura-icono" data-icono="${icono}"></span>
+            <span class="ranura-etiqueta">${etiqueta}</span>
+            <b class="ranura-valor">${escaparHtml(valor)}</b>
+        </div>`;
+    return `<div class="ranuras-dobles ranuras-triples resumen-perfil">
+        ${fila("amigos", "Amigos", String(personaje.amigos.length))}
+        ${fila("online", "Sala", sala ? [sala.nombre, sala.codigo].filter(Boolean).join(" · ") : "Sin sala")}
+        ${fila("grupo", "Grupo", companeros.length ? companeros.join(", ") : "Sin grupo")}
     </div>`;
 }
 
 /* Lo que hay en la ventana: para repintar el perfil al cambiar la profesión */
 let fichaResumenAbierta = null;
+/* Icono de cada profesión en las fichas del perfil */
+const ICONOS_PROFESION = { herrero: "martillo_guerra", armero: "armadura", cocinero: "comida", alquimista: "pocion" };
 
 /**
  * Muestra la ventana de la ficha resumida. contenido: un resumen, o un texto mientras carga o si falla.
@@ -5802,9 +5941,13 @@ function mostrarFichaResumen(titulo, contenido, opciones = {}) {
     const modalEl = document.getElementById("modalFichaResumen");
     fichaResumenAbierta = { titulo, perfil: Boolean(opciones.perfil) };
     document.getElementById("modalFichaResumenLabel").textContent = titulo;
-    document.getElementById("contenidoFichaResumen").innerHTML = typeof contenido === "string"
+    const contenedor = document.getElementById("contenidoFichaResumen");
+    contenedor.innerHTML = typeof contenido === "string"
         ? `<p class="lista-vacia">${escaparHtml(contenido)}</p>`
         : htmlFichaResumen(contenido, opciones);
+    // Tu perfil (estilo SAO): la profesión con fichas; los iconos y los − / + los pone prepararFormularioSao
+    const selectProfesion = contenedor.querySelector(".select-profesion-perfil");
+    if (selectProfesion) crearFichas(selectProfesion, { icono: (v) => ICONOS_PROFESION[v] ?? null });
     if (!modalEl.classList.contains("show")) bootstrap.Modal.getOrCreateInstance(modalEl).show();
 }
 
@@ -5827,6 +5970,7 @@ const PREGUNTAS_CASILLA_PERFIL = {
 
 function inicializarPerfil() {
     const contenido = document.getElementById("contenidoFichaResumen");
+    prepararFormularioSao(contenido); // iconos y − / + de lo que se pinte cada vez (MutationObserver)
     contenido.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && e.target.closest(".input-nombre-perfil, .input-nombre-real-perfil")) e.target.blur(); // dispara change
     });
@@ -6417,18 +6561,44 @@ function inicializarCrearObjeto() {
     campo("objetoElemental").innerHTML = `<option value="">Ninguno</option>` +
         ELEMENTOS_ARROJADIZA.map(tipo => `<option value="${tipo}">${TIPOS_DANNO[tipo].etiqueta}</option>`).join("");
 
+    /* Estilo SAO (formularioSao.js): fichas para pocas opciones, rejilla de iconos para muchas, − / + en los
+       números (también en las filas que se añaden después) y los iconos de las ranuras */
+    const form = campo("formCrearObjeto");
+    const ponerIconoRanura = (id) => (clave) => {
+        const span = campo(id);
+        if (!clave || span.dataset.icono === clave) return;
+        span.dataset.icono = clave;
+        pintarIconos(span.parentElement);
+    };
+    const ICONOS_MATERIAL = { "": "material", cristal: "cristal", herreria: "martillo_guerra", cocina: "comida", alquimia: "pocion" };
+    const sincronizadores = [
+        crearFichas(selectTipo, { grande: true, icono: (v) => (v === "equipo" ? "espada" : TIPOS_OBJETO[v]?.icono) }),
+        crearFichas(campo("objetoSubtipoMaterial"), { icono: (v) => ICONOS_MATERIAL[v] ?? "material" }),
+        crearRejilla(selectTipoEquipo, {
+            icono: (v) => iconoObjeto({ tipo: "equipo", equipo: { tipo: v } }),
+            alCambiarIcono: ponerIconoRanura("iconoTipoEquipo")
+        }),
+        crearRejilla(selectEstado, { icono: (v) => ESTADOS_INFO[v]?.icono ?? null, alCambiarIcono: ponerIconoRanura("iconoEstadoObjeto") }),
+        crearFichas(selectAccionEstado, { icono: (v) => (v === "quitar" ? "regeneracion" : "veneno") }),
+        crearFichas(campo("objetoElemental"), { icono: (v) => TIPOS_DANNO[v]?.icono ?? null })
+    ];
+    const fichasTipo = selectTipo.nextElementSibling; // los iconos de tipo (crearFichas los pone tras el select)
+    prepararFormularioSao(form);
+
     const pintarMods = () => {
         listaMods.innerHTML = mods.map((mod, i) => `
             <li class="mod-equipo" data-index="${i}">
                 <select class="listValores" aria-label="Atributo">${opcionesAtributo(mod.modificado)}</select>
                 <input type="number" class="cantidadMod" aria-label="Cantidad" value="${mod.numero}">
-                <button type="button" class="quitar-mod" title="Eliminar modificador" aria-label="Eliminar modificador">×</button>
+                <button type="button" class="btn-objeto quitar-mod" title="Eliminar modificador" aria-label="Eliminar modificador">${iconoSao("descartar")}</button>
             </li>`).join("");
+        pintarResumenesYVista();
     };
 
     const pintarHabilidades = () => {
         listaHabilidades.innerHTML = habilidades.map((_, i) => filaHabilidadReliquia(i, false)).join("");
         rellenarFilasHabilidades(listaHabilidades, habilidades);
+        pintarResumenesYVista();
     };
     const pintarEfectos = () => {
         listaEfectos.innerHTML = efectos.map((efecto, i) => `
@@ -6436,21 +6606,23 @@ function inicializarCrearObjeto() {
                 <span class="efecto-icono">${iconoSao(efecto.tipo === "pasiva" ? "artePasiva" : "arteActiva")}</span>
                 <span class="efecto-texto"><b>${escaparHtml(efecto.nombre)}</b>
                     <small>${efecto.tipo === "pasiva" ? "Pasiva · " : "Activa · "}${escaparHtml(detalleEfecto(efecto))}</small></span>
-                <button type="button" class="editar-efecto" title="Editar efecto" aria-label="Editar efecto">✎</button>
-                <button type="button" class="quitar-mod" title="Eliminar efecto" aria-label="Eliminar efecto">×</button>
+                <button type="button" class="btn-objeto editar-efecto" title="Editar efecto" aria-label="Editar efecto">${iconoSao("editar")}</button>
+                <button type="button" class="btn-objeto quitar-mod" title="Eliminar efecto" aria-label="Eliminar efecto">${iconoSao("descartar")}</button>
             </li>`).join("") || `<li class="lista-vacia">Sin efectos.</li>`;
+        pintarResumenesYVista();
     };
     campo("btnAnadirEfectoObjeto").addEventListener("click", () => {
         reproducir("click");
         abrirEditorEfecto(null, modalEl, (efecto) => { efectos.push(efecto); pintarEfectos(); });
     });
-    listaEfectos.addEventListener("click", (e) => {
+    listaEfectos.addEventListener("click", async (e) => {
         const fila = e.target.closest(".efecto-objeto");
         if (!fila) return;
         const i = Number(fila.dataset.index);
         if (e.target.closest(".quitar-mod")) {
-            if (!confirm(`¿Eliminar el efecto ${efectos[i].nombre}?`)) return;
-            efectos.splice(i, 1);
+            const efecto = efectos[i];
+            if (!(await confirmarSao({ titulo: "Eliminar efecto", texto: `¿Eliminar el efecto ${efecto.nombre}?` }))) return;
+            efectos.splice(efectos.indexOf(efecto), 1);
             pintarEfectos();
         } else if (e.target.closest(".editar-efecto")) {
             reproducir("click");
@@ -6467,6 +6639,7 @@ function inicializarCrearObjeto() {
 
     // Muestra solo los campos del tipo elegido
     const actualizarCampos = () => {
+        sincronizadores.forEach(sincronizar => sincronizar()); // por si el código ha cambiado algún select
         const tipo = selectTipo.value;
         modalEl.querySelectorAll("[data-campos]").forEach(el => {
             el.style.display = el.dataset.campos.split(" ").includes(tipo) ? "" : "none";
@@ -6485,7 +6658,55 @@ function inicializarCrearObjeto() {
         campo("objetoEstadoTurnos").disabled = checkPermanente.checked;
         campo("labelObjetoDescripcion").textContent = tipo === "cristal" ? "Mensaje al usarlo" : "Descripción";
         campo("campoHabilidadesReliquia").style.display = conHabilidades() ? "" : "none";
+        pintarResumenesYVista();
     };
+
+    /* Resúmenes de las ranuras desplegables y vista previa del objeto (se repintan en el siguiente fotograma
+       tras cualquier cambio: escribir, elegir, añadir o quitar filas) */
+    const pintarResumenes = () => {
+        const o = (texto, vacio = "Ninguno") => texto || vacio;
+        ponerResumen(campo("detallesDannoElementalObjeto"), o(textoElemental(leerElementalesFormulario("dannoElemental"), "+")));
+        ponerResumen(campo("detallesResistenciasObjeto"), o(textoElemental(leerElementalesFormulario("resistencias"), "res. "), "Ninguna"));
+        ponerResumen(campo("detallesDebilidadesObjeto"), o(textoElemental(leerElementalesFormulario("debilidades"), "×"), "Ninguna"));
+        ponerResumen(campo("detallesEstadosObjeto"), o(describirEstadosAlAcertar(editorEstados.leer())));
+        ponerResumen(campo("campoHabilidadesReliquia"), habilidades.length ? `${habilidades.length} habilidad${habilidades.length === 1 ? "" : "es"}` : "Ninguna");
+        ponerResumen(campo("detallesEfectosObjeto"), o(efectos.map(efecto => efecto.nombre).join(", ")));
+        ponerResumen(campo("detallesModsObjeto"), o(textoModificadores(mods)));
+        const estado = leerEstado(selectTipo.value !== "arrojadiza");
+        ponerResumen(campo("detallesEstadoObjeto"), estado ? describirEfecto({ estado }, false) : "Ninguno");
+        const elemento = campo("objetoElemental").value;
+        ponerResumen(campo("detallesElementalArrojadiza"), elemento
+            ? `${TIPOS_DANNO[elemento].etiqueta} ${campo("objetoElementalCantidad").value || 0}` : "Ninguno");
+    };
+    const pintarVistaPrevia = () => {
+        let objeto = null;
+        try { objeto = cargarObjeto(datosFormulario()); } catch { objeto = null; }
+        const vista = campo("vistaPreviaObjeto");
+        if (!objeto) { vista.innerHTML = ""; return; }
+        const html = `<span class="objeto-icono">${iconoSao(iconoObjeto(objeto))}</span>
+            <div class="objeto-info">
+                <div class="objeto-cabecera"><span class="objeto-nombre">${escaparHtml(objeto.nombre || "Sin nombre")}</span>
+                    ${objeto.tipo === "equipo" ? "" : `<span class="objeto-cantidad">×${objeto.cantidad}</span>`}</div>
+                <div class="objeto-detalle">${TIPOS_OBJETO[objeto.tipo].etiqueta} · ${escaparHtml(detalleObjeto(objeto))}</div>
+                ${objeto.descripcion ? `<div class="objeto-descripcion">${escaparHtml(objeto.descripcion)}</div>` : ""}
+            </div>`;
+        if (vista.dataset.html !== html) {
+            vista.dataset.html = html;
+            vista.innerHTML = html;
+        }
+    };
+    let repintoPendiente = false;
+    const pintarResumenesYVista = () => {
+        if (repintoPendiente) return;
+        repintoPendiente = true;
+        requestAnimationFrame(() => {
+            repintoPendiente = false;
+            pintarResumenes();
+            pintarVistaPrevia();
+        });
+    };
+    form.addEventListener("input", pintarResumenesYVista);
+    form.addEventListener("click", pintarResumenesYVista);
 
     // Valores por defecto del estado elegido
     selectEstado.addEventListener("change", () => {
@@ -6554,6 +6775,9 @@ function inicializarCrearObjeto() {
 
     const reiniciar = () => {
         campo("formCrearObjeto").reset();
+        form.querySelectorAll("details.ranura-desplegable").forEach(d => { d.open = false; });
+        form.querySelectorAll(".rejilla-panel").forEach(panel => { panel.hidden = true; });
+        fichasTipo.hidden = false;
         limitarTipos();
         Object.keys(FORMULARIO_ELEMENTAL).forEach(campoElem => rellenarElementalesFormulario(campoElem, null));
         selectTipo.value = "material";
@@ -6618,6 +6842,12 @@ function inicializarCrearObjeto() {
             pintarEfectos();
             editorEstados.rellenar(equipo.estadosAlAcertar);
         }
+        // Las ranuras desplegables que ya tienen algo se abren solas
+        campo("detallesModsObjeto").open = mods.length > 0;
+        campo("detallesEfectosObjeto").open = efectos.length > 0;
+        campo("campoHabilidadesReliquia").open = habilidades.length > 0;
+        campo("detallesEstadoObjeto").open = Boolean(objeto.estado);
+        campo("detallesElementalArrojadiza").open = Boolean(objeto.elemental?.tipo);
         actualizarCampos();
     };
 
@@ -6631,14 +6861,10 @@ function inicializarCrearObjeto() {
         };
     };
 
-    const crear = () => {
+    /* Los datos del formulario, listos para cargarObjeto (también para la vista previa, sin validar) */
+    const datosFormulario = () => {
         const tipo = selectTipo.value;
         const nombre = campo("objetoNombre").value.trim();
-        if (!nombre) {
-            aviso.textContent = "Ponle un nombre al objeto.";
-            campo("objetoNombre").focus();
-            return;
-        }
         const numero = (id) => parseInt(campo(id).value) || 0;
         const modificadores = mods.map(mod => new Modificador(nombre, mod.modificado, mod.numero, TURNOS_PERMANENTE));
         const datos = {
@@ -6683,8 +6909,17 @@ function inicializarCrearObjeto() {
                 estadosAlAcertar: tarjetaUsaElemental({ tipo: selectTipoEquipo.value }, "dannoElemental") ? editorEstados.leer() : []
             };
         }
+        return datos;
+    };
 
-        const objeto = cargarObjeto(datos);
+    const crear = () => {
+        const nombre = campo("objetoNombre").value.trim();
+        if (!nombre) {
+            aviso.textContent = "Ponle un nombre al objeto.";
+            campo("objetoNombre").focus();
+            return;
+        }
+        const objeto = cargarObjeto(datosFormulario());
         const lineas = [];
 
         // Fuera de la base no se puede usar el baúl: lo que no quepa en el inventario no se crea
@@ -6773,6 +7008,12 @@ function inicializarCrearObjeto() {
         ponerModo(true);
         rellenar(objeto);
         limitarTipos(opciones.tiposEquipo);
+        // Un objeto ya creado no cambia de tipo (comida, poción, equipo…): no se ofrecen los demás y ni se ven los
+        // iconos de tipo (el suyo ya sale en la vista previa)
+        selectTipo.querySelectorAll("option").forEach(op => {
+            if (op.value !== objeto.tipo) { op.hidden = true; op.disabled = true; }
+        });
+        fichasTipo.hidden = true;
         actualizarCampos();
         abrirDesde(opciones.origen ?? document.getElementById(lista === "baul" ? "modalBaul" : "modalInventario"));
     };
@@ -6923,6 +7164,8 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarObjetos();
     inicializarCor();
     inicializarObjetosClave();
+    // Estilo SAO en las ventanas pequeñas con campos (formularioSao.js)
+    ["formObjetoClave", "formExperiencia", "editorEstadosAcertarNpc", "dannoCantidades", "formSesion", "panelCuenta", "cuerpoSala"].forEach(id => prepararFormularioSao(document.getElementById(id)));
     inicializarConfirmar();
     inicializarPerfil();
     inicializarDiario();

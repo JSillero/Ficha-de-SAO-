@@ -487,10 +487,17 @@ function manosDeGolpes(pj, arte, mano) {
  *   y el daño elemental del arma más el del arte. La poción aplicada solo cuenta en el primer
  *   golpe de esa arma.
  * - Sin arma: solo el daño (y el daño elemental) del arte.
+ * - Sin daño físico (haceDanno false): un solo golpe con el daño elemental y los efectos al acertar del arte (sin
+ *   el arma); null si no tiene ninguno de los dos.
  */
 export function calcularDannoArte(pj, arte, mano = manoDeArte(pj, arte)) {
-    if (arte.tipo !== "activa" || !arte.haceDanno) return null;
+    if (arte.tipo !== "activa") return null;
     const elementalArte = dannoElementalArma(arte);
+    if (!arte.haceDanno) {
+        if (!elementalArte.length && !arte.estadosAlAcertar?.length) return null;
+        return [anadirEstadosAlGolpe({ etiqueta: "", total: 0, desglose: [], notas: [], elemental: elementalArte },
+            arte.estadosAlAcertar, arte.nombre)];
+    }
     const conPocion = new Set();
 
     const golpes = manosDeGolpes(pj, arte, mano).map((manoGolpe, i) => {
@@ -536,7 +543,7 @@ export function usarArte(pj, arte, gastar = gastarEstricto(pj)) {
     const mano = manoDeArte(pj, arte);
     const danno = calcularDannoArte(pj, arte, mano);
     // Como en un ataque normal, la poción aplicada a cada arma usada se gasta en su primer golpe
-    if (danno) new Set(manosDeGolpes(pj, arte, mano)).forEach(m => {
+    if (danno && arte.haceDanno) new Set(manosDeGolpes(pj, arte, mano)).forEach(m => {
         const item = m ? itemDeRanura(pj, m) : null;
         if (item?.pocionAplicada) item.pocionAplicada = null;
     });

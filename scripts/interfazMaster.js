@@ -16,6 +16,7 @@ import { ETIQUETAS_CARACTERISTICA, ETIQUETAS_HABILIDAD, ranurasUsadas, ranurasLi
 import { iconoSao } from "./iconos.js";
 import { escaparHtml } from "./html.js";
 import { reproducir } from "./sonidos.js";
+import { crearFichas, prepararFormularioSao } from "./formularioSao.js";
 import { iniciarTurno } from "./turno.js";
 import {
     capacidadInventario, ajustarInventario, cabenEnInventario, transferirABaul, transferirAInventario,
@@ -645,6 +646,9 @@ function cambiarTipoBorrador(npc) {
     ponerTituloPerfil();
 }
 
+/* Fichas de la profesión en el perfil (crearFichas en inicializarPerfilMaster): se sincronizan en pintarPerfil */
+let sincronizarProfesion = null;
+
 const campoNumero = (clave, etiqueta, min, max) =>
     `<label>${escaparHtml(etiqueta)} <input type="number" data-clave="${clave}" min="${min}" max="${max}"></label>`;
 
@@ -666,6 +670,7 @@ function pintarPerfil() {
     sobrescribir.title = tienePlantilla ? "" : "Su plantilla ya no está en el compendio";
     el("perfilMasterNivel").value = pj.nivel;
     el("perfilMasterProfesion").value = pj.tipoProfesion;
+    sincronizarProfesion?.(); // las fichas que visten el select (formularioSao.js)
     el("perfilMasterUnderworld").checked = pj.esUnderworld;
     el("perfilMasterProtagonista").checked = pj.protagonista;
     const maxCar = pj.getMaxCaracteristicas();
@@ -1232,6 +1237,10 @@ function inicializarPerfilMaster() {
         .map(clave => campoNumero(clave, ETIQUETAS_HABILIDAD[clave], 0, 10)).join("");
     el("perfilMasterValoresNpc").innerHTML = VALORES_NPC.map(({ clave, etiqueta, min, ayuda }) =>
         `<label${ayuda ? ` title="${escaparHtml(ayuda)}"` : ""}>${escaparHtml(etiqueta)} <input type="number" data-npc="${clave}" min="${min}"></label>`).join("");
+    // Estilo SAO (formularioSao.js): fichas para la profesión; − / + en los números e iconos de las ranuras
+    const ICONOS_PROFESION = { herrero: "martillo_guerra", armero: "armadura", cocinero: "comida", alquimista: "pocion" };
+    sincronizarProfesion = crearFichas(el("perfilMasterProfesion"), { icono: (v) => ICONOS_PROFESION[v] ?? null });
+    prepararFormularioSao(el("formPerfilMaster"));
     el("perfilMasterTipo").addEventListener("click", (e) => {
         const boton = e.target.closest("[data-tipo]");
         if (!boton || !borrador) return;

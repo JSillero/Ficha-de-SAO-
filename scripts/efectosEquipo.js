@@ -101,7 +101,7 @@ export function usarEfectoEquipo(pj, ranura, indice, gastar) {
     const danno = calcularDannoEfecto(pj, ranura, efecto);
     // Como en un ataque, la poción aplicada al arma se gasta en el golpe
     const arma = mano ? equipoDeRanura(pj, mano) : null;
-    if (danno && arma?.pocionAplicada) arma.pocionAplicada = null;
+    if (danno && efecto.haceDanno && arma?.pocionAplicada) arma.pocionAplicada = null;
 
     pj.puntosArte = Math.max(0, (Number(pj.puntosArte) || 0) - efecto.costePA);
     const resumen = [efecto.descripcion.trim() || "(El efecto no tiene descripción)"];
