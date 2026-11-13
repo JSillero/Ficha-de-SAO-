@@ -43,7 +43,7 @@ const CAMPOS_SIMPLES = [
     'comidaActiva', 'tipoProfesion', 'esUnderworld', 'protagonista', 'zona', 'cor',
     'esNpc', 'idPlantilla',
     'desbloqueosArteExtra', 'desbloqueosArteGastados',
-    'notas', 'listadoArtes', 'listaDeAmigos', 'recetasProfesion'
+    'notas', 'listadoArtes', 'listaDeAmigos', 'recetasProfesion', 'comportamientoCombate'
 ];
 
 /* Identificador estable del personaje (no cambia al renombrarlo): lo usan el modo máster y la sala */
@@ -153,6 +153,7 @@ export default class PJ {
         this.listadoArtes = "";
         this.listaDeAmigos = ""; // notas antiguas de amigos: ya no se muestran, se conservan
         this.recetasProfesion = ""; // se muestra como "Perfil psicológico" (el nombre del campo se conserva)
+        this.comportamientoCombate = ""; // solo NPC: cómo se comporta en combate (debajo de Acciones)
 
         /* Diario del protagonista (diario.js): una cadena HTML saneada por página, al menos una */
         this.diario = [""];

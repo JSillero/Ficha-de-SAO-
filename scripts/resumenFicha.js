@@ -43,6 +43,7 @@ const RANURAS_EQUIPO = [
 const MAX_TEXTO = 80;
 const MAX_DESCRIPCION = 300;
 const MAX_LISTA = 20;
+const MAX_COMPORTAMIENTO = 2000;
 /* Margen bajo el límite de 20 000 caracteres de un evento (el resto del evento también cuenta) */
 const MAX_CARACTERES_RESUMEN = 15000;
 
@@ -77,6 +78,8 @@ export function crearResumenFicha(pj, textos) {
         nombre: pj.nombre,
         nivel: pj.nivel,
         profesion: pj.tipoProfesion,
+        // Solo los NPC (campo de texto bajo Acciones)
+        comportamiento: pj.esNpc ? pj.comportamientoCombate : "",
         // Sin Underworld no se envían Sacro ni el daño mágico
         habilidades: HABILIDADES_LISTA.filter(clave => pj.puedeUsarHabilidad(clave))
             .map(clave => ({ clave, base: pj[clave], efectivo: pj.getGenerico(clave) })),
@@ -110,6 +113,7 @@ export function cargarResumenFicha(datos) {
         nombre: texto(datos.nombre),
         nivel: numero(datos.nivel),
         profesion: PROFESIONES[datos.profesion] ? datos.profesion : "",
+        comportamiento: texto(datos.comportamiento, MAX_COMPORTAMIENTO),
         habilidades: lista(datos.habilidades, h => ({ clave: texto(h?.clave), base: numero(h?.base), efectivo: numero(h?.efectivo) }))
             .filter(h => HABILIDADES_LISTA.includes(h.clave)),
         combate: lista(datos.combate, c => ({ clave: texto(c?.clave), valor: numero(c?.valor) }))

@@ -3452,3 +3452,15 @@ body:not(.modo-master) .solo-master {
 #btnDerrotarNpc[hidden] {
     display: none;
 }
+
+/* Comportamiento en combate de un NPC en la ficha resumida (htmlFichaResumen en interfaz.js): respeta los saltos de línea */
+.resumen-comportamiento {
+    white-space: pre-line;
+    font-size: 13px;
+}
+
+/* Acciones y equipamiento de un NPC en el perfil del máster (pintarPartesPerfil / pintarEquipoPerfil en interfazMaster.js) */
+.fila-ranura-npc .nombre-parte-perfil {
+    flex: 1;
+    min-width: 0;
+}

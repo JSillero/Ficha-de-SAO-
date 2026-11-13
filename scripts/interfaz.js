@@ -5591,6 +5591,7 @@ function htmlFichaResumen(resumen, { perfil = false } = {}) {
             ? `<input type="text" class="input-nombre-perfil" maxlength="60" value="${e(personaje.nombre)}" aria-label="Nombre del personaje" title="Nombre del personaje">`
             : `<b>${e(resumen.nombre || "Sin nombre")}</b>`} <span>LV ${resumen.nivel}</span>${profesion}${casillas}</div>
         ${perfil ? htmlDatosPerfil() : ""}
+        ${resumen.comportamiento ? `<h6 class="titulo-online">Comportamiento en combate</h6><p class="resumen-comportamiento">${e(resumen.comportamiento)}</p>` : ""}
         <h6 class="titulo-online">Habilidades</h6><div class="resumen-rejilla">${habilidades}</div>
         <h6 class="titulo-online">Valores de combate</h6><div class="resumen-rejilla">${combate}</div>
         <h6 class="titulo-online">Artes equipadas</h6>${artes || `<p class="lista-vacia">Ninguna.</p>`}
@@ -6327,8 +6328,22 @@ function inicializarCrearObjeto() {
         campo("btnCrearObjeto").setAttribute("aria-label", textoBoton);
     };
 
+    /* Tipos que se pueden elegir: todos, o solo equipamiento de los tipos de tiposEquipo (p. ej. el equipo de una
+       parte de un NPC desde el perfil del máster). Los demás quedan ocultos y desactivados. */
+    const limitarTipos = (tiposEquipo = null) => {
+        const soloEquipo = Array.isArray(tiposEquipo) && tiposEquipo.length > 0;
+        const permitir = (opcion, si) => { opcion.hidden = !si; opcion.disabled = !si; };
+        selectTipo.querySelectorAll("option").forEach(op => permitir(op, !soloEquipo || op.value === "equipo"));
+        selectTipoEquipo.querySelectorAll("option").forEach(op => permitir(op, !soloEquipo || tiposEquipo.includes(op.value)));
+        selectTipoEquipo.querySelectorAll("optgroup").forEach(grupo => { grupo.hidden = ![...grupo.children].some(op => !op.disabled); });
+        if (!soloEquipo) return;
+        selectTipo.value = "equipo";
+        if (!tiposEquipo.includes(selectTipoEquipo.value)) selectTipoEquipo.value = tiposEquipo[0];
+    };
+
     const reiniciar = () => {
         campo("formCrearObjeto").reset();
+        limitarTipos();
         Object.keys(FORMULARIO_ELEMENTAL).forEach(campoElem => rellenarElementalesFormulario(campoElem, null));
         selectTipo.value = "material";
         campo("objetoCantidad").value = 1;
@@ -6537,12 +6552,19 @@ function inicializarCrearObjeto() {
         edicion = { lista, indice };
         ponerModo(true);
         rellenar(objeto);
+        limitarTipos(opciones.tiposEquipo);
+        actualizarCampos();
         abrirDesde(opciones.origen ?? document.getElementById(lista === "baul" ? "modalBaul" : "modalInventario"));
     };
     abrirCrearObjetoEn = (lista, opciones) => {
         destino = lista;
         objetivo = { pj: opciones.pj, libre: Boolean(opciones.libre), alTerminar: opciones.alTerminar ?? null };
         reiniciar();
+        // Tipo ya elegido (p. ej. equipo de un NPC desde el perfil del máster)
+        if (opciones.tipo) selectTipo.value = opciones.tipo;
+        if (opciones.tipoEquipo) selectTipoEquipo.value = opciones.tipoEquipo;
+        limitarTipos(opciones.tiposEquipo);
+        actualizarCampos();
         abrirDesde(opciones.origen);
     };
     modalEl.addEventListener("shown.bs.modal", () => campo("objetoNombre").focus());

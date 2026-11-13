@@ -262,6 +262,16 @@
                         </div>
                     </div>
 
+                    <!-- Solo NPC: texto libre, campo comportamientoCombate del PJ (se enlaza como las notas) -->
+                    <div class="seccion-notas comportamiento-npc ficha-npc">
+                        <div class="seccion-notas-grid">
+                            <div>
+                                <h3>Comportamiento en combate</h3>
+                                <textarea id="comportamientoCombate"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
 
                 <!-- Columna 2: Equipamiento, Modificadores y Habilidades -->
@@ -847,7 +857,6 @@
                             <label class="solo-personaje">Profesión <select id="perfilMasterProfesion"></select></label>
                             <label class="solo-personaje"><input type="checkbox" id="perfilMasterUnderworld"> Underworld</label>
                             <label class="solo-personaje"><input type="checkbox" id="perfilMasterProtagonista"> Protagonista</label>
-                            <label class="solo-npc">EXP que da <input type="number" data-npc="expRecompensa" min="0"></label>
                             <label class="solo-npc" title="Piso del compendio (vacío = sin piso)">Piso <input type="number" data-npc="piso" min="1" max="100"></label>
                         </div>
                         <div class="campo-objeto solo-personaje">
@@ -876,20 +885,26 @@
                             </div>
                             <div id="perfilMasterTiradas" class="lista-tiradas-npc"></div>
                         </div>
-                        <!-- NPC: recompensa al morir (Cor, objetos y objetos clave) -->
+                        <!-- NPC: acciones (partes del cuerpo, npc.partes) con su arma o escudo (pintarPartesPerfil en interfazMaster.js) -->
                         <div class="campo-objeto solo-npc">
                             <div class="perfil-master-titulo">
-                                <label>Recompensa <span class="perfil-master-puntos" id="perfilMasterContadorRecompensa"></span></label>
-                                <span class="d-flex gap-2 flex-wrap justify-content-end">
-                                    <button type="button" class="btn-crear-objeto" data-crear="recompensa">+ Crear objeto</button>
-                                    <button type="button" class="btn-crear-objeto" data-crear="recompensaClave">+ Crear objeto clave</button>
-                                </span>
+                                <label>Acciones <span class="perfil-master-puntos" id="perfilMasterContadorPartes"></span></label>
+                                <span class="d-flex gap-2 flex-wrap justify-content-end" id="perfilMasterBotonesPartes"></span>
                             </div>
-                            <div class="fila-campos">
-                                <label>Cor <input type="number" data-npc="recompensaCor" min="0"></label>
+                            <div id="perfilMasterPartes" class="lista-objetos" data-lista="partesNpc"></div>
+                        </div>
+                        <!-- NPC: armadura y accesorios (pintarEquipoPerfil en interfazMaster.js) -->
+                        <div class="campo-objeto solo-npc">
+                            <div class="perfil-master-titulo">
+                                <label>Equipamiento</label>
+                                <button type="button" class="btn-crear-objeto" data-crear="accesorioNpc">+ Crear accesorio</button>
                             </div>
-                            <div id="perfilMasterRecompensa" class="lista-objetos" data-lista="recompensa"></div>
-                            <div id="perfilMasterRecompensaClave" class="lista-objetos" data-lista="recompensaClave"></div>
+                            <div id="perfilMasterEquipoNpc" class="lista-objetos" data-lista="equipoNpc"></div>
+                        </div>
+                        <!-- NPC: comportamiento en combate (campo comportamientoCombate, el mismo que bajo Acciones) -->
+                        <div class="campo-objeto solo-npc">
+                            <label for="perfilMasterComportamiento">Comportamiento en combate</label>
+                            <textarea id="perfilMasterComportamiento" rows="4"></textarea>
                         </div>
                         <!-- Valores de combate del borrador (solo lectura; pintarPerfil los recalcula en cada cambio) -->
                         <div class="campo-objeto ficha-resumen solo-personaje">
@@ -929,6 +944,22 @@
                                 </span>
                             </div>
                             <div id="perfilMasterArtes" class="lista-objetos" data-lista="artes"></div>
+                        </div>
+                        <!-- NPC: recompensa al morir (EXP, Cor, objetos y objetos clave), al final del perfil -->
+                        <div class="campo-objeto solo-npc">
+                            <div class="perfil-master-titulo">
+                                <label>Recompensa <span class="perfil-master-puntos" id="perfilMasterContadorRecompensa"></span></label>
+                                <span class="d-flex gap-2 flex-wrap justify-content-end">
+                                    <button type="button" class="btn-crear-objeto" data-crear="recompensa">+ Crear objeto</button>
+                                    <button type="button" class="btn-crear-objeto" data-crear="recompensaClave">+ Crear objeto clave</button>
+                                </span>
+                            </div>
+                            <div class="fila-campos">
+                                <label>EXP <input type="number" data-npc="expRecompensa" min="0"></label>
+                                <label>Cor <input type="number" data-npc="recompensaCor" min="0"></label>
+                            </div>
+                            <div id="perfilMasterRecompensa" class="lista-objetos" data-lista="recompensa"></div>
+                            <div id="perfilMasterRecompensaClave" class="lista-objetos" data-lista="recompensaClave"></div>
                         </div>
                         <!-- Copia de un NPC en juego: pasar sus cambios al compendio (sin PV, PA ni estados) -->
                         <div class="campo-objeto solo-npc" id="perfilMasterCompendio">

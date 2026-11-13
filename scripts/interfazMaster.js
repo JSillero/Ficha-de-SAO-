@@ -17,8 +17,15 @@ import { iconoSao } from "./iconos.js";
 import { escaparHtml } from "./html.js";
 import { reproducir } from "./sonidos.js";
 import { iniciarTurno } from "./turno.js";
-import { capacidadInventario, ajustarInventario, cabenEnInventario, transferirABaul, transferirAInventario } from "./objetos.js";
-import { VALORES_NPC, MAX_TIRADAS_NPC, crearNpc, cargarPiso } from "./npc.js";
+import {
+    capacidadInventario, ajustarInventario, cabenEnInventario, transferirABaul, transferirAInventario,
+    categoriaEquipo, cargarObjeto, cargarEquipo, accesorioVacio, MAX_ACCESORIOS_NPC
+} from "./objetos.js";
+import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA } from "./equipamiento.js";
+import {
+    VALORES_NPC, MAX_TIRADAS_NPC, crearNpc, cargarPiso, PARTES_MANO, MAX_PARTES_NPC, parteNpc, tieneParte,
+    anadirParte, anadirBrazo, quitarParte, motivoNoQuitarParte, parteQueOcupa
+} from "./npc.js";
 import * as compendio from "./compendio.js";
 
 /**
@@ -854,6 +861,8 @@ function pintarNpcPerfil() {
         const clave = input.dataset.npc;
         input.value = clave === "recompensaCor" ? npc.recompensa.cor : (npc[clave] ?? "");
     });
+    const comportamiento = el("perfilMasterComportamiento");
+    if (document.activeElement !== comportamiento) comportamiento.value = borrador.comportamientoCombate;
     // Las filas solo se rehacen si cambia el número de tiradas (así no se pierde el campo con el foco)
     const lista = el("perfilMasterTiradas");
     if (!npc.tiradas.length) lista.innerHTML = `<p class="lista-vacia">Sin tiradas. Se tiran con 3d10 + su valor.</p>`;
@@ -878,6 +887,191 @@ function pintarNpcPerfil() {
     el("perfilMasterRecompensaClave").innerHTML = objetosClave.map((objeto, i) => filaObjetoPerfil("recompensaClave", objeto, i)).join("");
     el("perfilMasterContadorRecompensa").textContent = objetos.length || objetosClave.length
         ? `(${objetos.length} objeto${objetos.length === 1 ? "" : "s"}, ${objetosClave.length} clave)` : "";
+    pintarPartesPerfil();
+    pintarEquipoPerfil();
+}
+
+/* NPC: acciones (partes del cuerpo) y equipamiento ______________________________
+ * Ranuras: id de una parte (los brazos llevan el equipo en manoIzquierda / manoDerecha), "armadura" o
+ * "accesorio-N". El equipo se crea y edita con la ventana de objetos sobre un "pj" falso con un único objeto
+ * en el baúl; al terminar se comprueba que su tipo vaya en esa ranura y se pone en ella. */
+const NOMBRES_BRAZO = { izquierda: "Brazo izquierdo", derecha: "Brazo derecho" };
+
+function equipoRanuraPerfil(ranura) {
+    const pj = borrador;
+    if (ranura === "armadura") return pj.equipoArmadura;
+    if (ranura.startsWith("accesorio-")) return pj.accesorios[Number(ranura.slice("accesorio-".length))] ?? null;
+    if (PARTES_MANO[ranura]) return pj[PARTES_MANO[ranura]];
+    return parteNpc(pj, ranura)?.equipo ?? null;
+}
+
+function tieneEquipoRanura(ranura) {
+    const equipo = equipoRanuraPerfil(ranura);
+    return ranura.startsWith("accesorio-") ? !accesorioVacio(equipo) : Boolean(equipo?.tipo);
+}
+
+/* Pone (o quita, con null) el equipo de una ranura del borrador */
+function ponerEquipoPerfil(ranura, equipo) {
+    const pj = borrador;
+    if (ranura === "armadura") pj.equipoArmadura = equipo ?? new Equipamiento("", "", "");
+    else if (ranura.startsWith("accesorio-")) {
+        const indice = Number(ranura.slice("accesorio-".length));
+        for (let i = pj.accesorios.length; i < indice; i++) pj.accesorios[i] = new Equipamiento("", "", TIPO_ACCESORIO);
+        pj.accesorios[indice] = equipo ?? new Equipamiento("", "", TIPO_ACCESORIO);
+    } else if (PARTES_MANO[ranura]) pj[PARTES_MANO[ranura]] = equipo ?? new Equipamiento("", "", "");
+    else {
+        const parte = parteNpc(pj, ranura);
+        if (parte) parte.equipo = equipo;
+    }
+    pj.calcularCaracteristicas();
+}
+
+/* Por qué ese tipo de equipo no va en esa ranura, o null */
+function motivoTipoRanura(ranura, tipo) {
+    if (ranura === "armadura") return TIPOS_ARMADURA.includes(tipo) ? null : "En la armadura solo va una armadura.";
+    if (ranura.startsWith("accesorio-")) return tipo === TIPO_ACCESORIO ? null : "Tiene que ser un accesorio.";
+    if (PARTES_MANO[ranura]) {
+        if (categoriaEquipo(tipo) !== "mano") return "En un brazo solo van armas, escudos o reliquias.";
+        const otro = PARTES_MANO[ranura === "izquierda" ? "derecha" : "izquierda"];
+        if (TIPOS_DOS_MANOS.includes(tipo) && borrador[otro]?.tipo) return "Un arma a dos manos necesita el otro brazo vacío.";
+        return null;
+    }
+    return ARMAS[tipo] ? null : "En esta parte solo van armas o escudos.";
+}
+
+/* Tipos de equipo que admite una ranura (los únicos que deja elegir la ventana de objetos) */
+function tiposEquipoRanura(ranura) {
+    if (ranura === "armadura") return [...TIPOS_ARMADURA];
+    if (ranura.startsWith("accesorio-")) return [TIPO_ACCESORIO];
+    const armas = Object.keys(ARMAS);
+    if (!PARTES_MANO[ranura]) return armas;
+    return [...armas, TIPO_RELIQUIA].filter(tipo => !motivoTipoRanura(ranura, tipo));
+}
+
+/* Equipo → objeto de la ventana de objetos (y al revés al terminar) */
+const objetoDeEquipo = (equipo) => cargarObjeto({
+    tipo: "equipo", nombre: equipo.nombre?.trim() || ARMAS[equipo.tipo]?.etiqueta || "Equipo",
+    descripcion: equipo.descripcion ?? "", cantidad: 1, equipo: JSON.parse(JSON.stringify(equipo))
+});
+
+function abrirEquipoPerfil(ranura, tipoEquipo) {
+    const actual = tieneEquipoRanura(ranura) ? equipoRanuraPerfil(ranura) : null;
+    const pjEquipo = { baul: actual ? [objetoDeEquipo(actual)] : [], calcularCaracteristicas: () => {} };
+    const opciones = {
+        pj: pjEquipo, origen: el("modalPerfilMaster"), libre: true, tipo: "equipo", tipoEquipo,
+        tiposEquipo: tiposEquipoRanura(ranura),
+        alTerminar: () => terminarEquipoPerfil(ranura, pjEquipo.baul[0])
+    };
+    if (actual) ctx.abrirEditorObjeto("baul", 0, opciones);
+    else ctx.abrirCrearObjeto("baul", opciones);
+}
+
+function terminarEquipoPerfil(ranura, objeto) {
+    if (!borrador || !objeto) return;
+    const motivo = objeto.tipo !== "equipo" ? "Solo se puede equipar equipamiento."
+        : motivoTipoRanura(ranura, objeto.equipo.tipo);
+    el("avisoPerfilMaster").textContent = motivo ?? "";
+    if (!motivo) {
+        const equipo = cargarEquipo(JSON.parse(JSON.stringify(objeto.equipo)));
+        equipo.nombre = objeto.nombre;
+        equipo.descripcion = objeto.descripcion;
+        equipo.enUso = false;
+        if (!TIPOS_DOS_MANOS.includes(equipo.tipo)) equipo.parteSecundaria = null;
+        ponerEquipoPerfil(ranura, equipo);
+    }
+    pintarPerfil();
+}
+
+/* Fila de una ranura con su equipo (el nombre de las partes se edita en la propia fila) */
+function filaRanuraPerfil({ ranura, titulo, nombreEditable = false, iconoVacio, vacio, motivoEquipar = "", quitar = "" }) {
+    const equipo = tieneEquipoRanura(ranura) ? equipoRanuraPerfil(ranura) : null;
+    const objeto = equipo ? objetoDeEquipo(equipo) : null;
+    const detalle = objeto ? `${objeto.nombre} · ${ctx.detalleObjeto(objeto)}` : vacio;
+    const botones = (equipo
+        ? botonObjeto("editarEquipo", "editar", "Editar equipo") + botonObjeto("quitarEquipo", "cancelar", "Quitar equipo")
+        : botonObjeto("equipar", iconoVacio, "Equipar", motivoEquipar)) + quitar;
+    return `<div class="fila-objeto fila-ranura-npc" data-ranura="${escaparHtml(ranura)}">
+        <span class="objeto-icono">${iconoSao(objeto ? ctx.iconoObjeto(objeto) : iconoVacio)}</span>
+        <div class="objeto-info">
+            <div class="objeto-cabecera">${nombreEditable
+                ? `<input type="text" class="nombre-parte-perfil" data-parte-nombre="${escaparHtml(ranura)}" maxlength="60" aria-label="Nombre de la acción">`
+                : `<span class="objeto-nombre">${escaparHtml(titulo)}</span>`}</div>
+            <div class="objeto-detalle">${escaparHtml(detalle)}</div>
+        </div>
+        <div class="objeto-acciones">${botones}</div>
+    </div>`;
+}
+
+/* Rehace el HTML solo si cambia (así no se pierde el campo con el foco) */
+function pintarSiCambia(contenedor, html) {
+    if (contenedor.dataset.html === html) return;
+    contenedor.dataset.html = html;
+    contenedor.innerHTML = html;
+}
+
+function pintarPartesPerfil() {
+    const pj = borrador;
+    const partes = pj.npc.partes;
+    const html = partes.map(parte => {
+        const ocupa = parteQueOcupa(pj, parte.id);
+        const motivoQuitar = motivoNoQuitarParte(pj, parte.id);
+        return filaRanuraPerfil({
+            ranura: parte.id, nombreEditable: true, iconoVacio: "espada",
+            vacio: ocupa ? `Ocupada por el arma a dos manos de ${parteNpc(pj, ocupa)?.nombre ?? "otra parte"}` : "Sin equipo",
+            motivoEquipar: ocupa ? "La ocupa un arma a dos manos" : "",
+            quitar: botonObjeto("quitarParte", "descartar", `Quitar ${parte.nombre}`, motivoQuitar ?? "")
+        });
+    }).join("");
+    pintarSiCambia(el("perfilMasterPartes"), html);
+    partes.forEach(parte => {
+        const input = el("perfilMasterPartes").querySelector(`[data-parte-nombre="${CSS.escape(parte.id)}"]`);
+        if (input && document.activeElement !== input) input.value = parte.nombre;
+    });
+    // Cada parte es una acción y por turno hay partes − 1
+    el("perfilMasterContadorPartes").textContent = `(${partes.length} partes, ${Math.max(0, partes.length - 1)} acciones por turno)`;
+    const lleno = partes.length >= MAX_PARTES_NPC;
+    const botones = `<button type="button" class="btn-crear-objeto" data-crear="parteNpc" ${lleno ? `disabled title="Máximo ${MAX_PARTES_NPC} partes"` : ""}>+ Crear acción</button>`
+        + Object.keys(NOMBRES_BRAZO).filter(id => !tieneParte(pj, id))
+            .map(id => `<button type="button" class="btn-crear-objeto" data-crear="brazo-${id}" ${lleno ? "disabled" : ""}>+ ${NOMBRES_BRAZO[id]}</button>`).join("");
+    pintarSiCambia(el("perfilMasterBotonesPartes"), botones);
+}
+
+function pintarEquipoPerfil() {
+    const pj = borrador;
+    const accesorios = pj.accesorios.map((acc, i) => ({ acc, i })).filter(({ acc }) => !accesorioVacio(acc));
+    const html = filaRanuraPerfil({ ranura: "armadura", titulo: "Armadura", iconoVacio: "armadura", vacio: "Sin armadura" })
+        + accesorios.map(({ i }) => filaRanuraPerfil({ ranura: `accesorio-${i}`, titulo: `Accesorio ${i + 1}`, iconoVacio: "accesorio", vacio: "" })).join("");
+    pintarSiCambia(el("perfilMasterEquipoNpc"), html);
+    const boton = el("formPerfilMaster").querySelector('[data-crear="accesorioNpc"]');
+    boton.disabled = accesorios.length >= MAX_ACCESORIOS_NPC;
+}
+
+/* Sube o baja las acciones del turno al añadir o quitar partes (como en la ficha) */
+const ajustarAccionesBorrador = (cambio) => {
+    const pj = borrador;
+    pj.numeroAcciones = Math.max(0, Math.min(pj.numeroAcciones + cambio, pj.npc.partes.length - 1));
+};
+
+async function accionRanuraPerfil(ranura, accion) {
+    const pj = borrador;
+    if (accion === "equipar") {
+        const tipoEquipo = ranura === "armadura" ? "ligera" : ranura.startsWith("accesorio-") ? TIPO_ACCESORIO : "espada";
+        return abrirEquipoPerfil(ranura, tipoEquipo);
+    }
+    if (accion === "editarEquipo") return abrirEquipoPerfil(ranura);
+    if (accion === "quitarEquipo") {
+        const equipo = equipoRanuraPerfil(ranura);
+        const ok = await ctx.confirmar({ titulo: "Quitar equipo", texto: `¿Quitar ${equipo?.nombre?.trim() || "este equipo"}?` });
+        if (!ok || pj !== borrador) return;
+        ponerEquipoPerfil(ranura, null);
+    }
+    if (accion === "quitarParte") {
+        const parte = parteNpc(pj, ranura);
+        const ok = parte && await ctx.confirmar({ titulo: "Quitar acción", texto: `¿Quitar ${parte.nombre}?` });
+        if (!ok || pj !== borrador) return;
+        quitarParte(pj, ranura);
+    }
+    pintarPerfil();
 }
 
 /* Los editores de objetos trabajan sobre pj[lista]: para la recompensa se les pasa un "pj" que solo tiene esa
@@ -957,6 +1151,11 @@ function aplicarCampo(input) {
         pj.puntosArte = limitar(entero(input.value, pj.puntosArte), 0, pj.puntosArteMax);
     } else if (input.id === "perfilMasterCor") {
         pj.cor = Math.max(0, entero(input.value, pj.cor));
+    } else if (input.dataset.parteNombre && pj.esNpc) {
+        const parte = parteNpc(pj, input.dataset.parteNombre);
+        if (parte) parte.nombre = input.value.trim().slice(0, 60) || parte.nombre;
+    } else if (input.id === "perfilMasterComportamiento") {
+        if (pj.esNpc) pj.comportamientoCombate = input.value;
     } else if (input.dataset.npc && pj.esNpc) {
         const clave = input.dataset.npc;
         if (clave === "recompensaCor") pj.npc.recompensa.cor = Math.max(0, entero(input.value, pj.npc.recompensa.cor));
@@ -977,7 +1176,7 @@ function aplicarCampo(input) {
 function aceptarPerfil() {
     if (!borrador) return;
     const form = el("formPerfilMaster");
-    form.querySelectorAll("input, select").forEach(aplicarCampo);
+    form.querySelectorAll("input, select, textarea").forEach(aplicarCampo);
     const pj = borrador;
     const aviso = el("avisoPerfilMaster");
     // Los NPC pueden repetir nombre (en el máster y en la sala)
@@ -1036,7 +1235,7 @@ function inicializarPerfilMaster() {
     });
     const form = el("formPerfilMaster");
     form.addEventListener("change", (e) => {
-        if (!borrador || !e.target.matches("input, select")) return;
+        if (!borrador || !e.target.matches("input, select, textarea")) return;
         aplicarCampo(e.target);
         el("avisoPerfilMaster").textContent = "";
         pintarPerfil();
@@ -1055,6 +1254,18 @@ function inicializarPerfilMaster() {
                 pintarPerfil();
                 el("perfilMasterTiradas").lastElementChild?.querySelector("input")?.select();
                 return;
+            }
+            if (tipo === "parteNpc" || tipo.startsWith("brazo-")) {
+                const nueva = tipo === "parteNpc" ? anadirParte(borrador, "Acción nueva") : anadirBrazo(borrador, tipo.slice("brazo-".length));
+                if (!nueva) return;
+                ajustarAccionesBorrador(1);
+                pintarPerfil();
+                if (tipo === "parteNpc") el("perfilMasterPartes").querySelector(`[data-parte-nombre="${CSS.escape(nueva.id)}"]`)?.select();
+                return;
+            }
+            if (tipo === "accesorioNpc") {
+                const libre = borrador.accesorios.findIndex(accesorioVacio);
+                return abrirEquipoPerfil(`accesorio-${libre < 0 ? borrador.accesorios.length : libre}`, TIPO_ACCESORIO);
             }
             if (tipo === "recompensa") ctx.abrirCrearObjeto("baul", opcionesRecompensa());
             else if (tipo === "recompensaClave") ctx.abrirEditorObjetoClave(null, opcionesRecompensa());
@@ -1083,7 +1294,8 @@ function inicializarPerfilMaster() {
         if (!fila || boton.disabled) return;
         reproducir("click");
         const lista = boton.closest(".lista-objetos").dataset.lista;
-        if (lista === "artes") accionArtePerfil(Number(fila.dataset.index), boton.dataset.accion);
+        if (lista === "partesNpc" || lista === "equipoNpc") accionRanuraPerfil(fila.dataset.ranura, boton.dataset.accion);
+        else if (lista === "artes") accionArtePerfil(Number(fila.dataset.index), boton.dataset.accion);
         else accionObjetoPerfil(lista, Number(fila.dataset.index), boton.dataset.accion);
     });
     el("btnAceptarPerfilMaster").addEventListener("click", aceptarPerfil);
@@ -1100,7 +1312,7 @@ function inicializarPerfilMaster() {
 
 /* Pasa el borrador (una copia en juego) a su plantilla o a una nueva; la ficha cambia al aceptar el perfil */
 async function guardarBorradorEnCompendio(sobrescribir) {
-    el("formPerfilMaster").querySelectorAll("input, select").forEach(aplicarCampo);
+    el("formPerfilMaster").querySelectorAll("input, select, textarea").forEach(aplicarCampo);
     const pj = borrador;
     if (sobrescribir) {
         const ok = await ctx.confirmar({
