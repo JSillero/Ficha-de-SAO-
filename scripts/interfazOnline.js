@@ -127,8 +127,15 @@ export const echarPersonajeSala = (jugador, id) => servicio.echarPersonaje(jugad
 export const motivoNombreSala = (nombre, registro) => servicio.motivoNombre(nombre, registro);
 export const mensajeErrorOnline = (error) => servicio.mensajeError(error);
 /* Compendio de NPC del máster (lo gestiona interfazMaster.js con compendio.js) */
-export const leerCompendioNube = () => servicio.leerCompendio();
-export const guardarCompendioNube = (cambios) => servicio.guardarPaginasCompendio(cambios);
+export const leerCompendioNube = () => servicio.leerCompendio("npc");
+export const guardarCompendioNube = (cambios) => servicio.guardarPaginasCompendio(cambios, "npc");
+/* Objetos comunes (interfazCompendioObjetos.js): el máster lee y sube el suyo; los jugadores leen el del máster de
+   su sala (siNoEs: si no ha cambiado desde la copia que tienen, solo se lee el índice) */
+export const leerObjetosComunesNube = (dueno = null, siNoEs = null) => servicio.leerCompendio("objetos", dueno, siNoEs);
+export const guardarObjetosComunesNube = (cambios) => servicio.guardarPaginasCompendio(cambios, "objetos");
+/** uid del máster de la sala en la que estás (null sin sala) */
+export const masterDeLaSala = () => servicio.getEstado().sala?.master ?? null;
+export const usuarioOnline = () => servicio.getEstado().usuario?.uid ?? null;
 export const haySesionOnline = () => Boolean(servicio.getEstado().usuario);
 export const alCambiarSesionOnline = (cb) => servicio.alCambiarEstado(cb);
 

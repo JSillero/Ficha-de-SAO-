@@ -72,6 +72,8 @@ export default class Equipamiento {
         this.pocionAplicada = null; // poción untada en el arma: se aplica en el siguiente ataque
         this.reliquia = tipo === TIPO_RELIQUIA ? { habilidades: [] } : null; // { habilidades } si es reliquia (reliquias.js)
         this.efectos = []; // pasivas y activas con formato de arte (efectosEquipo.js; se cargan en cargarEquipo)
+        // Armas: estados que provoca al acertar, con su probabilidad (estadosAlAcertar.js; se cargan en cargarEquipo)
+        this.estadosAlAcertar = [];
         // Solo en los NPC (npc.js): acierto que suma a la tirada de ataque, dado propio (0 bajo, 1 medio, 2 alto;
         // null = el de su tipo en ARMAS) y, en un arma a dos manos de una parte extra, la otra parte que ocupa
         this.acierto = 0;
@@ -142,7 +144,8 @@ export default class Equipamiento {
             enUso: this.enUso,
             pocionAplicada: this.pocionAplicada,
             reliquia: this.reliquia,
-            efectos: this.efectos
+            efectos: this.efectos,
+            estadosAlAcertar: this.estadosAlAcertar
         });
     }
 }

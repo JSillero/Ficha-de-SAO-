@@ -308,6 +308,7 @@ export function validarFicha(pj) {
     }
 
     if (pj.cor < 0) avisos.push(`Cor negativo (${pj.cor}).`);
+    if (pj.puntosEgo < 0) avisos.push(`Puntos de ego negativos (${pj.puntosEgo}).`);
     const sobrantes = pj.inventario.length - capacidadInventario(pj);
     if (sobrantes > 0) avisos.push(`El inventario tiene ${sobrantes} objeto(s) de más (capacidad ${capacidadInventario(pj)}).`);
     // Puede pasar si se baja de nivel después de gastar desbloqueos

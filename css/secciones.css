@@ -1622,6 +1622,36 @@
     margin-bottom: 4px;
 }
 
+/* Nombre real y puntos de ego del perfil (htmlFichaResumen en interfaz.js): solo los ve el propio personaje */
+.ficha-resumen .resumen-privado-perfil {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.ficha-resumen .resumen-nombre-real {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #5a5a5a;
+}
+
+.ficha-resumen .resumen-nombre-real input {
+    flex: 1;
+    min-width: 0;
+    max-width: 320px;
+    padding: 3px 8px;
+    border: none;
+    border-radius: 4px;
+    background: #dce8f9;
+}
+
+.ficha-resumen .barra-ego {
+    margin-bottom: 0;
+}
+
 .ficha-resumen .resumen-rejilla {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -1761,6 +1791,26 @@
     translate: 0 -50%;
     display: flex;
     gap: 6px;
+}
+
+/* Cabecera con muchos botones (inventario, objetos comunes): los botones van siempre bajo el título, como en
+   móvil, para no taparlo */
+.modal-sao .modal-header.cabecera-apilada {
+    flex-direction: column;
+    gap: 6px;
+}
+
+.modal-sao .modal-header.cabecera-apilada .botones-cabecera-modal {
+    position: static;
+    translate: none;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+/* "+ Crear objeto" dentro de un grupo de botones (inventario): lo coloca el grupo */
+.modal-sao .modal-header .botones-cabecera-modal .btn-crear-objeto {
+    position: static;
+    translate: none;
 }
 
 /* En móvil bajan bajo el título (esta regla va después de la anterior para que mande) */
@@ -2364,6 +2414,57 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
     font-size: 12px;
     font-weight: bold;
     color: #6c3483;
+}
+
+/* Estados que provoca el arma al acertar (actualizarPocionesArmas) */
+.equipamiento-estados-acertar {
+    margin: 0;
+    padding: 3px 8px;
+    border-left: 3px solid #d1ab52;
+    border-radius: 4px;
+    background: #f4f4f4;
+    font-size: 12px;
+    color: #8a6d2a;
+}
+
+/* Editor de estados al acertar en los formularios de objetos y artes (crearEditorEstadosAlAcertar) */
+.lista-estados-acertar {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0 0 6px;
+    padding: 0;
+    list-style: none;
+}
+
+.fila-estado-acertar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    font-size: 13px;
+}
+
+.fila-estado-acertar label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.fila-estado-acertar input[type="number"] {
+    width: 56px;
+}
+
+.fila-estado-acertar .btn-objeto {
+    margin-left: auto;
+}
+
+.editor-estados-acertar {
+    padding-bottom: 6px;
 }
 
 .equipamiento-descripcion {
@@ -3199,10 +3300,11 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
 }
 
 /* En modo lectura no se ven los botones que cambian algo (las acciones ya están bloqueadas en interfaz.js) */
-body.modo-lectura .objeto-acciones,
+/* (salvo lo marcado .permitido-lectura y el botón de añadir al compendio de objetos del máster) */
+body.modo-lectura .objeto-acciones > :not(.permitido-lectura):not(.btn-al-compendio),
 body.modo-lectura .objeto-eleccion,
 body.modo-lectura .btn-crear-objeto,
-body.modo-lectura .botones-cabecera-modal,
+body.modo-lectura .botones-cabecera-modal:not(.permitido-lectura),
 body.modo-lectura .btn-h2:not(.hud-master-anadir),
 body.modo-lectura .btn-hab-mas,
 body.modo-lectura .btn-hab-menos,
@@ -3278,8 +3380,36 @@ body:not(.modo-npc) .ficha-npc {
     color: #5a5a5a;
 }
 
-#estadoCompendio.error {
+#estadoCompendio.error,
+#estadoCompendioObjetos.error {
     color: #c0392b;
+}
+
+/* Compendio de objetos (#modalCompendioObjetos, interfazCompendioObjetos.js): mismo aspecto, con el piso
+   editable en la cabecera de cada fila */
+.fila-compendio-objeto .objeto-cabecera {
+    flex-wrap: wrap;
+    gap: 4px 10px;
+}
+
+.piso-compendio {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: #5a5a5a;
+}
+
+.piso-compendio input {
+    width: 52px;
+    padding: 1px 4px;
+    border: none;
+    border-radius: 4px;
+    background: #dce8f9;
+}
+
+#filtrosCompendioObjetos[hidden] {
+    display: none;
 }
 
 /* NPC: partes del cuerpo (pintarPartesNpc en interfaz.js): nombre editable y quitar; + en el título */

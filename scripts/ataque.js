@@ -5,6 +5,10 @@
 import { ARMAS, ELEMENTOS } from "./equipamiento.js";
 import { combinarModos } from "./dados.js";
 import { ESTADOS_INFO, TIPOS_DANNO } from "./estados.js";
+import { anadirEstadosAlGolpe } from "./estadosAlAcertar.js";
+
+/* Nombre del arma para el efecto del golpe */
+const nombreArma = (item) => item?.nombre?.trim() || ARMAS[item?.tipo]?.etiqueta || "Arma";
 
 const NOMBRES_CARACTERISTICA = { reflejos: "Reflejos", fortaleza: "Fortaleza" };
 
@@ -85,7 +89,8 @@ function calcularDannoAtaqueNpc(pj, item, critico) {
     if (critico) desglose.push(`×${String(CRITICO_NPC).replace(".", ",")} (Crítico)`);
     const notas = [];
     if (item?.pocionAplicada) notas.push(`Poción aplicada: ${describirEfecto(item.pocionAplicada)}`);
-    return { total, desglose, elemental: dannoElementalArma(item), efecto: efectoDeObjeto(item?.pocionAplicada), notas };
+    const golpe = { total, desglose, elemental: dannoElementalArma(item), efecto: efectoDeObjeto(item?.pocionAplicada), notas };
+    return anadirEstadosAlGolpe(golpe, item?.estadosAlAcertar, nombreArma(item));
 }
 
 /**
@@ -113,7 +118,7 @@ export function calcularDannoAtaque(pj, item, critico) {
 
     if (item?.pocionAplicada) notas.push(`Poción aplicada: ${describirEfecto(item.pocionAplicada)}`);
 
-    return {
+    return anadirEstadosAlGolpe({
         total: dannoArma * multArma + bono * multBono,
         desglose: [
             `${conMult(dannoArma, multArma)} (Arma)`,
@@ -122,7 +127,7 @@ export function calcularDannoAtaque(pj, item, critico) {
         elemental: dannoElementalArma(item),
         efecto: efectoDeObjeto(item?.pocionAplicada),
         notas
-    };
+    }, item?.estadosAlAcertar, nombreArma(item));
 }
 
 /**
@@ -145,13 +150,13 @@ export function calcularDannoLanzamientoArma(pj, item, critico) {
     if (critico) notas.push("Crítico: bonificador de daño multiplicado.");
     if (item?.pocionAplicada) notas.push(`Poción aplicada: ${describirEfecto(item.pocionAplicada)}`);
 
-    return {
+    return anadirEstadosAlGolpe({
         total: dannoArma * multArma + bono * multBono,
         desglose: [`${conMult(dannoArma, multArma)} (Arma)`, `${conMult(bono, multBono)} (Bonif. distancia)`],
         elemental: dannoElementalArma(item),
         efecto: efectoDeObjeto(item?.pocionAplicada),
         notas
-    };
+    }, item?.estadosAlAcertar, nombreArma(item));
 }
 
 /**

@@ -8,6 +8,7 @@ import { activarEstado, quitarEstado, aplicarDanno, ESTADOS_INFO, TIPOS_DANNO } 
 import { MANOS, gastarVarias, gastarTodas, partesDeMano, parteDeMano, manoVacia, puedeGastar } from "./turno.js";
 import { esZonaSegura } from "./zonas.js";
 import { cargarEfectos } from "./efectosEquipo.js";
+import { cargarEstadosAlAcertar, cargarEstadoAlAcertar, MAX_ESTADOS_AL_ACERTAR } from "./estadosAlAcertar.js";
 
 /* Huecos base del inventario; el modificador `inventario` los amplía (o reduce) */
 export const TAMANO_INVENTARIO = 5;
@@ -23,6 +24,23 @@ export const TIPOS_OBJETO = {
     material: { etiqueta: "Material", icono: "material" },
     arrojadiza: { etiqueta: "Arma arrojadiza", icono: "arrojadiza" }
 };
+
+/* Subtipos de material (para qué sirve); "" = sin tipo (los materiales antiguos) */
+export const TIPOS_MATERIAL = {
+    "": { etiqueta: "Sin tipo" },
+    cristal: { etiqueta: "Para cristales" },
+    herreria: { etiqueta: "Herrería y armería" },
+    cocina: { etiqueta: "Cocina" },
+    alquimia: { etiqueta: "Alquimia" }
+};
+
+/** "Cocina · potencia 3" (vacío si no tiene subtipo ni potencia; la fila ya pone "Material" delante) */
+export function detalleMaterial(objeto) {
+    const partes = [];
+    if (objeto?.subtipo && TIPOS_MATERIAL[objeto.subtipo]) partes.push(TIPOS_MATERIAL[objeto.subtipo].etiqueta);
+    if (Number(objeto?.potencia) > 0) partes.push(`potencia ${objeto.potencia}`);
+    return partes.join(" · ");
+}
 
 /* Daños elementales que puede llevar una arrojadiza (claves de TIPOS_DANNO) */
 export const ELEMENTOS_ARROJADIZA = ["fuego", "electricidad", "hielo", "luz", "oscuridad", "hemorragia"];
@@ -83,6 +101,7 @@ export function cargarEquipo(datos) {
     const equipo = cargarEquipamiento(datos);
     equipo.pocionAplicada = cargarObjeto(equipo.pocionAplicada);
     equipo.efectos = cargarEfectos(equipo.efectos);
+    equipo.estadosAlAcertar = cargarEstadosAlAcertar(equipo.estadosAlAcertar);
     return equipo;
 }
 
@@ -121,6 +140,11 @@ export function cargarObjeto(datos) {
         case "equipo":
             objeto.equipo = cargarEquipo(datos.equipo);
             objeto.cantidad = 1; // el equipo no se apila
+            break;
+        case "material":
+            // Para qué sirve y su potencia (informativa por ahora; distinta potencia = distinta pila)
+            objeto.subtipo = TIPOS_MATERIAL[datos.subtipo] ? datos.subtipo : "";
+            objeto.potencia = Math.max(0, Math.floor(Number(datos.potencia) || 0));
             break;
     }
     return objeto;
@@ -290,6 +314,24 @@ export function gastarCor(pj, cantidad) {
     return exito(`−${n} Cor`, `Total: ${pj.cor} Cor`);
 }
 
+/* Puntos de ego (perfil): como el Cor, sin límite y nunca en negativo */
+export function anadirEgo(pj, cantidad) {
+    const n = cantidadCor(cantidad);
+    if (n <= 0) return fallo("Indica una cantidad mayor que 0.");
+    pj.puntosEgo = (Number(pj.puntosEgo) || 0) + n;
+    return exito(`+${n} puntos de ego`, `Total: ${pj.puntosEgo}`);
+}
+
+/** Quita puntos de ego; si no hay bastantes no quita nada. */
+export function gastarEgo(pj, cantidad) {
+    const n = cantidadCor(cantidad);
+    if (n <= 0) return fallo("Indica una cantidad mayor que 0.");
+    const actual = Number(pj.puntosEgo) || 0;
+    if (n > actual) return fallo(`No tienes suficientes puntos de ego (tienes ${actual}).`);
+    pj.puntosEgo = actual - n;
+    return exito(`−${n} puntos de ego`, `Total: ${pj.puntosEgo}`);
+}
+
 /** Mano vacía para usar algo (prefiere una con la acción disponible). null si las dos están ocupadas. */
 export function manoParaUsar(pj) {
     const vacias = MANOS.filter(mano => manoVacia(pj, mano));
@@ -431,6 +473,12 @@ export function aplicarEfectoEnObjetivo(pj, efecto) {
             valor: Math.max(0, Math.trunc(Number(estado.valor) || 0)),
             turnos: Number.isFinite(turnos) ? Math.trunc(turnos) : (ESTADOS_INFO[estado.clave].turnos ?? TURNOS_PERMANENTE)
         }));
+    }
+    // Estados al acertar del arma o del arte (ya tirados por el atacante; vienen de otro jugador: se validan)
+    const estados = (Array.isArray(efecto.estados) ? efecto.estados : []).slice(0, MAX_ESTADOS_AL_ACERTAR * 2);
+    for (const datos of estados) {
+        const estado = cargarEstadoAlAcertar(datos);
+        if (estado) resumen.push(...aplicarEstadoObjeto(pj, { clave: estado.clave, valor: estado.valor, turnos: estado.turnos, quitar: false }));
     }
     const elemental = efecto.elemental;
     if (TIPOS_DANNO[elemental?.tipo] && Number(elemental.cantidad) > 0) {

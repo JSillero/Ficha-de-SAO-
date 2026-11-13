@@ -24,6 +24,8 @@
  * - salas/{codigo}/artes/{id}: { autor, nombreAutor, nombre, arte, actualizado }   arte = JSON del arte
  * - compendios/{uid}: { paginas, actualizado }                     compendio de NPC del máster (compendio.js):
  *   compendios/{uid}/paginas/{n}: { plantillas }                   índice y páginas de < 1 MB (texto JSON)
+ * - compendiosObjetos/{uid}: { paginas, actualizado }              objetos comunes del máster (compendioObjetos.js):
+ *   compendiosObjetos/{uid}/paginas/{n}: { objetos }               lo escribe su dueño; lo lee cualquiera con sesión
  *
  * Plan gratuito de Firebase: peticiones al mínimo. Personajes, ocultos y expulsados van en el documento de
  * la sala, que ya se escucha (sin listeners ni colecciones extra); nada es periódico; los nombres de usuario
@@ -1242,25 +1244,50 @@ export async function borrarPersonaje(id) {
  * { plantillas } (texto JSON). Solo lo lee y escribe su dueño. Leer = 1 + n lecturas; guardar = un lote con
  * las páginas cambiadas y el índice. */
 
-/** { actualizado, paginas: [texto] }, o null si aún no tiene compendio en la nube */
-export async function leerCompendio() {
+/* Los dos compendios: colección y campo de texto de cada página */
+const COMPENDIOS = {
+    npc: { coleccion: "compendios", campo: "plantillas" },
+    objetos: { coleccion: "compendiosObjetos", campo: "objetos" }
+};
+
+/** Solo el índice: { actualizado, total }, o null si no hay compendio en la nube (1 lectura) */
+export async function leerIndiceCompendio(tipo = "npc", dueno = null) {
     const { db, f, uid } = exigirUsuario();
-    const indice = await f.getDoc(f.doc(db, "compendios", uid));
+    const indice = await f.getDoc(f.doc(db, COMPENDIOS[tipo].coleccion, dueno ?? uid));
     if (!indice.exists()) return null;
-    const total = Math.max(0, Math.trunc(Number(indice.data().paginas) || 0));
-    const paginas = await Promise.all(Array.from({ length: total }, (_, n) =>
-        f.getDoc(f.doc(db, "compendios", uid, "paginas", String(n)))
-            .then(d => (d.exists() ? String(d.data().plantillas ?? "[]") : "[]"))));
-    return { actualizado: Number(indice.data().actualizado) || 0, paginas };
+    return { actualizado: Number(indice.data().actualizado) || 0, total: Math.max(0, Math.trunc(Number(indice.data().paginas) || 0)) };
+}
+
+/** Las páginas de un compendio ya leído su índice (1 lectura por página) */
+async function leerPaginasCompendio(tipo, dueno, total) {
+    const { db, f } = exigirUsuario();
+    const { coleccion, campo } = COMPENDIOS[tipo];
+    return Promise.all(Array.from({ length: total }, (_, n) =>
+        f.getDoc(f.doc(db, coleccion, dueno, "paginas", String(n)))
+            .then(d => (d.exists() ? String(d.data()[campo] ?? "[]") : "[]"))));
+}
+
+/**
+ * { actualizado, paginas: [texto] }, o null si aún no tiene compendio en la nube. tipo: "npc" u "objetos";
+ * dueno: uid del compendio (por defecto el tuyo; los objetos comunes del máster de la sala los leen sus jugadores).
+ * siNoEs: si el índice tiene este `actualizado`, no se leen las páginas y se devuelve { actualizado, sinCambios: true }.
+ */
+export async function leerCompendio(tipo = "npc", dueno = null, siNoEs = null) {
+    const { uid } = exigirUsuario();
+    const indice = await leerIndiceCompendio(tipo, dueno);
+    if (!indice) return null;
+    if (siNoEs !== null && indice.actualizado === siNoEs) return { actualizado: indice.actualizado, sinCambios: true };
+    return { actualizado: indice.actualizado, paginas: await leerPaginasCompendio(tipo, dueno ?? uid, indice.total) };
 }
 
 /** Sube las páginas cambiadas ({ n: texto }), borra las que sobran y actualiza el índice, todo a la vez */
-export async function guardarPaginasCompendio({ actualizado, total, paginas, borrar = [] }) {
+export async function guardarPaginasCompendio({ actualizado, total, paginas, borrar = [] }, tipo = "npc") {
     const { db, f, uid } = exigirUsuario();
+    const { coleccion, campo } = COMPENDIOS[tipo];
     const lote = f.writeBatch(db);
-    Object.entries(paginas).forEach(([n, texto]) => lote.set(f.doc(db, "compendios", uid, "paginas", String(n)), { plantillas: texto }));
-    borrar.forEach(n => lote.delete(f.doc(db, "compendios", uid, "paginas", String(n))));
-    lote.set(f.doc(db, "compendios", uid), { paginas: total, actualizado });
+    Object.entries(paginas).forEach(([n, texto]) => lote.set(f.doc(db, coleccion, uid, "paginas", String(n)), { [campo]: texto }));
+    borrar.forEach(n => lote.delete(f.doc(db, coleccion, uid, "paginas", String(n))));
+    lote.set(f.doc(db, coleccion, uid), { paginas: total, actualizado });
     await lote.commit();
 }
 

@@ -52,6 +52,26 @@ service cloud.firestore {
       }
     }
 
+    // Objetos comunes del máster (compendioObjetos.js): índice y páginas de texto JSON. Los escribe su dueño y
+    // los lee cualquiera con sesión (los jugadores de sus salas los añaden a su inventario)
+    match /compendiosObjetos/{uid} {
+      allow read: if conSesion();
+      allow delete: if conSesion() && request.auth.uid == uid;
+      allow create, update: if conSesion() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['paginas', 'actualizado'])
+        && request.resource.data.paginas is int
+        && request.resource.data.paginas <= 100
+        && request.resource.data.actualizado is number;
+      match /paginas/{pagina} {
+        allow read: if conSesion();
+        allow delete: if conSesion() && request.auth.uid == uid;
+        allow create, update: if conSesion() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['objetos'])
+          && request.resource.data.objetos is string
+          && request.resource.data.objetos.size() < 900000;
+      }
+    }
+
     // Nombre público de cada jugador (para elegir a quién ofrecer algo)
     match /usuarios/{uid} {
       allow read: if conSesion();

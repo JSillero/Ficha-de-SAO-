@@ -40,10 +40,10 @@ const CAMPOS_SIMPLES = [
     'puntosArte', 'vida',
     'numeroAcciones', 'izquierda', 'derecha', 'cabeza', 'pies', 'reaccionGuardada',
     'enSigilo', 'valorSigilo',
-    'comidaActiva', 'tipoProfesion', 'esUnderworld', 'protagonista', 'zona', 'cor',
+    'comidaActiva', 'tipoProfesion', 'esUnderworld', 'protagonista', 'zona', 'cor', 'puntosEgo', 'nombreReal',
     'esNpc', 'idPlantilla',
     'desbloqueosArteExtra', 'desbloqueosArteGastados',
-    'notas', 'listadoArtes', 'listaDeAmigos', 'recetasProfesion', 'comportamientoCombate'
+    'notas', 'listadoArtes', 'notasBaul', 'listaDeAmigos', 'recetasProfesion', 'comportamientoCombate'
 ];
 
 /* Identificador estable del personaje (no cambia al renombrarlo): lo usan el modo máster y la sala */
@@ -126,6 +126,8 @@ export default class PJ {
         this.botin = []; // objetos de la recompensa de un NPC por recoger (ventana de botín; sin límite)
         this.comidaActiva = ""; // nombre de la comida cuyo efecto está activo (sus modificadores llevan origen "comida")
         this.cor = 0; // monedas: no ocupan hueco, sin límite, nunca negativas
+        this.puntosEgo = 0; // contador del perfil (solo lo ve el propio personaje), nunca negativo
+        this.nombreReal = ""; // del perfil; no va en la ficha resumida (solo lo ve el propio personaje)
 
         /* Zona actual (claves de ZONAS en zonas.js): "noSegura", "segura" o "base" */
         this.zona = ZONA_POR_DEFECTO;
@@ -151,6 +153,7 @@ export default class PJ {
         /* Bloques de texto */
         this.notas = ""; /* String, como todos */
         this.listadoArtes = "";
+        this.notasBaul = ""; // notas libres de la ventana del baúl
         this.listaDeAmigos = ""; // notas antiguas de amigos: ya no se muestran, se conservan
         this.recetasProfesion = ""; // se muestra como "Perfil psicológico" (el nombre del campo se conserva)
         this.comportamientoCombate = ""; // solo NPC: cómo se comporta en combate (debajo de Acciones)
@@ -464,6 +467,8 @@ export default class PJ {
             this.protagonista = false;
         }
         this.cor = Math.max(0, Math.floor(Number(this.cor) || 0));
+        this.puntosEgo = Math.max(0, Math.floor(Number(this.puntosEgo) || 0));
+        this.nombreReal = String(this.nombreReal ?? "").slice(0, 60);
         this.desbloqueosArteExtra = Math.trunc(Number(this.desbloqueosArteExtra) || 0);
         this.desbloqueosArteGastados = Math.max(0, Math.trunc(Number(this.desbloqueosArteGastados) || 0));
         // Solo el Aguante y la Iniciativa (derivados, no se guardan) pueden tener decimales

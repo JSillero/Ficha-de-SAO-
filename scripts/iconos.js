@@ -56,6 +56,16 @@ const candado = (x = 0, y = 0, escala = 1) => `
         </g>`;
 const candadoConSigno = (signo) => `${candado(-4, -6, 0.82)}${insigniaSigno(signo)}`;
 
+/* Corona (puntos de ego); pequeña y arriba a la izquierda si lleva signo */
+const corona = (x = 0, y = 0, escala = 1) => `
+        <g transform="translate(${x} ${y}) scale(${escala})">
+            <polygon class="p" points="18,34 34,52 50,24 66,52 82,34 76,72 24,72"/>
+            <polygon class="s" points="50,24 66,52 82,34 76,72 50,72"/>
+            <rect class="p" x="24" y="76" width="52" height="8" rx="3"/>
+            <circle class="f" cx="50" cy="60" r="5"/>
+        </g>`;
+const coronaConSigno = (signo) => `${corona(-4, -6, 0.82)}${insigniaSigno(signo)}`;
+
 const GLIFOS = {
     fuego: `
         <path class="s" d="M50 16C59 31 73 40 71 60C70 74 61 83 50 83C39 83 30 74 29 62C28 49 37 43 40 32C44 40 46 45 47 50C50 39 53 29 50 16Z"/>
@@ -280,6 +290,10 @@ const GLIFOS = {
         <circle class="ic-fondo" cx="34" cy="50" r="6"/>
         <path class="p" d="M48 45H84V55H78V64H70V55H64V62H56V55H48Z"/>
         <path class="s" d="M48 50H84V55H78V64H70V55H64V62H56V55H48Z"/>`,
+    /* Puntos de ego: corona; con + o − para los botones */
+    ego: corona(),
+    egoMas: coronaConSigno("M70 58V82M58 70H82"),
+    egoMenos: coronaConSigno("M58 70H82"),
     desbloqueo: candado(),
     desbloqueoMas: candadoConSigno("M70 58V82M58 70H82"),
     desbloqueoMenos: candadoConSigno("M58 70H82"),

@@ -352,6 +352,8 @@
                                     </div>
                                     <!-- Poción aplicada al arma: se aplica en el siguiente golpe (actualizarPocionesArmas) -->
                                     <p class="equipamiento-pocion" hidden></p>
+                                    <!-- Estados que provoca el arma al acertar (actualizarPocionesArmas) -->
+                                    <p class="equipamiento-estados-acertar" hidden></p>
                                     <p class="equipamiento-descripcion"></p>
                                     <div class="equipamiento-mods-header">
                                         <span>Modificadores:</span>
@@ -362,6 +364,7 @@
                                     <div class="extras-arma-npc ficha-npc">
                                         <label><input type="checkbox" class="check-reliquia-npc"> Es reliquia</label>
                                         <button type="button" class="btn-cabecera btn-efecto-npc">+ Crear efecto</button>
+                                        <button type="button" class="btn-cabecera btn-estados-npc">Estados al acertar</button>
                                     </div>
                                     <!-- Si el arma es reliquia: sus habilidades se editan y se usan aquí (pintarHabilidadesReliquia) -->
                                     <div class="reliquia-habilidades" hidden></div>
@@ -650,7 +653,11 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="modalInventarioLabel">Inventario <span id="contadorInventario" class="contador-objetos"></span></h5>
-                    <button type="button" class="btn-crear-objeto" data-destino="inventario">+ Crear objeto</button>
+                    <!-- Objetos comunes (interfazCompendioObjetos.js): se ve también en modo lectura (permitido-lectura) -->
+                    <div class="botones-cabecera-modal permitido-lectura">
+                        <button type="button" class="btn-cabecera" id="btnAbrirCompendioObjetos">+ Añadir objeto común</button>
+                        <button type="button" class="btn-cabecera btn-crear-objeto" data-destino="inventario">+ Crear objeto</button>
+                    </div>
                 </div>
                 <div class="modal-body">
                     <!-- Cor: monedas, no ocupan hueco (anadirCor/gastarCor en objetos.js) -->
@@ -744,9 +751,33 @@
                 <div class="modal-body">
                     <p id="avisoZonaBaul" class="aviso-zona" hidden>Solo en la base se pueden mover objetos entre el baúl y el inventario o crear objetos en el baúl.</p>
                     <div id="listaBaul" class="lista-objetos"></div>
+                    <details class="notas-artes">
+                        <summary>Notas</summary>
+                        <textarea id="notasBaul" class="texto-modal" placeholder="Notas sobre el baúl"></textarea>
+                    </details>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- NPC: estados al acertar de un arma desde su tarjeta de la ficha (inicializarExtrasArmaNpc, crearEditorEstadosAlAcertar) -->
+    <div class="modal fade modal-sao" id="modalEstadosAcertar" tabindex="-1" aria-labelledby="modalEstadosAcertarLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalEstadosAcertarLabel">Estados al acertar</h5>
+                </div>
+                <div class="modal-body">
+                    <div id="editorEstadosAcertarNpc">
+                        <div class="editor-estados-acertar"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao aceptar" id="btnGuardarEstadosAcertar" title="Guardar" aria-label="Guardar"></button>
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cancelar" aria-label="Cancelar"></button>
                 </div>
             </div>
         </div>
@@ -794,6 +825,37 @@
                         <label class="buscar-compendio">Buscar <input type="search" id="buscarCompendio" maxlength="60"></label>
                     </div>
                     <div id="listaCompendio" class="lista-compendio"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Compendio de objetos comunes (interfazCompendioObjetos.js; datos en compendioObjetos.js). Vista "compendio"
+         (por categoría, con filtros) o "ficha" (objetos del personaje en pantalla para añadirlos) -->
+    <div class="modal fade modal-sao" id="modalCompendioObjetos" tabindex="-1" aria-labelledby="modalCompendioObjetosLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header cabecera-apilada">
+                    <h5 class="modal-title" id="modalCompendioObjetosLabel">Objetos comunes</h5>
+                    <div class="botones-cabecera-modal permitido-lectura" id="botonesCompendioObjetos">
+                        <button type="button" class="btn-cabecera" id="btnImportarCompendioObjetos">Importar</button>
+                        <button type="button" class="btn-cabecera" id="btnExportarCompendioObjetos">Exportar</button>
+                        <button type="button" class="btn-cabecera" id="btnDesdeFichaCompendioObjetos">Desde la ficha</button>
+                        <button type="button" class="btn-cabecera" id="btnCrearCompendioObjetos">+ Crear objeto</button>
+                    </div>
+                    <input type="file" id="fileCompendioObjetos" accept=".json" hidden>
+                </div>
+                <div class="modal-body">
+                    <p id="estadoCompendioObjetos" class="aviso-zona" role="status"></p>
+                    <div class="fila-campos filtros-compendio" id="filtrosCompendioObjetos">
+                        <label>Tipo <select id="filtroCategoriaCompendioObjetos"></select></label>
+                        <label>Piso <select id="filtroPisoCompendioObjetos"></select></label>
+                        <label class="buscar-compendio">Buscar <input type="search" id="buscarCompendioObjetos" maxlength="60"></label>
+                    </div>
+                    <div id="listaCompendioObjetos" class="lista-compendio"></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
@@ -852,6 +914,10 @@
                             <label for="perfilMasterNombre">Nombre</label>
                             <input type="text" id="perfilMasterNombre" maxlength="60" required>
                         </div>
+                        <div class="campo-objeto solo-personaje">
+                            <label for="perfilMasterNombreReal">Nombre real</label>
+                            <input type="text" id="perfilMasterNombreReal" maxlength="60">
+                        </div>
                         <div class="fila-campos">
                             <label>Nivel <input type="number" id="perfilMasterNivel" min="1" max="150"></label>
                             <label class="solo-personaje">Profesión <select id="perfilMasterProfesion"></select></label>
@@ -871,6 +937,7 @@
                             <label>PV <input type="number" id="perfilMasterVida" min="0"> / <span id="perfilMasterVidaMax"></span></label>
                             <label>PA <input type="number" id="perfilMasterPA" min="0"> / <span id="perfilMasterPAMax"></span></label>
                             <label class="solo-personaje">Cor <input type="number" id="perfilMasterCor" min="0"></label>
+                            <label class="solo-personaje">Ego <input type="number" id="perfilMasterEgo" min="0"></label>
                         </div>
                         <!-- NPC: valores de combate escritos a mano (VALORES_NPC en npc.js; los modificadores se suman en la ficha) -->
                         <div class="campo-objeto solo-npc">
@@ -1001,6 +1068,11 @@
                             <label for="objetoCantidad">Cantidad</label>
                             <input type="number" id="objetoCantidad" min="1" value="1">
                         </div>
+                        <!-- Material: para qué sirve y su potencia (TIPOS_MATERIAL en objetos.js) -->
+                        <div class="fila-campos" data-campos="material">
+                            <label>Uso <select id="objetoSubtipoMaterial"></select></label>
+                            <label title="Potencia del material (distinta potencia no se apila)">Potencia <input type="number" id="objetoPotencia" min="0" value="0"></label>
+                        </div>
                         <div class="campo-objeto">
                             <label for="objetoDescripcion" id="labelObjetoDescripcion">Descripción</label>
                             <textarea id="objetoDescripcion" rows="2"></textarea>
@@ -1035,6 +1107,11 @@
                             <details id="detallesDannoElementalObjeto" class="acordeon-elemental" data-equipo="arma">
                                 <summary>Daño elemental</summary>
                                 <div id="objetoDannoElemental" class="valores-elementales"></div>
+                            </details>
+                            <!-- Estados que provoca el arma al acertar, cada uno con su probabilidad (crearEditorEstadosAlAcertar) -->
+                            <details id="detallesEstadosObjeto" class="acordeon-elemental" data-equipo="arma">
+                                <summary>Estados al acertar</summary>
+                                <div class="editor-estados-acertar"></div>
                             </details>
                         </div>
                         <!-- Habilidades de reliquia (tipo Reliquia, o arma marcada como reliquia) -->
@@ -1387,6 +1464,11 @@
                             <details id="detallesDannoElementalArte" class="acordeon-elemental">
                                 <summary>Daño elemental del arte</summary>
                                 <div id="arteDannoElemental" class="valores-elementales"></div>
+                            </details>
+                            <!-- Estados que provoca cada golpe al acertar (crearEditorEstadosAlAcertar) -->
+                            <details id="detallesEstadosArte" class="acordeon-elemental">
+                                <summary>Estados al acertar</summary>
+                                <div class="editor-estados-acertar"></div>
                             </details>
                         </div>
                         <label id="filaCompartirArte" class="solo-arte no-onirica" hidden title="Los demás jugadores de la sala la verán en su catálogo"><input type="checkbox" id="arteCompartir"> Compartir en el catálogo de la sala</label>

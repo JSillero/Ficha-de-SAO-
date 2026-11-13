@@ -11,6 +11,7 @@ import { MANOS, partesDeMano } from "./turno.js";
 import { esZonaSegura, MOTIVOS_ZONA } from "./zonas.js";
 import { gastarEstricto } from "./objetos.js";
 import { calcularDannoAtaque, dannoElementalArma } from "./ataque.js";
+import { cargarEstadosAlAcertar, anadirEstadosAlGolpe } from "./estadosAlAcertar.js";
 import { partesExtra, partesDeEquipoNpc, PARTE_DE_MANO } from "./npc.js";
 
 /* Ranura del arma con la que se usa un arte: una mano, o en un NPC "parte:<id>" (sus partes que no son brazos) */
@@ -136,6 +137,8 @@ export function cargarArte(datos = {}) {
             danno: entero(datos.danno),
             dannoElemental: cargarValoresElementales(datos.dannoElemental),
             golpes: entero(datos.golpes, 1, 1), // ataques separados que hace al usarla
+            // Estados que provoca cada golpe al acertar, con su probabilidad (estadosAlAcertar.js)
+            estadosAlAcertar: cargarEstadosAlAcertar(datos.estadosAlAcertar),
 
             haceDanno: datos.haceDanno !== false
         });
@@ -493,17 +496,18 @@ export function calcularDannoArte(pj, arte, mano = manoDeArte(pj, arte)) {
     const golpes = manosDeGolpes(pj, arte, mano).map((manoGolpe, i) => {
         const prefijo = arte.golpes > 1 ? `Golpe ${i + 1}` : "";
         if (!manoGolpe) {
-            return {
+            return anadirEstadosAlGolpe({
                 etiqueta: prefijo, total: arte.danno, notas: [], elemental: elementalArte,
                 desglose: arte.danno > 0 ? [`${arte.danno} (Arte)`] : []
-            };
+            }, arte.estadosAlAcertar, arte.nombre);
         }
         let item = itemDeRanura(pj, manoGolpe);
         if (conPocion.has(manoGolpe)) item = { ...item, pocionAplicada: null };
         else if (item?.pocionAplicada) conPocion.add(manoGolpe);
         const ataque = calcularDannoAtaque(pj, item, false);
         const nombreArma = item?.nombre?.trim() || ARMAS[item?.tipo]?.etiqueta || "";
-        return {
+        // Estados del arma (ya tirados en calcularDannoAtaque) y del arte, cada golpe por separado
+        return anadirEstadosAlGolpe({
             etiqueta: [prefijo, arte.uso.ambasManos ? nombreArma : ""].filter(Boolean).join(" · "),
             total: ataque.total + arte.danno,
             desglose: arte.danno > 0 ? [...ataque.desglose, `${arte.danno} (Arte)`] : ataque.desglose,
@@ -511,10 +515,10 @@ export function calcularDannoArte(pj, arte, mano = manoDeArte(pj, arte)) {
             elemental: sumarElementales(ataque.elemental, elementalArte),
             // Poción del arma (solo en el primer golpe de esa arma): se aplica a quien lo reciba
             efecto: ataque.efecto
-        };
+        }, arte.estadosAlAcertar, arte.nombre);
     });
 
-    if (golpes.every(golpe => golpe.total <= 0 && golpe.elemental.length === 0)) return null;
+    if (golpes.every(golpe => golpe.total <= 0 && golpe.elemental.length === 0 && !golpe.efecto)) return null;
     return golpes;
 }
 

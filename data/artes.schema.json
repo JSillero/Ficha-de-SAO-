@@ -169,7 +169,22 @@
         "danno": { "description": "Activas: daño extra (con arma se suma al del arma y al bonificador CaC).", "type": "integer", "minimum": 0, "default": 0 },
         "dannoElemental": { "description": "Activas: daño elemental propio del arte (se suma al del arma, si la usa).", "$ref": "#/$defs/valoresElementales" },
         "golpes": { "description": "Activas: ataques separados que hace al usarla (cada uno con su daño). Con ambasManos alternan arma derecha e izquierda.", "type": "integer", "minimum": 1, "default": 1 },
-        "haceDanno": { "description": "Activas: false = solo muestra la descripción.", "type": "boolean", "default": true }
+        "haceDanno": { "description": "Activas: false = solo muestra la descripción.", "type": "boolean", "default": true },
+        "estadosAlAcertar": {
+          "description": "Activas: estados que provoca cada golpe al acertar, cada uno con su probabilidad (estadosAlAcertar.js).",
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "object",
+            "required": ["clave"],
+            "properties": {
+              "clave": { "description": "Estado (ESTADOS_LISTA de PJ.js).", "type": "string" },
+              "valor": { "description": "Potencia del estado.", "type": "integer", "minimum": 1 },
+              "turnos": { "description": "Duración en turnos; -1 = permanente.", "type": "integer" },
+              "probabilidad": { "description": "Probabilidad de aplicarse al acertar (1-100).", "type": "integer", "minimum": 1, "maximum": 100, "default": 100 }
+            }
+          }
+        }
       }
     }
   }

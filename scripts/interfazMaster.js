@@ -656,6 +656,7 @@ function pintarPerfil() {
         boton.setAttribute("aria-pressed", String((boton.dataset.tipo === "npc") === pj.esNpc));
     });
     el("perfilMasterNombre").value = pj.nombre;
+    el("perfilMasterNombreReal").value = pj.nombreReal;
     // Pasar los cambios de una copia en juego a su plantilla (no al crear ni al editar una plantilla)
     el("perfilMasterCompendio").hidden = creando || Boolean(plantillaEditada);
     const tienePlantilla = compendio.existe(pj.idPlantilla);
@@ -690,6 +691,7 @@ function pintarPerfil() {
     el("perfilMasterPA").max = pj.puntosArteMax;
     el("perfilMasterPAMax").textContent = pj.puntosArteMax;
     el("perfilMasterCor").value = pj.cor;
+    el("perfilMasterEgo").value = pj.puntosEgo;
     if (pj.esNpc) pintarNpcPerfil();
     pintarCombatePerfil();
     pintarObjetosPerfil();
@@ -1127,6 +1129,8 @@ function aplicarCampo(input) {
     const clave = input.dataset.clave;
     if (input.id === "perfilMasterNombre") {
         pj.nombre = input.value.trim().slice(0, 60);
+    } else if (input.id === "perfilMasterNombreReal") {
+        pj.nombreReal = input.value.trim().slice(0, 60);
     } else if (input.id === "perfilMasterNivel") {
         recalcularConservandoMaximos(() => { pj.nivel = limitar(entero(input.value, pj.nivel), 1, 150); });
     } else if (input.id === "perfilMasterProfesion") {
@@ -1151,6 +1155,8 @@ function aplicarCampo(input) {
         pj.puntosArte = limitar(entero(input.value, pj.puntosArte), 0, pj.puntosArteMax);
     } else if (input.id === "perfilMasterCor") {
         pj.cor = Math.max(0, entero(input.value, pj.cor));
+    } else if (input.id === "perfilMasterEgo") {
+        pj.puntosEgo = Math.max(0, entero(input.value, pj.puntosEgo));
     } else if (input.dataset.parteNombre && pj.esNpc) {
         const parte = parteNpc(pj, input.dataset.parteNombre);
         if (parte) parte.nombre = input.value.trim().slice(0, 60) || parte.nombre;

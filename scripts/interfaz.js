@@ -13,11 +13,11 @@ import { sanearHtmlDiario, paginaLlena, anadirPagina, borrarPagina, motivoNoAnad
 import { ejecutarTirada, combinarModos, esCritico, mostrarPopupDanno } from "./dados.js";
 import { prepararAtaque, prepararAtaqueNpc, aciertoNpc, calcularDannoAtaque, prepararLanzamiento, calcularDannoLanzamiento, calcularDannoLanzamientoArma, describirEfecto } from "./ataque.js";
 import {
-    TIPOS_OBJETO, MAX_PILA_INVENTARIO, ELEMENTOS_ARROJADIZA, cargarObjeto, anadirAInventario, anadirABaul,
+    TIPOS_OBJETO, TIPOS_MATERIAL, detalleMaterial, MAX_PILA_INVENTARIO, ELEMENTOS_ARROJADIZA, cargarObjeto, anadirAInventario, anadirABaul,
     transferirABaul, transferirAInventario, descartar, comer, beberPocion, aplicarPocionAArma, manosConArma,
     usarCristal, lanzarArrojadiza, manoParaUsar, categoriaEquipo, manosParaEquipar, motivoNoEquipar, equipar,
     motivoNoGuardar, motivoNoBeber, guardarEquipado, ranuraTieneEquipo, getCantidadAccesoriosPorArmadura, ranurasAccesorio, cabenEnInventario,
-    anadirCor, gastarCor, aplicarEfectoEnObjetivo, ofrecerObjeto, consumirOfrecido,
+    anadirCor, gastarCor, anadirEgo, gastarEgo, accesorioVacio, aplicarEfectoEnObjetivo, ofrecerObjeto, consumirOfrecido,
     capacidadInventario, ajustarInventario, cargarObjetosClave, motivoNoLanzar, lanzarArma, recogerArma, motivoNoRecoger, destinoRecoger,
     moverEnLista
 } from "./objetos.js";
@@ -29,6 +29,7 @@ import {
     modoSigiloPorArmadura, puedeEntrarEnSigilo, entrarEnSigilo, salirDeSigilo, dannoHemorragia, parteDisponible
 } from "./turno.js";
 import { ESTADOS_INFO, TIPOS_DANNO, aplicarDanno, activarEstado, quitarEstado, estaActivo, estiloColor } from "./estados.js";
+import { cargarEstadoAlAcertar, cargarEstadosAlAcertar, describirEstadosAlAcertar, MAX_ESTADOS_AL_ACERTAR } from "./estadosAlAcertar.js";
 import { iconoSao, tieneIconoSao } from "./iconos.js";
 import { mostrarPopup, getHistorialPopups, vaciarHistorialPopups } from "./popups.js";
 import { emitirEvento, emitirPrivado, registrarManejador, PARA_TODOS, configurarOrigen, setAplicadorDanno, setConsumidorOferta, setBloqueoEmision, setGolpesPropiosAplicables, registrarAlRecibir, esDeEstaPestana } from "./eventos.js";
@@ -51,6 +52,8 @@ import { inicializarMaster, restaurarMaster, guardarActivo as guardarActivoMaste
     leerPersonaje as leerPersonajeMaster, conPersonaje as conPersonajeMaster, tamanoPaginaCompendio,
     retirarNpcMuerto } from "./interfazMaster.js";
 import * as compendio from "./compendio.js";
+import * as compendioObjetos from "./compendioObjetos.js";
+import { inicializarCompendioObjetos, anadirAlCompendio } from "./interfazCompendioObjetos.js";
 import { reproducir, iniciarBucle, pararBucle, precargarSonidos, estaSilenciado, setSilenciado } from "./sonidos.js";
 import { ejecutarDebug, crearPersonajePrueba, validarFicha } from "./debug.js";
 import {
@@ -848,7 +851,9 @@ setBloqueoEmision(() => Boolean(lectura));
 const PERMITIDOS_LECTURA = [
     "#hudMaster", "#hudGrupo", "#avisoLectura", "#nombre", "[data-bs-dismiss]", ".btn-modal-sao.cancelar", "summary",
     "#contenedor-popups-dados", "#panelDebug", "#btnInventario", "#btnSocial", "#btnArtes", "#btnOpciones",
-    "#btnPaginaAnterior", "#btnPaginaSiguiente", "#listaArtesPasivas"
+    "#btnPaginaAnterior", "#btnPaginaSiguiente", "#listaArtesPasivas",
+    // Compendio de objetos: añadir los objetos del jugador no cambia su ficha (dar y editar salen desactivados)
+    "#modalCompendioObjetos", ".btn-al-compendio", "#btnAbrirCompendioObjetos"
 ].join(", ");
 /* Opciones de los menús de la silueta que cambian algo (las demás solo abren ventanas para mirar) */
 const OPCIONES_BLOQUEADAS_LECTURA = new Set([
@@ -889,7 +894,7 @@ for (const tipo of ["pointerdown", "mousedown", "touchstart", "dblclick"]) {
 /* Desactiva los campos (los que ya lo estaban se quedan así al salir) */
 function aplicarBloqueoLectura() {
     document.querySelectorAll("input, select, textarea, [contenteditable='true']").forEach(campo => {
-        if (campo.closest("#hudMaster, #panelDebug")) return;
+        if (campo.closest("#hudMaster, #panelDebug, #modalCompendioObjetos")) return;
         if (campo.isContentEditable) {
             campo.dataset.bloqueoLectura = "editable";
             campo.contentEditable = "false";
@@ -1876,6 +1881,15 @@ function inicializarEquipamiento() {
 /* Aviso en la tarjeta del arma cuando tiene una poción aplicada (se gasta en el siguiente golpe) */
 function actualizarPocionesArmas() {
     CONFIG_MANOS.forEach(({ prop }) => {
+        // Estados que provoca el arma al acertar
+        const lineaEstados = document.querySelector(`.${prop}.equipamiento .equipamiento-estados-acertar`);
+        if (lineaEstados) {
+            const arma = ARMAS[personaje[prop]?.tipo];
+            const estados = arma && !arma.escudo ? describirEstadosAlAcertar(personaje[prop].estadosAlAcertar) : "";
+            lineaEstados.hidden = !estados;
+            const texto = estados ? `Al acertar: ${estados}` : "";
+            if (lineaEstados.textContent !== texto) lineaEstados.textContent = texto;
+        }
         const aviso = document.querySelector(`.${prop}.equipamiento .equipamiento-pocion`);
         if (!aviso) return;
         const pocion = personaje[prop]?.pocionAplicada;
@@ -2182,6 +2196,63 @@ function leerElementalesFormulario(campo) {
     const { prefijo } = FORMULARIO_ELEMENTAL[campo];
     return cargarElementales(campo, Object.fromEntries(
         ELEMENTOS.map(elemento => [elemento, document.getElementById(prefijo + elemento).value])));
+}
+
+/* Estados al acertar (estadosAlAcertar.js) en los formularios de objetos y de artes: un acordeón con una fila por
+   estado (estado, potencia, turnos o permanente y probabilidad). acordeon = el <details>, que se abre solo si hay
+   alguno. Devuelve { rellenar(lista), leer() }. */
+function crearEditorEstadosAlAcertar(acordeon) {
+    const contenedor = acordeon.querySelector(".editor-estados-acertar");
+    let estados = [];
+    const opciones = (clave) => Object.entries(ESTADOS_INFO)
+        .map(([valor, info]) => `<option value="${valor}" ${valor === clave ? "selected" : ""}>${escaparHtml(info.etiqueta)}</option>`).join("");
+    const pintar = () => {
+        contenedor.innerHTML = `
+            <ul class="lista-estados-acertar">${estados.map((estado, i) => {
+                const permanente = estado.turnos === TURNOS_PERMANENTE;
+                const conValor = Boolean(ESTADOS_INFO[estado.clave]?.unidad);
+                return `<li class="fila-estado-acertar" data-index="${i}">
+                    <select data-campo="clave" aria-label="Estado">${opciones(estado.clave)}</select>
+                    <label title="${conValor ? escaparHtml(ESTADOS_INFO[estado.clave].unidad) : "Este estado no tiene potencia"}">Potencia
+                        <input type="number" data-campo="valor" min="1" value="${estado.valor}" ${conValor ? "" : "disabled"}></label>
+                    <label>Turnos <input type="number" data-campo="turnos" min="1" value="${permanente ? 3 : estado.turnos}" ${permanente ? "disabled" : ""}></label>
+                    <label><input type="checkbox" data-campo="permanente" ${permanente ? "checked" : ""}> Permanente</label>
+                    <label title="Probabilidad de que se aplique al acertar">% <input type="number" data-campo="probabilidad" min="1" max="100" value="${estado.probabilidad}"></label>
+                    <button type="button" class="btn-objeto" data-accion="quitar" title="Quitar estado" aria-label="Quitar estado">${iconoSao("descartar")}</button>
+                </li>`;
+            }).join("")}</ul>
+            ${estados.length < MAX_ESTADOS_AL_ACERTAR ? `<button type="button" class="btn-cabecera" data-accion="anadir">+ Añadir estado</button>` : ""}`;
+    };
+    contenedor.addEventListener("click", (e) => {
+        const accion = e.target.closest("[data-accion]")?.dataset.accion;
+        if (accion === "anadir") {
+            estados.push(cargarEstadoAlAcertar({ clave: "veneno" }));
+        } else if (accion === "quitar") {
+            estados.splice(Number(e.target.closest("[data-index]").dataset.index), 1);
+        } else return;
+        reproducir("click");
+        pintar();
+    });
+    contenedor.addEventListener("change", (e) => {
+        const fila = e.target.closest("[data-index]");
+        const campoEstado = e.target.dataset.campo;
+        if (!fila || !campoEstado) return;
+        const i = Number(fila.dataset.index);
+        const estado = { ...estados[i] };
+        if (campoEstado === "clave") Object.assign(estado, { clave: e.target.value, valor: undefined, turnos: undefined });
+        else if (campoEstado === "permanente") estado.turnos = e.target.checked ? TURNOS_PERMANENTE : 3;
+        else estado[campoEstado] = e.target.value;
+        estados[i] = cargarEstadoAlAcertar(estado) ?? estados[i];
+        pintar();
+    });
+    return {
+        rellenar(lista) {
+            estados = cargarEstadosAlAcertar(structuredClone(lista ?? []));
+            acordeon.open = estados.length > 0;
+            pintar();
+        },
+        leer: () => cargarEstadosAlAcertar(estados)
+    };
 }
 
 /* Descripción del objeto equipado (la que se le puso al crearlo en el inventario) */
@@ -2763,6 +2834,8 @@ function detalleEfecto(efecto) {
         const elemental = textoElemental(efecto.dannoElemental, "+");
         if (elemental) partes.push(elemental);
         if (efecto.golpes > 1) partes.push(`${efecto.golpes} golpes`);
+        const estados = describirEstadosAlAcertar(efecto.estadosAlAcertar);
+        if (estados) partes.push(`Al acertar: ${estados}`);
     }
     return partes.join(" · ");
 }
@@ -2892,6 +2965,13 @@ function pintarExtrasArmaNpc() {
         check.checked = esReliquia(equipo);
         check.disabled = equipo.tipo === TIPO_RELIQUIA;
         check.closest("label").title = check.disabled ? "Una reliquia siempre lo es" : "Con habilidades que se usan a mano y tienen enfriamiento";
+        // Estados al acertar: solo en armas de ataque (no escudos ni reliquias sin arma)
+        const botonEstados = caja.querySelector(".btn-estados-npc");
+        if (botonEstados) {
+            botonEstados.hidden = !ARMAS[equipo.tipo] || Boolean(ARMAS[equipo.tipo].escudo);
+            const n = equipo.estadosAlAcertar?.length ?? 0;
+            botonEstados.textContent = n ? `Estados al acertar (${n})` : "Estados al acertar";
+        }
     });
 }
 
@@ -2913,6 +2993,30 @@ function inicializarExtrasArmaNpc() {
         }
         actualizarTodo();
     });
+    // Estados al acertar del arma: se editan en #modalEstadosAcertar y se guardan al aceptar
+    const modalEstados = document.getElementById("modalEstadosAcertar");
+    const editorEstados = crearEditorEstadosAlAcertar(document.getElementById("editorEstadosAcertarNpc"));
+    let equipoEstados = null;
+    contenedor.addEventListener("click", (e) => {
+        const boton = e.target.closest(".btn-estados-npc");
+        if (!boton || !personaje.esNpc) return;
+        const equipo = equipoDeRanura(personaje, ranuraDeTarjeta(boton));
+        if (!ARMAS[equipo?.tipo] || ARMAS[equipo.tipo].escudo) return;
+        reproducir("click");
+        equipoEstados = equipo;
+        document.getElementById("modalEstadosAcertarLabel").textContent = `Estados al acertar: ${equipo.nombre?.trim() || ARMAS[equipo.tipo].etiqueta}`;
+        editorEstados.rellenar(equipo.estadosAlAcertar);
+        bootstrap.Modal.getOrCreateInstance(modalEstados).show();
+    });
+    document.getElementById("btnGuardarEstadosAcertar").addEventListener("click", () => {
+        if (equipoEstados) equipoEstados.estadosAlAcertar = editorEstados.leer();
+        equipoEstados = null;
+        reproducir("click");
+        bootstrap.Modal.getOrCreateInstance(modalEstados).hide();
+        actualizarTodo();
+    });
+    modalEstados.addEventListener("hidden.bs.modal", () => { equipoEstados = null; });
+
     contenedor.addEventListener("click", (e) => {
         const boton = e.target.closest(".btn-efecto-npc");
         if (!boton || !personaje.esNpc) return;
@@ -3076,9 +3180,11 @@ function htmlTarjetaParte(parte, ocupa) {
                 <span class="acciones-arma"><button type="button" class="btn-usar-equipo" data-accion="usar"></button></span>
             </div>
             ${elemental}
+            <p class="equipamiento-estados-acertar" hidden></p>
             <div class="extras-arma-npc">
                 <label><input type="checkbox" class="check-reliquia-npc"> Es reliquia</label>
                 <button type="button" class="btn-cabecera btn-efecto-npc">+ Crear efecto</button>
+                <button type="button" class="btn-cabecera btn-estados-npc">Estados al acertar</button>
             </div>
             <div class="reliquia-habilidades" hidden></div>
             <div class="efectos-equipo" hidden></div>
@@ -3111,6 +3217,14 @@ function pintarTarjetasPartesNpc() {
             valorFoco(campo, clave === "nombre" ? equipo.nombre ?? "" : (equipo[clave] ?? ""));
         });
         tarjeta.querySelectorAll("[data-elemental]").forEach(input => valorFoco(input, equipo.dannoElemental?.[input.dataset.elemental] ?? 0));
+        // Estados que provoca el arma al acertar (como en las manos, actualizarPocionesArmas)
+        const lineaEstados = tarjeta.querySelector(".equipamiento-estados-acertar");
+        if (lineaEstados) {
+            const estados = ARMAS[equipo.tipo] && !ARMAS[equipo.tipo].escudo ? describirEstadosAlAcertar(equipo.estadosAlAcertar) : "";
+            lineaEstados.hidden = !estados;
+            const texto = estados ? `Al acertar: ${estados}` : "";
+            if (lineaEstados.textContent !== texto) lineaEstados.textContent = texto;
+        }
         const usar = tarjeta.querySelector("[data-accion='usar']");
         if (usar) pintarBotonUsar(usar, equipo, partesDeEquipoNpc(personaje, parte.id));
     });
@@ -4355,6 +4469,8 @@ function detalleArte(arte) {
         const elemental = textoElemental(arte.dannoElemental, "+");
         if (elemental) partes.push(elemental);
         if (arte.golpes > 1) partes.push(`${arte.golpes} golpes`);
+        const estados = describirEstadosAlAcertar(arte.estadosAlAcertar);
+        if (estados) partes.push(`Al acertar: ${estados}`);
     }
     return partes.join(" · ");
 }
@@ -4764,6 +4880,8 @@ function inicializarFormularioArte() {
     const aviso = campo("avisoCrearArte");
     let requisitos = [];
     let mods = [];
+    /* Estados que provoca cada golpe al acertar */
+    const editorEstados = crearEditorEstadosAlAcertar(campo("detallesEstadosArte"));
     /* Arte que se está editando, o null al crear */
     let edicion = null;
     /* Modo efecto de equipo: función que recibe el efecto guardado (sin requisitos, memoria ni uso), o null */
@@ -4878,6 +4996,7 @@ function inicializarFormularioArte() {
         const elemental = activa ? datos.dannoElemental : {};
         ELEMENTOS.forEach(e => { campo(`arteElem_${e}`).value = elemental?.[e] || 0; });
         campo("detallesDannoElementalArte").open = ELEMENTOS.some(e => elemental?.[e] > 0);
+        editorEstados.rellenar(activa ? datos.estadosAlAcertar : []);
         marcarElementalesActivos(campo("arteDannoElemental"));
         // Compartir en el catálogo de la sala: solo dentro de una sala
         campo("filaCompartirArte").hidden = !getEstadoOnline().sala;
@@ -4933,7 +5052,8 @@ function inicializarFormularioArte() {
             haceDanno: campo("arteHaceDanno").checked,
             danno: Math.max(0, numero("arteDanno")),
             golpes: Math.max(1, numero("arteGolpes")),
-            dannoElemental: Object.fromEntries(ELEMENTOS.map(e => [e, campo(`arteElem_${e}`).value]))
+            dannoElemental: Object.fromEntries(ELEMENTOS.map(e => [e, campo(`arteElem_${e}`).value])),
+            estadosAlAcertar: editorEstados.leer()
         };
         // Efecto de equipo: lo recibe el formulario de objetos (no es un arte de la lista ni gasta desbloqueo)
         if (alGuardarEfecto) {
@@ -5508,6 +5628,8 @@ function valoresEquipo(equipo) {
         partes.push(`daño ${equipo.danno || 0}`, ARMAS[equipo.tipo].manos === 2 ? "dos manos" : "una mano");
         const elemental = textoElemental(equipo.dannoElemental, "+");
         if (elemental) partes.push(elemental);
+        const estados = describirEstadosAlAcertar(equipo.estadosAlAcertar);
+        if (estados) partes.push(`al acertar: ${estados}`);
     }
     if (TIPOS_ARMADURA.includes(equipo.tipo)) {
         partes.push(`armadura ${equipo.armadura || 0}`, `−${equipo.penalizacionAtletismo || 0} Atletismo`);
@@ -5515,6 +5637,49 @@ function valoresEquipo(equipo) {
         if (resistencias) partes.push(resistencias);
     }
     return partes.join(" · ");
+}
+
+/* Compendio de objetos comunes (interfazCompendioObjetos.js) ___________________ */
+
+/* Un equipo puesto como objeto del inventario */
+const equipoComoObjeto = (equipo) => cargarObjeto({
+    tipo: "equipo", nombre: equipo.nombre?.trim() || ARMAS[equipo.tipo]?.etiqueta || "Equipo",
+    descripcion: equipo.descripcion ?? "", cantidad: 1, equipo: JSON.parse(JSON.stringify(equipo))
+});
+
+/** Objetos del personaje en pantalla para añadirlos al compendio: [{ grupo, objeto }] */
+function objetosDeLaFicha() {
+    const pj = personaje;
+    const equipados = [
+        ...[pj.manoDerecha, pj.manoIzquierda, pj.equipoArmadura].filter(e => e?.tipo && e.tipo !== "ninguno"),
+        ...pj.accesorios.filter(acc => !accesorioVacio(acc)),
+        ...(pj.esNpc ? partesExtra(pj).map(p => p.equipo).filter(e => e?.tipo) : [])
+    ];
+    // Un arma a dos manos está en las dos manos: una sola vez
+    const unicos = equipados.filter((e, i) => equipados.indexOf(e) === i);
+    return [
+        ...unicos.map(e => ({ grupo: "Equipado", objeto: equipoComoObjeto(e) })),
+        ...pj.inventario.filter(Boolean).map(objeto => ({ grupo: "Inventario", objeto })),
+        ...pj.baul.map(objeto => ({ grupo: "Baúl", objeto })),
+        ...(pj.botin ?? []).map(objeto => ({ grupo: "Botín", objeto }))
+    ];
+}
+
+/**
+ * Añade una unidad de un objeto del compendio al inventario del personaje de la ficha. Si no cabe va al baúl:
+ * el máster siempre; un jugador solo en la base (fuera de ella no se añade). Devuelve { ok, texto }.
+ */
+function darObjetoDelCompendio(objeto) {
+    if (!objeto) return { ok: false, texto: "Ese objeto ya no está en el compendio." };
+    const alBaul = MODO_MASTER || baulAccesible(personaje);
+    if (cabenEnInventario(personaje, objeto) < objeto.cantidad && !alBaul) {
+        return { ok: false, texto: "No queda espacio en el inventario." };
+    }
+    const resto = anadirAInventario(personaje, objeto);
+    if (resto > 0) anadirABaul(personaje, { ...objeto, cantidad: resto });
+    personaje.calcularCaracteristicas();
+    actualizarTodo();
+    return { ok: true, texto: `${objeto.nombre} añadido ${resto > 0 ? "al baúl (no cabía en el inventario)" : "al inventario"}.` };
 }
 
 /* Ficha resumida (resumenFicha.js) _________________________________________ */
@@ -5585,11 +5750,26 @@ function htmlFichaResumen(resumen, { perfil = false } = {}) {
                 <input type="checkbox" class="check-perfil" data-campo="protagonista" ${personaje.protagonista ? "checked" : ""}> Protagonista</label>
         </span>`
         : "";
+    // Nombre real y puntos de ego: solo en tu perfil (no van en el resumen, así el grupo no los ve); los NPC no tienen
+    const privado = perfil && !personaje.esNpc
+        ? `<div class="resumen-privado-perfil">
+            <label class="resumen-nombre-real" title="Solo lo ves tú">Nombre real
+                <input type="text" class="input-nombre-real-perfil" maxlength="60" value="${e(personaje.nombreReal)}" aria-label="Nombre real"></label>
+            <div class="barra-cor barra-ego" title="Puntos de ego: solo los ves tú">
+                <span class="cor-icono" aria-hidden="true">${iconoSao("ego")}</span>
+                <span class="cor-total"><span>${personaje.puntosEgo}</span> puntos de ego</span>
+                <input type="number" class="input-ego" min="1" step="1" value="1" aria-label="Cantidad de puntos de ego">
+                <button type="button" class="btn-cor anadir" data-ego="anadir" title="Añadir esta cantidad" aria-label="Añadir puntos de ego">${iconoSao("egoMas")}</button>
+                <button type="button" class="btn-cor gastar" data-ego="gastar" title="Quitar esta cantidad" aria-label="Quitar puntos de ego">${iconoSao("egoMenos")}</button>
+            </div>
+        </div>`
+        : "";
 
     return `
         <div class="resumen-cabecera">${perfil
             ? `<input type="text" class="input-nombre-perfil" maxlength="60" value="${e(personaje.nombre)}" aria-label="Nombre del personaje" title="Nombre del personaje">`
             : `<b>${e(resumen.nombre || "Sin nombre")}</b>`} <span>LV ${resumen.nivel}</span>${profesion}${casillas}</div>
+        ${privado}
         ${perfil ? htmlDatosPerfil() : ""}
         ${resumen.comportamiento ? `<h6 class="titulo-online">Comportamiento en combate</h6><p class="resumen-comportamiento">${e(resumen.comportamiento)}</p>` : ""}
         <h6 class="titulo-online">Habilidades</h6><div class="resumen-rejilla">${habilidades}</div>
@@ -5648,10 +5828,28 @@ const PREGUNTAS_CASILLA_PERFIL = {
 function inicializarPerfil() {
     const contenido = document.getElementById("contenidoFichaResumen");
     contenido.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && e.target.closest(".input-nombre-perfil")) e.target.blur(); // dispara change
+        if (e.key === "Enter" && e.target.closest(".input-nombre-perfil, .input-nombre-real-perfil")) e.target.blur(); // dispara change
+    });
+    // Puntos de ego: añadir o quitar la cantidad del campo (como el Cor)
+    contenido.addEventListener("click", (e) => {
+        const boton = e.target.closest("[data-ego]");
+        if (!boton || !fichaResumenAbierta?.perfil) return;
+        reproducir("click");
+        const cantidad = contenido.querySelector(".input-ego")?.value;
+        const resultado = (boton.dataset.ego === "anadir" ? anadirEgo : gastarEgo)(personaje, cantidad);
+        if (!resultado.ok) mostrarPopupInfo("Puntos de ego", resultado.resumen.map(escaparHtml));
+        actualizarTodo();
+        contenido.querySelector(".barra-ego .cor-total span").textContent = personaje.puntosEgo;
     });
     contenido.addEventListener("change", async (e) => {
         if (!fichaResumenAbierta?.perfil) return;
+        const inputNombreReal = e.target.closest(".input-nombre-real-perfil");
+        if (inputNombreReal) {
+            personaje.nombreReal = inputNombreReal.value.trim().slice(0, 60);
+            actualizarTodo();
+            return;
+        }
+        if (e.target.closest(".input-ego")) return;
         const inputNombrePerfil = e.target.closest(".input-nombre-perfil");
         if (inputNombrePerfil) {
             const nuevo = inputNombrePerfil.value.trim().slice(0, 60);
@@ -5722,6 +5920,7 @@ function detalleObjeto(objeto) {
             return partes.join(" · ");
         }
         case "cristal": return "Se usa con una mano libre";
+        case "material": return detalleMaterial(objeto) || "Sin uso";
         default: return "Sin uso";
     }
 }
@@ -5812,6 +6011,12 @@ function filaObjeto(objeto, indice, enInventario) {
         botones = botonObjeto("editar", "editar", "Editar")
             + botonObjeto("inventario", "inventario", tituloTransferir, !cabe || !baulAccesible(personaje))
             + botonObjeto("descartar", "descartar", "Descartar 1");
+    }
+
+    // Máster: añadirlo al compendio de objetos comunes (también en la ficha de un jugador en modo lectura)
+    if (MODO_MASTER) {
+        botones = `<button type="button" class="btn-objeto btn-al-compendio" data-accion="alCompendio" title="Añadir al compendio de objetos"
+            aria-label="Añadir al compendio de objetos">${iconoSao("compendio")}</button>` + botones;
     }
 
     // Por encima de la capacidad: objeto sobrante (se puede usar o sacar, pero no entra nada más)
@@ -6095,6 +6300,7 @@ function inicializarObjetos() {
         if (!objeto) return;
 
         switch (boton.dataset.accion) {
+            case "alCompendio": anadirAlCompendio(objeto); return;
             case "editar": eleccionUso = null; return abrirEditorObjeto("inventario", indice);
             case "baul":
                 if (baulAccesible(personaje)) transferirABaul(personaje, indice);
@@ -6128,6 +6334,7 @@ function inicializarObjetos() {
         const objeto = personaje.baul[indice];
         if (!objeto) return;
 
+        if (boton.dataset.accion === "alCompendio") return anadirAlCompendio(objeto);
         if (boton.dataset.accion === "editar") return abrirEditorObjeto("baul", indice);
         if (boton.dataset.accion === "inventario" && baulAccesible(personaje)) {
             const resultado = transferirAInventario(personaje, indice);
@@ -6189,6 +6396,8 @@ function inicializarCrearObjeto() {
     /* Efectos del equipo (formato de arte), editados en el formulario de artes */
     let efectos = [];
     const listaEfectos = campo("listaEfectosObjeto");
+    /* Estados que provoca el arma al acertar */
+    const editorEstados = crearEditorEstadosAlAcertar(campo("detallesEstadosObjeto"));
     /* Objeto que se está editando: { lista: "inventario" | "baul", indice }, o null al crear */
     let edicion = null;
     /* Personaje al que va el objeto: el de la ficha, o el borrador del perfil del máster (libre = sin
@@ -6197,6 +6406,8 @@ function inicializarCrearObjeto() {
 
     // Opciones de los desplegables
     selectTipo.innerHTML = Object.entries(TIPOS_OBJETO).map(([clave, info]) => `<option value="${clave}">${info.etiqueta}</option>`).join("");
+    campo("objetoSubtipoMaterial").innerHTML = Object.entries(TIPOS_MATERIAL)
+        .map(([clave, info]) => `<option value="${clave}">${info.etiqueta}</option>`).join("");
     selectTipoEquipo.innerHTML =
         `<optgroup label="Armas y escudos">${Object.entries(ARMAS).map(([clave, arma]) => `<option value="${clave}">${arma.etiqueta}</option>`).join("")}</optgroup>
         <optgroup label="Armaduras">${TIPOS_ARMADURA.map(tipo => `<option value="${tipo}">${ETIQUETAS_ARMADURA[tipo]}</option>`).join("")}</optgroup>
@@ -6353,6 +6564,7 @@ function inicializarCrearObjeto() {
         pintarHabilidades();
         efectos = [];
         pintarEfectos();
+        editorEstados.rellenar([]);
         aviso.textContent = "";
         edicion = null;
         ponerModo(false);
@@ -6365,6 +6577,10 @@ function inicializarCrearObjeto() {
         campo("objetoNombre").value = objeto.nombre;
         campo("objetoCantidad").value = objeto.cantidad;
         campo("objetoDescripcion").value = objeto.descripcion;
+        if (objeto.tipo === "material") {
+            campo("objetoSubtipoMaterial").value = objeto.subtipo ?? "";
+            campo("objetoPotencia").value = objeto.potencia ?? 0;
+        }
         const modsObjeto = objeto.tipo === "equipo" ? objeto.equipo.modificadores : objeto.modificadores;
         mods = (modsObjeto || []).map(mod => ({ modificado: mod.modificado, numero: Number(mod.numero) || 0 }));
         pintarMods();
@@ -6400,6 +6616,7 @@ function inicializarCrearObjeto() {
             pintarHabilidades();
             efectos = cargarEfectos(structuredClone(equipo.efectos ?? []));
             pintarEfectos();
+            editorEstados.rellenar(equipo.estadosAlAcertar);
         }
         actualizarCampos();
     };
@@ -6430,6 +6647,7 @@ function inicializarCrearObjeto() {
             cantidad: Math.max(1, numero("objetoCantidad"))
         };
         if (tipo === "comida") Object.assign(datos, { modificadores, estado: leerEstado(true) });
+        if (tipo === "material") Object.assign(datos, { subtipo: campo("objetoSubtipoMaterial").value, potencia: Math.max(0, numero("objetoPotencia")) });
         if (tipo === "pocion") Object.assign(datos, { pv: numero("objetoPv"), pa: Math.max(0, numero("objetoPa")), estado: leerEstado(true) });
         if (tipo === "arrojadiza") {
             Object.assign(datos, {
@@ -6460,7 +6678,9 @@ function inicializarCrearObjeto() {
                     ? leerElementalesFormulario("debilidades") : cargarDebilidades(),
                 modificadores,
                 reliquia: conHabilidades() ? { habilidades: habilidades.map(cargarHabilidadReliquia) } : null,
-                efectos
+                efectos,
+                // Estados al acertar: solo en armas de ataque
+                estadosAlAcertar: tarjetaUsaElemental({ tipo: selectTipoEquipo.value }, "dannoElemental") ? editorEstados.leer() : []
             };
         }
 
@@ -6596,6 +6816,8 @@ function inicializarDebug() {
         // p. ej. fichaDebug.paginasCompendio(5000) (vuelve al tamaño normal recargando la página)
         compendio,
         paginasCompendio: (bytes) => tamanoPaginaCompendio(bytes),
+        // Compendio de objetos comunes: fichaDebug.compendioObjetos.listar(), .info(), .setTamanoMaxPagina(bytes)
+        compendioObjetos,
         // Modo lectura con un JSON cualquiera (modo máster), para probarlo sin sala
         abrirLectura: (json, info = { nombre: "Prueba" }) => abrirFichaLectura(typeof json === "string" ? json : JSON.stringify(json), info),
         // Artes: el catálogo cargado y los requisitos de cada una para este personaje
@@ -6712,6 +6934,27 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarVentanas();
     inicializarDebug();
     actualizarTodo();
+    // Compendio de objetos comunes (interfazCompendioObjetos.js): todos añaden; el máster además lo edita
+    {
+        inicializarCompendioObjetos({
+            esMaster: MODO_MASTER,
+            crearVentanaHija,
+            personaje: () => personaje,
+            enLectura: () => Boolean(lectura),
+            detalleObjeto: (objeto) => `${TIPOS_OBJETO[objeto.tipo]?.etiqueta ?? ""} · ${detalleObjeto(objeto)}`,
+            iconoObjeto,
+            abrirEditorObjeto: (...args) => abrirEditorObjeto(...args),
+            abrirCrearObjeto: (...args) => abrirCrearObjetoEn(...args),
+            confirmar: confirmarSao,
+            aviso: (titulo, lineas) => mostrarPopupInfo(escaparHtml(titulo), lineas.map(escaparHtml)),
+            darObjeto: darObjetoDelCompendio,
+            objetosFicha: objetosDeLaFicha,
+            // Piso del personaje en pantalla (15 niveles por piso)
+            // (un NPC, el suyo si lo tiene)
+            pisoPersonaje: () => (personaje.esNpc && personaje.npc?.piso)
+                || Math.min(compendioObjetos.PISO_MAXIMO, Math.max(1, Math.ceil((Number(personaje.nivel) || 1) / 15)))
+        });
+    }
     // Modo máster: sus personajes guardados en local, la cabecera y su perfil (interfazMaster.js)
     if (MODO_MASTER) {
         inicializarMaster({
