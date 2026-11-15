@@ -3319,28 +3319,99 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
     color: #4D4D4D;
 }
 
+/* Fila de arriba: barra de formato a la izquierda y navegador en miniatura a la derecha */
+.cabecera-diario {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin-bottom: 8px;
+}
+
+.cabecera-diario .barra-diario {
+    margin-bottom: 0;
+}
+
+.cabecera-diario .navegador-paginas {
+    margin-left: auto;
+}
+
 .navegacion-diario {
     display: flex;
     align-items: center;
-    justify-content: center;
     gap: 10px;
     margin-top: 6px;
 }
 
-.numero-pagina-diario {
-    min-width: 120px;
-    text-align: center;
-    color: #5a5a5a;
-    font-size: 13px;
+/* Navegador de páginas (pintarDiario): primera, anterior, número escribible, siguiente, última */
+.navegador-paginas {
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
-/* El borrar página va aparte, a la derecha */
+/* El de abajo va centrado; el borrar página, aparte a la derecha */
+.navegacion-diario .navegador-paginas {
+    margin-left: auto;
+}
+
 .navegacion-diario #btnBorrarPaginaDiario {
     margin-left: auto;
 }
 
-.navegacion-diario #btnPaginaAnterior {
-    margin-left: auto;
+.numero-pagina-diario {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #5a5a5a;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.input-pagina-diario {
+    width: 3.2em;
+    padding: 2px 4px;
+    border: none;
+    border-bottom: 1px solid #c9c9c9;
+    border-radius: 4px 4px 0 0;
+    background: #fff;
+    color: #4D4D4D;
+    font-size: 13px;
+    text-align: center;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.input-pagina-diario::-webkit-outer-spin-button,
+.input-pagina-diario::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.input-pagina-diario:focus {
+    outline: none;
+    border-bottom-color: #EBA601;
+}
+
+/* Miniatura: botones y número más pequeños */
+.navegador-paginas.mini {
+    gap: 3px;
+}
+
+.navegador-paginas.mini .btn-objeto {
+    width: 24px;
+    height: 24px;
+}
+
+.navegador-paginas.mini .numero-pagina-diario {
+    gap: 3px;
+    font-size: 12px;
+}
+
+.navegador-paginas.mini .input-pagina-diario {
+    width: 2.6em;
+    font-size: 12px;
+    padding: 1px 2px;
 }
 
 @media (max-width: 600px) {

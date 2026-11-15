@@ -859,7 +859,7 @@ setBloqueoEmision(() => Boolean(lectura));
 const PERMITIDOS_LECTURA = [
     "#hudMaster", "#hudGrupo", "#avisoLectura", "#nombre", "[data-bs-dismiss]", ".btn-modal-sao.cancelar", "summary",
     "#contenedor-popups-dados", "#panelDebug", "#btnInventario", "#btnSocial", "#btnArtes", "#btnOpciones",
-    "#btnPaginaAnterior", "#btnPaginaSiguiente", "#listaArtesPasivas", "#btnSoloModsPropios",
+    ".navegador-paginas", "#listaArtesPasivas", "#btnSoloModsPropios",
     // Compendio de objetos: añadir los objetos del jugador no cambia su ficha (dar y editar salen desactivados)
     "#modalCompendioObjetos", ".btn-al-compendio", "#btnAbrirCompendioObjetos"
 ].join(", ");
@@ -902,7 +902,7 @@ for (const tipo of ["pointerdown", "mousedown", "touchstart", "dblclick"]) {
 /* Desactiva los campos (los que ya lo estaban se quedan así al salir) */
 function aplicarBloqueoLectura() {
     document.querySelectorAll("input, select, textarea, [contenteditable='true']").forEach(campo => {
-        if (campo.closest("#hudMaster, #panelDebug, #modalCompendioObjetos")) return;
+        if (campo.closest("#hudMaster, #panelDebug, #modalCompendioObjetos, .navegador-paginas")) return;
         if (campo.isContentEditable) {
             campo.dataset.bloqueoLectura = "editable";
             campo.contentEditable = "false";
@@ -5898,9 +5898,15 @@ function pintarDiario() {
     paginaDiario = Math.min(Math.max(0, paginaDiario), personaje.diario.length - 1);
     editorDiario.innerHTML = personaje.diario[paginaDiario];
     const total = personaje.diario.length;
-    document.getElementById("numeroPaginaDiario").textContent = `Página ${paginaDiario + 1} de ${total}`;
-    document.getElementById("btnPaginaAnterior").disabled = paginaDiario === 0;
-    document.getElementById("btnPaginaSiguiente").disabled = paginaDiario >= total - 1;
+    // Los dos navegadores (abajo y la miniatura de arriba)
+    document.querySelectorAll("#modalDiario .navegador-paginas").forEach(nav => {
+        const input = nav.querySelector(".input-pagina-diario");
+        input.max = total;
+        if (document.activeElement !== input) input.value = paginaDiario + 1;
+        nav.querySelector(".total-paginas-diario").textContent = nav.classList.contains("mini") ? `/ ${total}` : `de ${total}`;
+        nav.querySelectorAll('[data-ir="primera"], [data-ir="anterior"]').forEach(b => { b.disabled = paginaDiario === 0; });
+        nav.querySelectorAll('[data-ir="siguiente"], [data-ir="ultima"]').forEach(b => { b.disabled = paginaDiario >= total - 1; });
+    });
     const botonAnadir = document.getElementById("btnAnadirPaginaDiario");
     const motivo = motivoNoAnadirPagina(personaje);
     botonAnadir.disabled = Boolean(motivo);
@@ -5996,8 +6002,28 @@ function inicializarDiario() {
         pintarDiario();
         editorDiario.focus();
     };
-    document.getElementById("btnPaginaAnterior").addEventListener("click", () => irA(paginaDiario - 1));
-    document.getElementById("btnPaginaSiguiente").addEventListener("click", () => irA(paginaDiario + 1));
+    // Navegadores de páginas (abajo y miniatura arriba): botones y número escrito (Intro o al salir del campo)
+    modalEl.querySelectorAll(".navegador-paginas").forEach(nav => {
+        nav.addEventListener("click", (e) => {
+            const boton = e.target.closest("[data-ir]");
+            if (!boton || boton.disabled) return;
+            const destino = { primera: 0, anterior: paginaDiario - 1, siguiente: paginaDiario + 1, ultima: personaje.diario.length - 1 };
+            irA(destino[boton.dataset.ir]);
+        });
+        const input = nav.querySelector(".input-pagina-diario");
+        input.addEventListener("change", () => {
+            const numero = parseInt(input.value, 10);
+            if (!Number.isFinite(numero)) { input.value = paginaDiario + 1; return; }
+            const destino = Math.min(Math.max(1, numero), personaje.diario.length) - 1;
+            input.blur(); // así pintarDiario puede reescribir el número
+            if (destino === paginaDiario) pintarDiario();
+            else irA(destino);
+        });
+        input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") { e.preventDefault(); input.blur(); } // al salir salta change si ha cambiado
+        });
+        input.addEventListener("focus", () => input.select());
+    });
     document.getElementById("btnAnadirPaginaDiario").addEventListener("click", () => {
         const resultado = anadirPagina(personaje, paginaDiario);
         if (!resultado.ok) {

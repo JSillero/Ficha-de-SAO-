@@ -416,6 +416,11 @@ const GLIFOS = {
         <path class="t" style="stroke-width:10;fill:none" d="M58 28L36 50L58 72"/>`,
     siguiente: `
         <path class="t" style="stroke-width:10;fill:none" d="M42 28L64 50L42 72"/>`,
+    /* Ir a la primera / última página */
+    primera: `
+        <path class="t" style="stroke-width:10;fill:none" d="M33 28V72M66 28L44 50L66 72"/>`,
+    ultima: `
+        <path class="t" style="stroke-width:10;fill:none" d="M67 28V72M34 28L56 50L34 72"/>`,
     artesSinEquipar: `
         <g class="t" style="stroke-width:5">${estrella(48, 54, 28, "")}</g>
         ${estrella(78, 22, 9, "s")}

@@ -1428,21 +1428,42 @@
                     <button type="button" id="btnAnadirPaginaDiario" class="btn-crear-objeto">+ Añadir página</button>
                 </div>
                 <div class="modal-body">
-                    <div class="barra-diario" role="toolbar" aria-label="Formato">
-                        <button type="button" class="btn-objeto" data-formato="titulo" title="Título (letra más grande en esa línea)" aria-label="Título" data-icono="titulo"></button>
-                        <button type="button" class="btn-objeto" data-formato="bold" title="Negrita" aria-label="Negrita" data-icono="negrita"></button>
-                        <button type="button" class="btn-objeto" data-formato="italic" title="Cursiva" aria-label="Cursiva" data-icono="cursiva"></button>
-                        <button type="button" class="btn-objeto" data-formato="underline" title="Subrayado" aria-label="Subrayado" data-icono="subrayado"></button>
-                        <button type="button" class="btn-objeto" data-formato="insertUnorderedList" title="Lista" aria-label="Lista" data-icono="lista"></button>
-                        <button type="button" class="btn-objeto" data-formato="insertOrderedList" title="Lista numerada" aria-label="Lista numerada" data-icono="listaNumerada"></button>
+                    <div class="cabecera-diario">
+                        <div class="barra-diario" role="toolbar" aria-label="Formato">
+                            <button type="button" class="btn-objeto" data-formato="titulo" title="Título (letra más grande en esa línea)" aria-label="Título" data-icono="titulo"></button>
+                            <button type="button" class="btn-objeto" data-formato="bold" title="Negrita" aria-label="Negrita" data-icono="negrita"></button>
+                            <button type="button" class="btn-objeto" data-formato="italic" title="Cursiva" aria-label="Cursiva" data-icono="cursiva"></button>
+                            <button type="button" class="btn-objeto" data-formato="underline" title="Subrayado" aria-label="Subrayado" data-icono="subrayado"></button>
+                            <button type="button" class="btn-objeto" data-formato="insertUnorderedList" title="Lista" aria-label="Lista" data-icono="lista"></button>
+                            <button type="button" class="btn-objeto" data-formato="insertOrderedList" title="Lista numerada" aria-label="Lista numerada" data-icono="listaNumerada"></button>
+                        </div>
+                        <!-- Navegador de páginas en miniatura (el mismo que el de abajo; pintarDiario rellena los dos) -->
+                        <div class="navegador-paginas mini" role="navigation" aria-label="Páginas del diario (arriba)">
+                            <button type="button" class="btn-objeto" data-ir="primera" title="Primera página" aria-label="Primera página" data-icono="primera"></button>
+                            <button type="button" class="btn-objeto" data-ir="anterior" title="Página anterior" aria-label="Página anterior" data-icono="anterior"></button>
+                            <span class="numero-pagina-diario">
+                                <input type="number" class="input-pagina-diario" min="1" step="1" title="Escribe una página y pulsa Intro" aria-label="Ir a la página">
+                                <span class="total-paginas-diario"></span>
+                            </span>
+                            <button type="button" class="btn-objeto" data-ir="siguiente" title="Página siguiente" aria-label="Página siguiente" data-icono="siguiente"></button>
+                            <button type="button" class="btn-objeto" data-ir="ultima" title="Última página" aria-label="Última página" data-icono="ultima"></button>
+                        </div>
                     </div>
                     <div id="editorDiario" class="editor-diario" contenteditable="true" role="textbox" aria-multiline="true"
                         aria-label="Página del diario" spellcheck="true"></div>
                     <p id="avisoDiario" class="aviso-objeto" role="alert"></p>
                     <div class="navegacion-diario">
-                        <button type="button" id="btnPaginaAnterior" class="btn-objeto" title="Página anterior" aria-label="Página anterior" data-icono="anterior"></button>
-                        <span id="numeroPaginaDiario" class="numero-pagina-diario" aria-live="polite"></span>
-                        <button type="button" id="btnPaginaSiguiente" class="btn-objeto" title="Página siguiente" aria-label="Página siguiente" data-icono="siguiente"></button>
+                        <div class="navegador-paginas" role="navigation" aria-label="Páginas del diario">
+                            <button type="button" class="btn-objeto" data-ir="primera" title="Primera página" aria-label="Primera página" data-icono="primera"></button>
+                            <button type="button" class="btn-objeto" data-ir="anterior" title="Página anterior" aria-label="Página anterior" data-icono="anterior"></button>
+                            <span class="numero-pagina-diario">
+                                Página
+                                <input type="number" class="input-pagina-diario" min="1" step="1" title="Escribe una página y pulsa Intro" aria-label="Ir a la página">
+                                <span class="total-paginas-diario"></span>
+                            </span>
+                            <button type="button" class="btn-objeto" data-ir="siguiente" title="Página siguiente" aria-label="Página siguiente" data-icono="siguiente"></button>
+                            <button type="button" class="btn-objeto" data-ir="ultima" title="Última página" aria-label="Última página" data-icono="ultima"></button>
+                        </div>
                         <button type="button" id="btnBorrarPaginaDiario" class="btn-objeto" data-accion="descartar" title="Borrar página" aria-label="Borrar página" data-icono="descartar"></button>
                     </div>
                 </div>
