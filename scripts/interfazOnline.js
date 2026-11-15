@@ -8,7 +8,7 @@ import { escaparHtml } from "./html.js";
 import { iconoSao } from "./iconos.js";
 import { ESTADOS_INFO, estiloColor } from "./estados.js";
 import { reproducir } from "./sonidos.js";
-import { getInstancia, instanciaLista } from "./instancia.js";
+import { getInstancia, instanciaLista, instanciaDePersonaje, recordarInstanciaPersonaje } from "./instancia.js";
 import { cargarResumenFicha } from "./resumenFicha.js";
 
 /**
@@ -92,9 +92,70 @@ export function avisarNombrePersonaje(nombre, id) {
     // Cambiar de personaje (modo máster) se aplica ya: los eventos y el grupo van con el personaje de la ficha
     if (id !== ultimoIdAvisado) {
         ultimoIdAvisado = id;
-        servicio.configurarPersonaje({ id });
+        // Un jugador lleva cada personaje con su instancia de siempre (así sigue en su grupo al volver); el máster
+        // actúa con "m-<id>" y la pestaña no cambia de instancia
+        if (ctx?.modoMaster) servicio.configurarPersonaje({ id });
+        else usarInstanciaDelPersonaje();
     }
     temporizadorNombre = setTimeout(() => servicio.configurarPersonaje({ nombre, id }), RETARDO_NOMBRE_MS);
+}
+
+/* Instancia del personaje en la nube ___________________________________________
+ * La instancia con la que un jugador lleva a su personaje en las salas (y por la que está en su grupo) se guarda
+ * también en su documento de la nube (campo instancia), así sigue en el grupo desde otro navegador o dispositivo.
+ * La de la nube manda sobre la del navegador. Se lee al cargar de la nube y al iniciar sesión con un personaje de
+ * la nube abierto (una lectura), y se escribe solo si la nube aún no tiene ninguna (una escritura) o al guardar. */
+const instanciasNube = new Map(); // idNube → { idPersonaje, instancia | null }: lo último leído o escrito
+let instanciaNubeLista = Promise.resolve();
+
+/* Apunta lo que dice la nube de un personaje (json = texto de la ficha) */
+function apuntarInstanciaNube(idNube, json, instancia) {
+    let idPersonaje = null;
+    try { idPersonaje = JSON.parse(json)?.idPersonaje ?? null; } catch { /* ficha ilegible */ }
+    instanciasNube.set(idNube, { idPersonaje, instancia: instancia || null });
+    if (idPersonaje && instancia) recordarInstanciaPersonaje(idPersonaje, instancia);
+}
+
+/* Instancia que hay que guardar con la ficha en ese documento: la que ya tiene si es de este personaje; si no, la actual */
+function instanciaParaGuardar(idNube, idPersonaje) {
+    const conocida = idNube ? instanciasNube.get(idNube) : null;
+    return conocida?.idPersonaje === idPersonaje && conocida.instancia ? conocida.instancia : getInstancia();
+}
+
+/* El personaje de la ficha pasa a su instancia (la de la nube o la de la última vez) y, si es de la nube y allí aún
+   no hay ninguna, se apunta */
+async function usarInstanciaDelPersonaje() {
+    const id = ctx?.personaje().idPersonaje ?? ultimoIdAvisado;
+    const instancia = await instanciaDePersonaje(id);
+    if (id !== (ctx?.personaje().idPersonaje ?? ultimoIdAvisado)) return;
+    servicio.configurarPersonaje({ instancia, id });
+    const idNube = idPersonajeNube;
+    const conocida = idNube ? instanciasNube.get(idNube) : null;
+    if (ctx?.modoMaster || !conocida || conocida.idPersonaje !== id || conocida.instancia || !servicio.getEstado().usuario) return;
+    instanciasNube.set(idNube, { idPersonaje: id, instancia });
+    try {
+        await servicio.guardarInstanciaPersonaje(idNube, instancia);
+    } catch (error) {
+        instanciasNube.set(idNube, conocida);
+        console.warn("No se pudo guardar la instancia del personaje en la nube:", error);
+    }
+}
+
+/* Con sesión y un personaje de la nube abierto: lee su instancia de la nube y la usa (antes de entrar en una sala) */
+function comprobarInstanciaNube() {
+    instanciaNubeLista = (async () => {
+        const idNube = idPersonajeNube;
+        if (ctx.modoMaster || !idNube || !servicio.getEstado().usuario) return;
+        try {
+            const { json, instancia } = await servicio.leerPersonajeNube(idNube);
+            apuntarInstanciaNube(idNube, json, instancia);
+        } catch (error) {
+            console.warn("No se pudo leer la instancia del personaje de la nube:", error);
+            return;
+        }
+        if (idNube === idPersonajeNube) await usarInstanciaDelPersonaje();
+    })();
+    return instanciaNubeLista;
 }
 
 /**
@@ -205,8 +266,12 @@ export async function inicializarOnline(contexto) {
     }
 
     // La instancia de esta pestaña tiene que estar comprobada (pestaña duplicada) antes de entrar en la sala
-    servicio.configurarPersonaje({ instancia: await instanciaLista, nombre: ctx.personaje().nombre, id: ctx.personaje().idPersonaje });
-    servicio.iniciar();
+    // y, para un jugador, ser la de la última vez de su personaje (si sigue libre): así sigue en su grupo
+    const idInicial = ctx.personaje().idPersonaje;
+    const instancia = ctx.modoMaster ? await instanciaLista : await instanciaDePersonaje(idInicial);
+    servicio.configurarPersonaje({ instancia, nombre: ctx.personaje().nombre, id: idInicial });
+    // Con la sesión abierta, antes de volver a la sala, la instancia guardada en la nube (otro dispositivo)
+    servicio.iniciar({ antesDeEntrar: comprobarInstanciaNube });
 }
 
 function abrir(id) {
@@ -289,6 +354,7 @@ function inicializarCuenta() {
         operar("avisoSesion", async () => {
             if (modoRegistro) await servicio.registrarse(email, contrasena, nombre);
             else await servicio.iniciarSesion(email, contrasena);
+            comprobarInstanciaNube(); // las salas esperan a que termine (entrar)
             el("sesionContrasena").value = "";
             cerrar("modalCuenta");
             ctx.aviso("Sesión iniciada", [`Hola, ${servicio.getEstado().usuario.nombre}. Ya puedes entrar en una sala.`]);
@@ -415,6 +481,7 @@ async function pintarMisSalas() {
 
 function entrar(operacion) {
     operar("avisoSala", async () => {
+        await instanciaNubeLista; // con la instancia del personaje ya recuperada de la nube
         const { sala } = await operacion();
         el("salaCodigo").value = "";
         el("salaNombreNueva").value = "";
@@ -489,7 +556,11 @@ export async function guardarEnNube() {
             }
         }
         const json = pj.toJSONString();
-        cambiarIdNube(await servicio.guardarPersonaje(json, pj.nombre, id));
+        // Con la instancia del personaje en las salas (su grupo la necesita en cualquier dispositivo)
+        const instancia = instanciaParaGuardar(id, pj.idPersonaje);
+        const idNube = await servicio.guardarPersonaje(json, pj.nombre, id, instancia);
+        instanciasNube.set(idNube, { idPersonaje: pj.idPersonaje, instancia });
+        cambiarIdNube(idNube);
         // En una sala, el máster ve esta versión en modo lectura cuando no estás conectado
         if (servicio.getEstado().sala) servicio.guardarFichaSala(json).catch(error => console.warn("No se pudo dejar tu ficha en la sala:", error));
         ctx.marcarGuardado();
@@ -568,7 +639,9 @@ function inicializarPersonajesNube() {
             // En modo máster no se pierde nada: el cargado se añade a sus personajes (o sustituye al mismo)
             if (!ctx.modoMaster && ctx.hayCambiosSinGuardar() && !confirm("La ficha actual tiene cambios sin guardar. ¿Cargar otro personaje y perderlos?")) return;
             operar("avisoPersonajesNube", async () => {
-                const json = await servicio.cargarPersonaje(id);
+                const { json, instancia } = await servicio.leerPersonajeNube(id);
+                // Antes de cargar, para que el personaje entre con la instancia de la nube (y siga en su grupo)
+                if (!ctx.modoMaster) apuntarInstanciaNube(id, json, instancia);
                 // Cerrada del todo antes de cargar (al cargar puede salir una pregunta)
                 const ventana = el("modalPersonajesNube");
                 await new Promise(resolver => {
@@ -577,6 +650,8 @@ function inicializarPersonajesNube() {
                 });
                 await ctx.cargarFicha(JSON.parse(json), { idNube: id });
                 cambiarIdNube(id);
+                // Ya con su id de la nube: su instancia (y, si la nube aún no tiene, se apunta)
+                if (!ctx.modoMaster) await usarInstanciaDelPersonaje();
             });
         } else if (boton.dataset.accion === "borrar") {
             if (!confirm(`¿Borrar ${nombre} de la nube? No se puede deshacer.`)) return;

@@ -48,3 +48,80 @@ export const instanciaLista = new Promise(resolver => {
 });
 
 export const getInstancia = () => instancia;
+
+/* Instancia de cada personaje ______________________________________________
+ * Un personaje recupera la instancia que usó la última vez (localStorage { idPersonaje: instancia }), así al cerrar
+ * la web y volver sigue siendo el mismo para la sala y su grupo (cuyos integrantes van por instancia). Si otra
+ * pestaña abierta ya la usa (el mismo personaje en dos pestañas), esta se queda con la suya. Una instancia que es
+ * de otro personaje no se reutiliza: al cambiar de personaje en la pestaña se genera otra. */
+const CLAVE_PERSONAJES = "fichaSAO.instanciasPersonaje";
+const MAX_PERSONAJES_RECORDADOS = 50;
+
+const leerMapa = () => {
+    try {
+        const mapa = JSON.parse(localStorage.getItem(CLAVE_PERSONAJES));
+        return mapa && typeof mapa === "object" ? mapa : {};
+    } catch {
+        return {};
+    }
+};
+function apuntarEnMapa(id, valor) {
+    const mapa = leerMapa();
+    delete mapa[id];
+    mapa[id] = valor; // al final: los más antiguos se olvidan primero
+    const claves = Object.keys(mapa);
+    claves.slice(0, Math.max(0, claves.length - MAX_PERSONAJES_RECORDADOS)).forEach(clave => delete mapa[clave]);
+    try { localStorage.setItem(CLAVE_PERSONAJES, JSON.stringify(mapa)); } catch { /* sin almacenamiento */ }
+}
+
+/* ¿Alguna otra pestaña abierta usa esa instancia? */
+function enUso(valor) {
+    if (!canal) return Promise.resolve(false);
+    return new Promise(resolver => {
+        const alResponder = ({ data }) => {
+            if (data?.tipo !== "mia" || data.id !== valor) return;
+            canal.removeEventListener("message", alResponder);
+            resolver(true);
+        };
+        canal.addEventListener("message", alResponder);
+        canal.postMessage({ tipo: "quien", id: valor });
+        setTimeout(() => {
+            canal.removeEventListener("message", alResponder);
+            resolver(false);
+        }, ESPERA_RESPUESTA_MS);
+    });
+}
+
+function fijar(valor) {
+    instancia = valor;
+    escribir(valor);
+}
+
+async function elegirInstancia(id) {
+    await instanciaLista;
+    if (!id) return instancia;
+    const mapa = leerMapa();
+    const guardada = mapa[id];
+    if (guardada === instancia) return instancia;
+    if (guardada && !(await enUso(guardada))) {
+        fijar(guardada);
+        return instancia;
+    }
+    if (Object.entries(mapa).some(([otro, valor]) => otro !== id && valor === instancia)) fijar(nuevaInstancia());
+    if (!guardada) apuntarEnMapa(id, instancia);
+    return instancia;
+}
+
+let cola = Promise.resolve();
+/** Instancia con la que esta pestaña lleva a ese personaje (idPersonaje): la suya de la última vez si está libre.
+ *  Puede cambiar la instancia de la pestaña. Las llamadas van en orden. */
+export function instanciaDePersonaje(id) {
+    const resultado = cola.then(() => elegirInstancia(id));
+    cola = resultado.catch(() => { /* la siguiente sigue */ });
+    return resultado;
+}
+
+/** Apunta la instancia de un personaje que viene de fuera (la guardada en la nube, que manda sobre la local) */
+export function recordarInstanciaPersonaje(id, valor) {
+    if (id && valor) apuntarEnMapa(String(id), String(valor));
+}

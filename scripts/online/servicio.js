@@ -171,6 +171,9 @@ export const claveOculto = (jugador, nombre) => `${jugador}:${String(nombre ?? "
  * una sala, se publica; si su nombre es de un personaje de otro usuario de la sala, sale de la sala y avisa.
  */
 export function configurarPersonaje({ instancia, nombre, id } = {}) {
+    // Otra instancia (la pestaña cambia de personaje y este recupera la suya): en la sala cambia de entrada y de grupo
+    const anterior = instancia !== undefined && personajeLocal.instancia && instancia !== personajeLocal.instancia
+        ? personajeLocal.instancia : null;
     if (instancia !== undefined) personajeLocal.instancia = instancia;
     let cambia = false;
     if (id !== undefined && id !== personajeLocal.id) {
@@ -184,15 +187,24 @@ export function configurarPersonaje({ instancia, nombre, id } = {}) {
             cambia = true;
         }
     }
-    if (!cambia || !estado.sala || masterEnSala()) return;
+    if (!estado.sala || masterEnSala() || (!cambia && !anterior)) return;
+    if (anterior) cambiarDeInstancia(anterior);
     const motivo = motivoNombre(personajeLocal.nombre);
     if (motivo) {
         const nombreSala = estado.sala.nombre;
-        salirSala();
+        salirSala(anterior);
         avisar("salida", { motivo: "nombre", nombre: nombreSala, detalle: motivo });
         return;
     }
-    publicarPersonaje().catch(error => console.warn("No se pudo actualizar el personaje en la sala:", error));
+    publicarPersonaje(anterior).catch(error => console.warn("No se pudo actualizar el personaje en la sala:", error));
+}
+
+/* La pestaña pasa a otra instancia estando en la sala: deja de escuchar el grupo de la anterior (sigue en él,
+   desconectado) y reanuda el que tenga recordado la nueva. La entrada vieja la borra publicarPersonaje. */
+function cambiarDeInstancia(anterior) {
+    pararGrupo(anterior);
+    const id = gruposRecordados(estado.sala.codigo, false)[personajeLocal.instancia];
+    if (id && sdk) escucharGrupo(personajeLocal.instancia, id, { reanudando: true });
 }
 
 /** Modo máster: función que da los personajes de su sesión en una sala (ver proveedorMaster) */
@@ -287,10 +299,13 @@ function salaInactiva(salaLocal) {
 
 /** Al arrancar: si la última vez se dejó la sesión abierta, la recupera y vuelve a la última sala
  *  (si no lleva 24 h sin actividad: entonces no reentra y no gasta ninguna petición). */
-export async function iniciar() {
+/** antesDeEntrar: con la sesión ya abierta y antes de volver a la última sala (la interfaz recupera la instancia
+ *  del personaje guardada en la nube) */
+export async function iniciar({ antesDeEntrar } = {}) {
     if (!leerLocal(CLAVE_SESION)) return copiaEstado();
     try {
         await prepararAuth();
+        if (estado.usuario && antesDeEntrar) await antesDeEntrar();
         const sala = leerSalaLocal();
         if (estado.usuario && sala) {
             if (salaInactiva(sala)) {
@@ -603,8 +618,9 @@ export async function entrarSala(codigo, { actividad = Date.now() } = {}) {
     return copiaEstado();
 }
 
-/* Vuelve a escribir la entrada del personaje de esta pestaña (nombre nuevo o "visto" antiguo) */
-async function publicarPersonaje() {
+/* Vuelve a escribir la entrada del personaje de esta pestaña (nombre nuevo o "visto" antiguo).
+   anterior: instancia que tenía la pestaña antes de cambiar de personaje, cuya entrada se borra en la misma escritura */
+async function publicarPersonaje(anterior = null) {
     const { db, f, uid } = exigirUsuario();
     if (!estado.sala || !personajeLocal.instancia) return;
     ultimoVisto = Date.now();
@@ -615,17 +631,19 @@ async function publicarPersonaje() {
     }
     await f.updateDoc(f.doc(db, "salas", estado.sala.codigo), {
         [campoPersonaje(uid)]: datosPersonaje(f),
+        ...(anterior && anterior !== personajeLocal.instancia ? { [`personajes.${uid}.${anterior}`]: f.deleteField() } : {}),
         ...cambiosRegistroPropio(f, uid, datosSala?.registro)
     });
 }
 
-/* Quita el personaje de esta pestaña de la sala (al salir o cerrar la pestaña) */
-async function quitarPersonaje() {
+/* Quita el personaje de esta pestaña de la sala (al salir o cerrar la pestaña). anterior: como en publicarPersonaje */
+async function quitarPersonaje(anterior = null) {
     if (!sdk || !estado.usuario || !estado.sala || !personajeLocal.instancia) return;
     const { db, f } = sdk;
     // En modo máster se desconectan sus personajes (siguen en el registro); si no, la entrada de la pestaña
     const cambios = {};
     camposAlDesconectar(estado.usuario.uid).forEach(partes => { cambios[partes.join(".")] = f.deleteField(); });
+    if (anterior && !masterEnSala()) cambios[`personajes.${estado.usuario.uid}.${anterior}`] = f.deleteField();
     if (Object.keys(cambios).length) await f.updateDoc(f.doc(db, "salas", estado.sala.codigo), cambios);
 }
 
@@ -775,8 +793,8 @@ export async function nombresUsuarios(uids) {
 }
 
 /** Sale de la sala (sigue en "Tus salas" para volver con un clic). Los grupos se conservan: al volver se reanudan. */
-export function salirSala() {
-    quitarPersonaje().catch(() => { /* sin conexión: se limpia al volver a entrar */ });
+export function salirSala(anterior = null) {
+    quitarPersonaje(anterior).catch(() => { /* sin conexión: se limpia al volver a entrar */ });
     dejarSala();
     escribirSalaLocal(null);
     avisar("estado", copiaEstado());
@@ -879,23 +897,32 @@ export async function publicarEvento(evento) {
 /* Cada personaje de esta pestaña puede estar en un grupo: el de la pestaña (su instancia) o, en modo máster, cada
    uno de sus personajes de la sesión (instancia "m-<idPersonaje>"). grupos: instancia → { id, datos, parar }.
    Solo se sale de un grupo con Salir o si lo echa el líder: ni al salir de la sala, ni por inactividad, ni al
-   sacar un personaje del máster de la sesión. Se recuerda por sala para reanudarlo al volver o recargar:
-   { <código de sala>: { <instancia>: id } }, el de la pestaña en sessionStorage y los del máster en localStorage
-   (sus personajes no dependen de la pestaña). */
+   sacar un personaje del máster de la sesión, ni al cerrar la web. Se recuerda por sala para reanudarlo al volver
+   o recargar: { <código de sala>: { <instancia>: id } }, en localStorage (los de los jugadores y los del máster por
+   separado). Un personaje recupera su instancia al volver (instanciaDePersonaje en instancia.js) y con ella su
+   entrada en el grupo; mientras no está, sus compañeros lo ven desconectado. */
 const grupos = new Map();
 const CLAVE_GRUPOS_MASTER = "fichaSAO.gruposMaster";
 
-/* Grupos recordados de una sala: { instancia: id } (master: los de sus personajes, en localStorage) */
-function leerRecordados(master) {
-    const almacen = master ? localStorage : sessionStorage;
+/* Grupos recordados por sala: { codigo: { instancia: id } } (master: los de sus personajes) */
+function leerAlmacenGrupos(almacen, clave) {
     try {
-        const datos = JSON.parse(almacen.getItem(master ? CLAVE_GRUPOS_MASTER : CLAVE_GRUPO));
+        const datos = JSON.parse(almacen.getItem(clave));
         // Formato anterior: { codigo, id } o { codigo, grupos }
         if (datos?.codigo) return { [datos.codigo]: datos.grupos ?? (datos.id ? { [personajeLocal.instancia]: datos.id } : {}) };
         return datos && typeof datos === "object" ? datos : {};
     } catch {
         return {};
     }
+}
+function leerRecordados(master) {
+    if (master) return leerAlmacenGrupos(localStorage, CLAVE_GRUPOS_MASTER);
+    const todos = leerAlmacenGrupos(localStorage, CLAVE_GRUPO);
+    // Antes iban en sessionStorage (se perdían al cerrar la pestaña): se suman los que queden en esta pestaña
+    Object.entries(leerAlmacenGrupos(sessionStorage, CLAVE_GRUPO)).forEach(([codigo, sala]) => {
+        todos[codigo] = { ...(sala ?? {}), ...(todos[codigo] ?? {}) };
+    });
+    return todos;
 }
 const gruposRecordados = (codigo, master) => ({ ...(leerRecordados(master)[codigo] ?? {}) });
 /* Apunta (id) u olvida (null) el grupo de un personaje en la sala actual */
@@ -907,7 +934,10 @@ function recordarGrupo(instancia, id) {
     if (id) sala[instancia] = id;
     else delete sala[instancia];
     todos[estado.sala.codigo] = sala;
-    try { (master ? localStorage : sessionStorage).setItem(master ? CLAVE_GRUPOS_MASTER : CLAVE_GRUPO, JSON.stringify(todos)); } catch { /* sin almacenamiento */ }
+    try {
+        localStorage.setItem(master ? CLAVE_GRUPOS_MASTER : CLAVE_GRUPO, JSON.stringify(todos));
+        if (!master) sessionStorage.removeItem(CLAVE_GRUPO); // ya sumado al leer
+    } catch { /* sin almacenamiento */ }
 }
 
 const refGrupo = (f, db, id) => f.doc(db, "salas", estado.sala.codigo, "grupos", id);
@@ -1218,20 +1248,35 @@ export async function listarPersonajes() {
         .sort((x, y) => (y.actualizado ?? 0) - (x.actualizado ?? 0));
 }
 
-/** Guarda la ficha (json = personaje.toJSONString()). Sin id crea una nueva. Devuelve el id. */
-export async function guardarPersonaje(json, nombre, id = null) {
+/** Guarda la ficha (json = personaje.toJSONString()). Sin id crea una nueva. Devuelve el id.
+ *  instancia: la del personaje en las salas (ver instanciaDePersonaje); sin ella se conserva la que haya. */
+export async function guardarPersonaje(json, nombre, id = null, instancia = null) {
     const { db, f, uid } = exigirUsuario();
     const ref = id ? f.doc(db, "personajes", id) : f.doc(f.collection(db, "personajes"));
-    await f.setDoc(ref, { propietario: uid, nombre: String(nombre ?? ""), json, actualizado: f.serverTimestamp() });
+    const datos = { propietario: uid, nombre: String(nombre ?? ""), json, actualizado: f.serverTimestamp() };
+    if (instancia) datos.instancia = String(instancia);
+    await f.setDoc(ref, datos, { merge: true });
     return ref.id;
+}
+
+/** Lee un personaje de la nube: { json (texto), instancia (la que usa en las salas, o null) } */
+export async function leerPersonajeNube(id) {
+    const { db, f } = exigirUsuario();
+    const instantanea = await f.getDoc(f.doc(db, "personajes", id));
+    if (!instantanea.exists()) throw Object.assign(new Error("Ese personaje ya no existe"), { code: "no-existe" });
+    const { json, instancia } = instantanea.data();
+    return { json, instancia: typeof instancia === "string" && instancia ? instancia : null };
 }
 
 /** Devuelve el JSON (texto) de la ficha */
 export async function cargarPersonaje(id) {
+    return (await leerPersonajeNube(id)).json;
+}
+
+/** Apunta en la nube la instancia de un personaje (sin tocar la ficha guardada): una escritura */
+export async function guardarInstanciaPersonaje(id, instancia) {
     const { db, f } = exigirUsuario();
-    const instantanea = await f.getDoc(f.doc(db, "personajes", id));
-    if (!instantanea.exists()) throw Object.assign(new Error("Ese personaje ya no existe"), { code: "no-existe" });
-    return instantanea.data().json;
+    await f.updateDoc(f.doc(db, "personajes", id), { instancia: String(instancia) });
 }
 
 export async function borrarPersonaje(id) {
