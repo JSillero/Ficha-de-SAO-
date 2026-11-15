@@ -260,6 +260,8 @@ const unirConO = (lista) => lista.length > 1 ? `${lista.slice(0, -1).join(", ")}
 function valorBase(pj, req) {
     if (req.tipo === "nivel") return Number(pj.nivel) || 0;
     if (req.clave === "aguante") return (Number(pj.fortaleza) || 0) + (Number(pj.voluntad) || 0) / 2;
+    // Habilidades: con las del Underworld habilitadas (getBaseHabilidad); sin modificadores
+    if (req.tipo === "habilidad" && typeof pj.getBaseHabilidad === "function") return pj.getBaseHabilidad(req.clave);
     return Number(pj[req.clave]) || 0;
 }
 

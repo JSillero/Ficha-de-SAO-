@@ -86,6 +86,14 @@ export function esCritico(resultado) {
  * Ventaja y desventaja se anulan entre sí; cada fuente extra del mismo signo da ±2 a la tirada.
  * @returns {{ modo: number, bonificador: number }}
  */
+/* Media del dado elegido en 3d10 (modo 0 = bajo, 1 = medio, 2 = alto), contando los 1000 resultados posibles */
+const mediasDado = [0, 1, 2].map(modo => {
+    let suma = 0;
+    for (let a = 1; a <= 10; a++) for (let b = 1; b <= 10; b++) for (let c = 1; c <= 10; c++) suma += [a, b, c].sort((x, y) => x - y)[modo];
+    return suma / 1000;
+});
+export const mediaDado = (modo) => mediasDado[[0, 1, 2].includes(modo) ? modo : 1];
+
 export function combinarModos(...modos) {
     const ventajas = modos.filter(m => m === 2).length;
     const desventajas = modos.filter(m => m === 0).length;

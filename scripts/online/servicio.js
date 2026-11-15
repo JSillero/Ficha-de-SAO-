@@ -12,7 +12,9 @@
  *                                                                  borran al desconectarse; los quita el máster)
  *       (cada entrada de personaje lleva también grupo: id del grupo en el que está, o null, e id: su idPersonaje.
  *        En modo máster, cada personaje de su sesión tiene una entrada "m-<idPersonaje>")
- * - salas/{codigo}/estados/{idPersonaje}: { jugador, master, nombre, vida, pa, nivel, iniciativa, estados, turno }
+ * - salas/{codigo}/estados/{idPersonaje}: { jugador, master, nombre, vida, pa, nivel, iniciativa, estados, turno, stats, uw }
+ *       stats: estadísticas de protagonista (o null, estadisticasProtagonista de resumenFicha.js); uw: habilidades
+ *       del Underworld habilitadas (aviso al matar un NPC)
  *       lo escribe cada jugador al cambiar; solo lo escucha el máster (cabecera del modo máster)
  * - salas/{codigo}/fichas/{idPersonaje}: { jugador, master, json, actualizado }
  *       copia de la ficha completa para que el máster la vea en modo lectura. Se escribe al guardar en la nube
@@ -517,6 +519,18 @@ export const instanciaDePersonaje = (jugador, id) =>
 export const esPersonajeLocal = (id) => Boolean(id) && id === personajeLocal.id;
 
 /* Estado del personaje para el máster (salas/{codigo}/estados/{idPersonaje}). Se escribe solo si cambia. */
+/* Estadísticas de protagonista del estado de la sala (estadisticasProtagonista en resumenFicha.js): números (un
+   decimal) o null; null si no es un objeto. Aquí para no depender de la ficha. */
+const CLAVES_ESTADISTICAS = ["vidaMax", "nivel", "defensa", "defensaEscudo", "armadura", "acierto", "tiradaMedia", "iniciativa", "danno",
+    "tiradaSigilo", "tiradaCarisma", "vMovimiento", "dFisico", "dDistancia", "dMagico", "aguante", "perspicacia", "percepcionPasiva"];
+function cargarEstadisticas(datos) {
+    if (!datos || typeof datos !== "object") return null;
+    return Object.fromEntries(CLAVES_ESTADISTICAS.map(clave => {
+        const n = Number(datos[clave]);
+        return [clave, datos[clave] === null || !Number.isFinite(n) ? null : Math.round(n * 10) / 10];
+    }));
+}
+
 let ultimoEstadoSala = null; // último estado que ha dado la ficha
 let estadoSalaEscrito = null; // id + JSON de lo último escrito
 
@@ -535,7 +549,10 @@ export async function publicarEstadoSala(datos) {
         nivel: Math.trunc(Number(datos.nivel) || 0),
         iniciativa: Math.round((Number(datos.iniciativa) || 0) * 10) / 10,
         estados: (Array.isArray(datos.estados) ? datos.estados : []).map(String).slice(0, 30),
-        turno: Math.max(0, Math.trunc(Number(datos.turno) || 0))
+        turno: Math.max(0, Math.trunc(Number(datos.turno) || 0)),
+        // Estadísticas de protagonista (o null) y habilidades del Underworld habilitadas: solo las lee el máster
+        stats: cargarEstadisticas(datos.stats),
+        uw: datos.uw === true
     };
     const clave = `${estado.sala.codigo}|${personajeLocal.id}|${JSON.stringify(documento)}`;
     if (clave === estadoSalaEscrito) return;
@@ -840,7 +857,11 @@ function escucharSala(codigo) {
         const estados = f.query(f.collection(db, "salas", codigo, "estados"), f.where("master", "==", estado.usuario.uid));
         dejarDeEscuchar.push(f.onSnapshot(estados, instantanea => {
             if (estado.sala?.codigo !== codigo) return;
-            estadosSala = Object.fromEntries(instantanea.docs.map(d => [d.id, d.data()]));
+            // stats y uw vienen de cada jugador: se validan al leer
+            estadosSala = Object.fromEntries(instantanea.docs.map(d => {
+                const datos = d.data();
+                return [d.id, { ...datos, stats: cargarEstadisticas(datos.stats), uw: datos.uw === true }];
+            }));
             avisar("estadosSala", getEstadosSala());
         }, error => console.warn("Error escuchando los estados de la sala:", error)));
     }

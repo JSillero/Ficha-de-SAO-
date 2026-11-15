@@ -2,7 +2,7 @@
 // Herramientas para comprobar que la ficha se guarda, se carga y se pinta correctamente.
 // Se activan abriendo la página con ?debug en la URL (ver interfaz.js).
 
-import PJ, { ESTADOS_LISTA } from "./PJ.js";
+import PJ, { ESTADOS_LISTA, HABILIDADES_UNDERWORLD, HABILIDADES_LISTA } from "./PJ.js";
 import Equipamiento from "./equipamiento.js";
 import Modificador, { TURNOS_PERMANENTE } from "./modificador.js";
 import { cargarObjeto, crearInventarioVacio, capacidadInventario } from "./objetos.js";
@@ -218,7 +218,9 @@ export function verificarInterfaz(personaje, documento = document) {
     documento.querySelectorAll("input[id], textarea[id], select[id]").forEach(el => {
         const campo = ALIAS_INTERFAZ[el.id] ?? el.id;
         if (!(campo in personaje)) return;
-        const valorModelo = personaje[campo];
+        // Las habilidades se ven con las del Underworld sumadas (getBaseHabilidad); lo invertido está en personaje[hab]
+        const valorModelo = HABILIDADES_LISTA.includes(campo) && typeof personaje.getBaseHabilidad === "function"
+            ? personaje.getBaseHabilidad(campo) : personaje[campo];
         if (typeof valorModelo === "object") return;
 
         const coincide = el.type === "number"
@@ -281,13 +283,20 @@ export function validarFicha(pj) {
         .forEach(hab => {
             if (pj[hab] > maxHab) avisos.push(`${hab} = ${pj[hab]} supera el máximo de su nivel (${maxHab}).`);
         });
+    // Habilidades del Underworld (perfil): dentro de su máximo y solo con la casilla Underworld
+    Object.entries(HABILIDADES_UNDERWORLD).forEach(([hab, { etiqueta, max }]) => {
+        const valor = pj.habilidadesUnderworld?.[hab];
+        if (!Number.isInteger(valor) || valor < 0 || valor > max) avisos.push(`Habilidad del Underworld ${etiqueta} = ${valor} (debe estar entre 0 y ${max}).`);
+        if (pj.getBaseHabilidad(hab) > Math.max(maxHab, pj[hab])) avisos.push(`${hab} con el Underworld (${pj.getBaseHabilidad(hab)}) supera el máximo de su nivel.`);
+    });
+    if (pj.underworldHabilitado && !pj.esUnderworld) avisos.push("Habilidades del Underworld habilitadas sin la casilla Underworld (no suman).");
     if (!pj.esUnderworld && pj.sacro > 0) avisos.push(`Sacro = ${pj.sacro} sin la casilla Underworld (debería ser 0).`);
     if (!Array.isArray(pj.diario) || pj.diario.length === 0) avisos.push("El diario no tiene ninguna página (debería tener al menos una).");
     if (!pj.esUnderworld && pj.dMagico !== 0) avisos.push(`Daño mágico = ${pj.dMagico} sin la casilla Underworld (debería ser 0).`);
 
     const penalizacion = Number(pj.equipoArmadura?.penalizacionAtletismo) || 0;
-    if (penalizacion > pj.atletismo) {
-        avisos.push(`La armadura penaliza ${penalizacion} de Atletismo y solo tienes ${pj.atletismo}: no se puede llevar.`);
+    if (penalizacion > pj.getBaseHabilidad("atletismo")) {
+        avisos.push(`La armadura penaliza ${penalizacion} de Atletismo y solo tienes ${pj.getBaseHabilidad("atletismo")}: no se puede llevar.`);
     }
 
     if (pj.manoIzquierda?.tipo === "estoque" && pj.manoDerecha?.tipo === "estoque") {
@@ -310,6 +319,7 @@ export function validarFicha(pj) {
 
     if (pj.cor < 0) avisos.push(`Cor negativo (${pj.cor}).`);
     if (pj.puntosEgo < 0) avisos.push(`Puntos de ego negativos (${pj.puntosEgo}).`);
+    if (pj.puntosEgo > 0 && !pj.protagonista) avisos.push(`Tiene ${pj.puntosEgo} puntos de ego sin ser protagonista (se conservan ocultos).`);
     const sobrantes = pj.inventario.length - capacidadInventario(pj);
     if (sobrantes > 0) avisos.push(`El inventario tiene ${sobrantes} objeto(s) de más (capacidad ${capacidadInventario(pj)}).`);
     // Puede pasar si se baja de nivel después de gastar desbloqueos

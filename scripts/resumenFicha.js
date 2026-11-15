@@ -5,6 +5,10 @@
 // textos se recortan. No toca el DOM: la interfaz lo pinta (pintarFichaResumen en interfaz.js).
 
 import { HABILIDADES_LISTA } from "./PJ.js";
+import { prepararAtaque, prepararAtaqueNpc } from "./ataque.js";
+import { equiposDePartes } from "./npc.js";
+import { mediaDado } from "./dados.js";
+import { modoSigiloPorArmadura } from "./turno.js";
 
 export const VERSION_RESUMEN = 1;
 
@@ -55,6 +59,65 @@ const lista = (valor, cargar) => (Array.isArray(valor) ? valor.slice(0, MAX_LIST
  * Resumen de un personaje. `textos` da los textos que solo sabe hacer la interfaz:
  * { detalleArte(arte), detalleEfecto(efecto), etiquetaTipoEquipo(tipo), valoresEquipo(equipo), textoModificadores(mods) }
  */
+/* Estadísticas de combate de un protagonista para el máster (panel de protagonistas al crear NPC; van en el estado
+   de la sala). Acierto = característica del arma + Combate (sin sigilo); tirada media = media del dado del arma
+   + bonificador del dado + acierto; daño = arma + bonificador CaC. Con dos armas, la de mejor tirada media; sin
+   arma, null. La defensa no cuenta los escudos en uso (para que no dependa del momento); defensaEscudo = defensa
+   usando el mejor escudo que lleve (null sin escudo). Además, el resto de valores de combate (dMagico solo con
+   Underworld). También sirve para un NPC (panel de protagonistas, columna de la ficha que se edita): acierto del
+   arma, daño = arma + modificadores de daño CaC, y cuentan las armas y escudos de todas sus partes. */
+/* Tirada media para entrar en sigilo: dado medio según la armadura + Reflejos + Sigilo (como el botón de sigilo).
+   null con armadura pesada (no se puede) o en un NPC (no tiene Sigilo). */
+function tiradaMediaSigilo(pj) {
+    const modo = pj.esNpc ? null : modoSigiloPorArmadura(pj.equipoArmadura?.tipo);
+    if (modo === null) return null;
+    const valor = mediaDado(modo) + (Number(pj.reflejos) || 0) + Math.max(0, Number(pj.getGenerico("subterfugio")) || 0);
+    return Math.round(valor * 10) / 10;
+}
+
+export function estadisticasProtagonista(pj) {
+    pj.calcularCaracteristicas();
+    const redondear = (n) => Math.round((Number(n) || 0) * 10) / 10;
+    const equipos = [pj.manoDerecha, pj.manoIzquierda, ...(pj.esNpc ? equiposDePartes(pj) : [])].filter(Boolean);
+    let mejor = null;
+    for (const item of equipos) {
+        const ataque = pj.esNpc ? prepararAtaqueNpc(pj, item, [1])
+            : prepararAtaque(pj, item === pj.manoDerecha ? "manoDerecha" : "manoIzquierda", [1]);
+        if (!ataque) continue;
+        const acierto = pj.esNpc ? Number(ataque.valorHabilidad) || 0
+            : (Number(ataque.valorCaracteristica) || 0) + pj.getGenerico("combate");
+        const tiradaMedia = mediaDado(ataque.modo) + (Number(ataque.bonificador) || 0) + acierto;
+        const dannoArma = Math.max(0, Number(item.danno) || 0);
+        const danno = pj.esNpc ? Math.max(0, dannoArma + (Number(pj.dFisico) || 0)) : dannoArma + Math.max(0, Number(pj.dFisico) || 0);
+        if (!mejor || tiradaMedia > mejor.tiradaMedia) mejor = { acierto, tiradaMedia, danno };
+    }
+    const defensa = (Number(pj.defensa) || 0) - pj.getDefensaEscudos();
+    const escudos = equipos
+        .filter(item => item?.tipo === "escudo" || item?.tipo === "gran_escudo").map(item => Number(item.defensa) || 0);
+    return {
+        vidaMax: Math.trunc(Number(pj.vidaMax) || 0),
+        nivel: Math.trunc(Number(pj.nivel) || 0),
+        defensa: redondear(defensa),
+        defensaEscudo: escudos.length ? redondear(defensa + Math.max(...escudos)) : null,
+        armadura: redondear(pj.armadura),
+        acierto: mejor ? redondear(mejor.acierto) : null,
+        tiradaMedia: mejor ? redondear(mejor.tiradaMedia) : null,
+        iniciativa: redondear(pj.iniciativa),
+        danno: mejor ? redondear(mejor.danno) : null,
+        tiradaSigilo: tiradaMediaSigilo(pj),
+        // Tirada de Carisma (como la de la ficha): dado medio + Inteligencia + Carisma; un NPC no tiene Carisma
+        tiradaCarisma: pj.esNpc ? null
+            : redondear(mediaDado(1) + (Number(pj.inteligencia) || 0) + (Number(pj.getGenerico("comunicacion")) || 0)),
+        vMovimiento: redondear(pj.vMovimiento),
+        dFisico: redondear(pj.dFisico),
+        dDistancia: redondear(pj.dDistancia),
+        dMagico: pj.esUnderworld || pj.esNpc ? redondear(pj.dMagico) : null,
+        aguante: redondear(pj.aguante),
+        perspicacia: redondear(pj.perspicacia),
+        percepcionPasiva: redondear(pj.percepcionPasiva)
+    };
+}
+
 export function crearResumenFicha(pj, textos) {
     const efectos = (equipo) => (equipo.efectos ?? []).map(efecto => ({
         nombre: efecto.nombre, tipo: efecto.tipo, descripcion: efecto.descripcion, detalle: textos.detalleEfecto(efecto)
@@ -82,7 +145,7 @@ export function crearResumenFicha(pj, textos) {
         comportamiento: pj.esNpc ? pj.comportamientoCombate : "",
         // Sin Underworld no se envían Sacro ni el daño mágico
         habilidades: HABILIDADES_LISTA.filter(clave => pj.puedeUsarHabilidad(clave))
-            .map(clave => ({ clave, base: pj[clave], efectivo: pj.getGenerico(clave) })),
+            .map(clave => ({ clave, base: pj.getBaseHabilidad(clave), efectivo: pj.getGenerico(clave) })),
         combate: VALORES_COMBATE.filter(({ soloUnderworld }) => !soloUnderworld || pj.esUnderworld)
             .map(({ clave }) => ({ clave, valor: pj[clave] })),
         // Las habilidades oníricas solo con Underworld

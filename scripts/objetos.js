@@ -640,8 +640,8 @@ export function motivoNoEquipar(pj, objeto) {
             if (pj.equipoArmadura?.tipo) return "Ya llevas una armadura: guárdala antes.";
             // El Atletismo efectivo no puede bajar de 0 por la armadura (09-modelo-de-datos.md §5, #17)
             const penalizacion = Number(objeto.equipo.penalizacionAtletismo) || 0;
-            return penalizacion > pj.atletismo
-                ? `Penaliza ${penalizacion} de Atletismo y solo tienes ${pj.atletismo}: no puedes llevarla.`
+            return penalizacion > pj.getBaseHabilidad("atletismo")
+                ? `Penaliza ${penalizacion} de Atletismo y solo tienes ${pj.getBaseHabilidad("atletismo")}: no puedes llevarla.`
                 : null;
         }
         case "accesorio": {

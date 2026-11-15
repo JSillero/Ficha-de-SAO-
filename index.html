@@ -749,6 +749,8 @@
                     <button type="button" class="btn-crear-objeto" id="btnCogerTodoBotin">Coger todo</button>
                 </div>
                 <div class="modal-body">
+                    <!-- Botín de un NPC matado con las habilidades del Underworld habilitadas (pintarBotin) -->
+                    <p id="avisoUnderworldBotin" class="aviso-underworld-muerte" hidden>Se han detectado incoherencias en los datos del usuario. El sistema ha sido alertado,</p>
                     <div id="listaBotin" class="lista-objetos"></div>
                 </div>
                 <div class="modal-footer">
@@ -925,6 +927,8 @@
                                 <select id="selectExpMuerteNpc" aria-label="Quién recibe la EXP"></select>
                             </div>
                             <p id="mitadMuerteNpc" class="aviso-objeto-info"></p>
+                            <!-- Quien recibe la EXP tiene las habilidades del Underworld habilitadas (pintarMitadMuerteNpc) -->
+                            <p id="avisoUnderworldMuerteNpc" class="aviso-underworld-muerte" hidden></p>
                         </div>
                         <div class="campo-sao">
                             <h6 class="titulo-ranuras">Recompensa</h6>
@@ -947,8 +951,10 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="modalPerfilMasterLabel">Nuevo personaje</h5>
+                    <!-- Panel de protagonistas a la derecha (pintarProtagonistas en interfazMaster.js) -->
+                    <button type="button" class="btn-cabecera btn-crear-objeto" id="btnProtagonistasPerfil" aria-expanded="false" aria-controls="panelProtagonistas">Protagonistas</button>
                 </div>
-                <div class="modal-body">
+                <div class="modal-body perfil-master-cuerpo">
                     <!-- Estilo SAO (.claude/12-estilo.md §5 bis): lo básico en ranuras arriba y cada apartado en una ranura
                          desplegable con su contador. Los controles conservan sus ids y data-* (interfazMaster.js) -->
                     <form id="formPerfilMaster" class="form-objeto form-sao perfil-master" novalidate>
@@ -990,6 +996,8 @@
                                 <input type="checkbox" id="perfilMasterProtagonista">
                             </div>
                         </div>
+                        <!-- Habilidades del Underworld (solo personajes Underworld; ctx.htmlHabilidadesUnderworld) -->
+                        <div id="perfilMasterHabUnderworld" class="solo-personaje"></div>
                         <div class="ranura ranura-fichas solo-personaje">
                             <span class="ranura-icono" data-icono="material"></span>
                             <span class="ranura-etiqueta">Profesión</span>
@@ -1011,7 +1019,7 @@
                                 <label class="ranura-etiqueta" for="perfilMasterCor">Cor</label>
                                 <input type="number" id="perfilMasterCor" min="0">
                             </div>
-                            <div class="ranura solo-personaje">
+                            <div class="ranura solo-personaje" id="ranuraPerfilMasterEgo" title="Solo los protagonistas tienen puntos de ego">
                                 <span class="ranura-icono" data-icono="ego"></span>
                                 <label class="ranura-etiqueta" for="perfilMasterEgo">Ego</label>
                                 <input type="number" id="perfilMasterEgo" min="0">
@@ -1138,6 +1146,8 @@
                         </div>
                         <p id="avisoPerfilMaster" class="aviso-objeto" role="alert"></p>
                     </form>
+                    <!-- Estadísticas de los protagonistas (sala + los del máster) para crear criaturas; scroll propio -->
+                    <aside id="panelProtagonistas" class="panel-protagonistas" hidden aria-label="Protagonistas"></aside>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cancelar" aria-label="Cancelar"></button>

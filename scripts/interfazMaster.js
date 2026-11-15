@@ -11,7 +11,7 @@ import {
     getSalaMaster, publicarPersonajesMaster, echarPersonajeSala, mensajeErrorOnline, pedirFichaJugador,
     ocultarPersonajeSala, claveOcultoSala, leerCompendioNube, guardarCompendioNube, haySesionOnline, alCambiarSesionOnline
 } from "./interfazOnline.js";
-import { PROFESIONES, VALORES_COMBATE } from "./resumenFicha.js";
+import { PROFESIONES, VALORES_COMBATE, estadisticasProtagonista } from "./resumenFicha.js";
 import { ETIQUETAS_CARACTERISTICA, ETIQUETAS_HABILIDAD, ranurasUsadas, ranurasLibres, motivoInactiva } from "./artes.js";
 import { iconoSao } from "./iconos.js";
 import { escaparHtml } from "./html.js";
@@ -258,6 +258,7 @@ function motivoNoEchar(f) {
 /** Repinta la cabecera del máster (en cada actualizarTodo y cuando cambia la sala) */
 export function actualizarHudMaster() {
     if (!ctx) return;
+    if (panelProtagonistasVisible()) pintarProtagonistas(); // han cambiado los estados de la sala o la ficha
     const hud = el("hudMaster");
     const filas = filasCabecera();
     const idActivo = ctx.personaje().idPersonaje;
@@ -617,6 +618,8 @@ export function abrirPerfilMaster({ crear = false, npc = false, plantilla = null
     ponerTituloPerfil();
     el("avisoPerfilMaster").textContent = "";
     pintarPerfil();
+    // Panel de protagonistas: se abre solo al crear; al editar, como se dejó la última vez
+    abrirPanelProtagonistas(crear || leerPanelGuardado());
     const ventana = el("modalPerfilMaster");
     ventana.dataset.sinSonidoAbrir = "1";
     bootstrap.Modal.getOrCreateInstance(ventana).show();
@@ -646,6 +649,126 @@ function cambiarTipoBorrador(npc) {
     ponerTituloPerfil();
 }
 
+/* Panel de protagonistas (#panelProtagonistas, a la derecha del perfil del máster) ______________________
+   Estadísticas de combate de los protagonistas para crear criaturas: los jugadores de la sala (lo último que
+   publicaron en su estado, también desconectados) y los personajes protagonistas guardados por el máster.
+   Una columna por protagonista y una fila por valor; el más alto de cada fila, marcado; la media (salvo la
+   iniciativa) y, al final, la ficha que se está creando o editando (el borrador), para comparar. */
+const CLAVE_PANEL_PROTAGONISTAS = "fichaSAO.panelProtagonistas";
+const FILAS_PROTAGONISTAS = [
+    { clave: "vidaMax", etiqueta: "PV" },
+    { clave: "nivel", etiqueta: "LV" },
+    { clave: "defensa", etiqueta: "Defensa" },
+    { clave: "defensaEscudo", etiqueta: "Defensa con escudo" },
+    { clave: "armadura", etiqueta: "Armadura" },
+    { clave: "acierto", etiqueta: "Acierto" },
+    { clave: "tiradaMedia", etiqueta: "Tirada media" },
+    { clave: "iniciativa", etiqueta: "Iniciativa", sinMedia: true },
+    { clave: "danno", etiqueta: "Daño (arma + CaC)" },
+    { clave: "tiradaSigilo", etiqueta: "Tirada media de sigilo" },
+    { clave: "tiradaCarisma", etiqueta: "Tirada media de carisma" },
+    { clave: "vMovimiento", etiqueta: "Movimiento" },
+    { clave: "dFisico", etiqueta: "Daño CaC" },
+    { clave: "dDistancia", etiqueta: "Daño a distancia" },
+    { clave: "dMagico", etiqueta: "Daño mágico" },
+    { clave: "aguante", etiqueta: "Aguante" },
+    { clave: "perspicacia", etiqueta: "Perspicacia" },
+    { clave: "percepcionPasiva", etiqueta: "Percepción pasiva" }
+];
+
+function leerPanelGuardado() {
+    try { return localStorage.getItem(CLAVE_PANEL_PROTAGONISTAS) === "1"; } catch { return false; }
+}
+
+const panelProtagonistasVisible = () =>
+    Boolean(el("modalPerfilMaster")?.classList.contains("show")) && !el("panelProtagonistas").hidden;
+
+function abrirPanelProtagonistas(abrir, recordar = false) {
+    el("panelProtagonistas").hidden = !abrir;
+    el("modalPerfilMaster").classList.toggle("con-protagonistas", abrir);
+    const boton = el("btnProtagonistasPerfil");
+    boton.setAttribute("aria-expanded", String(abrir));
+    boton.textContent = abrir ? "Ocultar protagonistas" : "Protagonistas";
+    if (recordar) {
+        try { localStorage.setItem(CLAVE_PANEL_PROTAGONISTAS, abrir ? "1" : "0"); } catch { /* sin almacenamiento */ }
+    }
+    if (abrir) pintarProtagonistas();
+}
+
+/* Protagonistas: [{ nombre, origen, conectado, stats }] */
+function protagonistas() {
+    const lista = [];
+    const sala = getSalaMaster();
+    if (sala) {
+        for (const [jugador, personajes] of Object.entries(sala.registro)) {
+            if (jugador === sala.uid) continue;
+            for (const [id, registro] of Object.entries(personajes ?? {})) {
+                const estado = sala.estados[id];
+                if (!estado?.stats) continue;
+                lista.push({ id, nombre: estado.nombre || registro?.nombre || "Sin nombre", origen: "Sala",
+                    conectado: sala.conectados.has(`${jugador}|${id}`), stats: estado.stats });
+            }
+        }
+    }
+    // Los del máster: el de la ficha con sus valores de ahora; el resto, de su copia guardada
+    const enFicha = ctx.personaje();
+    for (const { id } of master.todos()) {
+        let pj = id === enFicha.idPersonaje ? enFicha : null;
+        if (!pj) {
+            const json = master.datosPersonaje(id)?.json;
+            if (!json) continue;
+            try {
+                pj = new PJ();
+                pj.cargarJSON(JSON.parse(json));
+            } catch {
+                continue;
+            }
+        }
+        if (!pj.protagonista || pj.esNpc) continue;
+        lista.push({ id, nombre: pj.nombre || "Sin nombre", origen: "Máster", conectado: true, stats: estadisticasProtagonista(pj) });
+    }
+    return lista.sort((a, b) => a.nombre.localeCompare(b.nombre));
+}
+
+const cifra = (n) => n === null || n === undefined ? "—" : formatearNumero(Math.round(n * 10) / 10);
+
+/* Lista de protagonistas calculada la última vez (al editar el borrador solo cambia su columna) */
+let cacheProtagonistas = [];
+
+/* refrescar: volver a leer la sala y los personajes guardados (al abrir el panel o cambiar la sala) */
+function pintarProtagonistas(refrescar = true) {
+    const panel = el("panelProtagonistas");
+    if (refrescar) cacheProtagonistas = protagonistas();
+    // La que se edita: con los valores del borrador (si es la de la ficha, no se repite como protagonista)
+    const actual = borrador ? estadisticasProtagonista(borrador) : null;
+    const lista = cacheProtagonistas.filter(p => !borrador || p.id !== borrador.idPersonaje);
+    if (!lista.length) {
+        panel.innerHTML = `<h3 class="panel-protagonistas-titulo">Protagonistas</h3>
+            <p class="lista-vacia">No hay protagonistas. Salen los personajes marcados como protagonista de los jugadores de tu sala y los tuyos.</p>`;
+        return;
+    }
+    const nombreActual = borrador?.nombre || (borrador?.esNpc ? "Este NPC" : "Este personaje");
+    const cabecera = lista.map(p => `<th scope="col" class="${p.conectado ? "" : "desconectado"}"
+        title="${escaparHtml(`${p.nombre} (${p.origen}${p.conectado ? "" : ", desconectado: últimos valores publicados"})`)}">${escaparHtml(p.nombre)}</th>`).join("");
+    const filas = FILAS_PROTAGONISTAS.map(({ clave, etiqueta, sinMedia }) => {
+        const valores = lista.map(p => p.stats[clave]);
+        const numeros = valores.filter(v => typeof v === "number");
+        if (!numeros.length && typeof actual?.[clave] !== "number") return "";
+        const maximo = numeros.length ? Math.max(...numeros) : null;
+        const media = sinMedia ? null : numeros.reduce((a, b) => a + b, 0) / numeros.length;
+        const celdas = valores.map(v => `<td class="${typeof v === "number" && v === maximo && lista.length > 1 ? "maximo" : ""}">${cifra(v)}</td>`).join("");
+        return `<tr><th scope="row">${etiqueta}</th>${celdas}<td class="media">${cifra(media)}</td><td class="actual">${cifra(actual?.[clave])}</td></tr>`;
+    }).join("");
+    panel.innerHTML = `<h3 class="panel-protagonistas-titulo">Protagonistas <small>${lista.length}</small></h3>
+        <div class="tabla-protagonistas-marco">
+            <table class="tabla-protagonistas">
+                <thead><tr><th scope="col"></th>${cabecera}<th scope="col" class="media">Media</th><th scope="col" class="actual" title="${escaparHtml(nombreActual)} (la ficha que estás editando)">${escaparHtml(nombreActual)}</th></tr></thead>
+                <tbody>${filas}</tbody>
+            </table>
+        </div>
+        <p class="panel-protagonistas-nota">El valor más alto de cada fila entre los protagonistas, en dorado; la última columna es la ficha que estás editando. Los de la sala son lo último que publicaron sus jugadores.</p>`;
+}
+
 /* Fichas de la profesión en el perfil (crearFichas en inicializarPerfilMaster): se sincronizan en pintarPerfil */
 let sincronizarProfesion = null;
 
@@ -673,6 +796,10 @@ function pintarPerfil() {
     sincronizarProfesion?.(); // las fichas que visten el select (formularioSao.js)
     el("perfilMasterUnderworld").checked = pj.esUnderworld;
     el("perfilMasterProtagonista").checked = pj.protagonista;
+    // Habilidades del Underworld: se conserva si la ranura estaba abierta
+    const habUw = el("perfilMasterHabUnderworld");
+    const uwAbierto = Boolean(habUw.querySelector("details")?.open);
+    habUw.innerHTML = pj.esUnderworld && !pj.esNpc ? ctx.htmlHabilidadesUnderworld(pj, uwAbierto) : "";
     const maxCar = pj.getMaxCaracteristicas();
     el("perfilMasterCaracteristicas").querySelectorAll("input[data-clave]").forEach(input => {
         input.value = pj[input.dataset.clave];
@@ -683,7 +810,8 @@ function pintarPerfil() {
     const maxHab = pj.getMaxHabilidad();
     el("perfilMasterHabilidades").querySelectorAll("input[data-clave]").forEach(input => {
         const hab = input.dataset.clave;
-        input.value = pj[hab];
+        input.value = pj.getBaseHabilidad(hab); // con el Underworld se ve la suma
+        input.min = Math.min(pj.getExtraUnderworld(hab), maxHab);
         input.max = maxHab;
         input.closest("label").hidden = !pj.puedeUsarHabilidad(hab);
     });
@@ -697,10 +825,12 @@ function pintarPerfil() {
     el("perfilMasterPAMax").textContent = pj.puntosArteMax;
     el("perfilMasterCor").value = pj.cor;
     el("perfilMasterEgo").value = pj.puntosEgo;
+    el("ranuraPerfilMasterEgo").hidden = !pj.protagonista; // solo los protagonistas tienen ego (el valor se conserva)
     if (pj.esNpc) pintarNpcPerfil();
     pintarCombatePerfil();
     pintarObjetosPerfil();
     pintarArtesPerfil();
+    if (!el("panelProtagonistas").hidden) pintarProtagonistas(false); // la columna de esta ficha
 }
 
 /* Artes del borrador: equipadas, sin equipar y oníricas (solo con Underworld). Se añaden del catálogo o se
@@ -1132,7 +1262,11 @@ function recalcularConservandoMaximos(cambio) {
 function aplicarCampo(input) {
     const pj = borrador;
     const clave = input.dataset.clave;
-    if (input.id === "perfilMasterNombre") {
+    if (input.dataset.habUw) {
+        pj.setHabilidadUnderworld(input.dataset.habUw, input.value);
+    } else if (input.classList.contains("check-underworld")) {
+        pj.setUnderworldHabilitado(input.checked);
+    } else if (input.id === "perfilMasterNombre") {
         pj.nombre = input.value.trim().slice(0, 60);
     } else if (input.id === "perfilMasterNombreReal") {
         pj.nombreReal = input.value.trim().slice(0, 60);
@@ -1151,9 +1285,11 @@ function aplicarCampo(input) {
         recalcularConservandoMaximos(() => { pj[clave] = limitar(entero(input.value, anterior), 1, Math.max(1, maximo)); });
     } else if (HABILIDADES_LISTA.includes(clave)) {
         if (!pj.puedeUsarHabilidad(clave)) return;
+        // Se escribe la suma (Underworld + invertido) y se guarda lo invertido
+        const extra = pj.getExtraUnderworld(clave);
         const anterior = Number(pj[clave]) || 0;
-        const maximo = Math.min(pj.getMaxHabilidad(), anterior + pj.getPuntosHabilidadDisponibles());
-        recalcularConservandoMaximos(() => { pj[clave] = limitar(entero(input.value, anterior), 0, Math.max(0, maximo)); });
+        const maximo = Math.min(Math.max(anterior, pj.getMaxHabilidad() - extra), anterior + pj.getPuntosHabilidadDisponibles());
+        recalcularConservandoMaximos(() => { pj[clave] = limitar(entero(input.value, anterior + extra) - extra, 0, Math.max(0, maximo)); });
     } else if (input.id === "perfilMasterVida") {
         pj.vida = limitar(entero(input.value, pj.vida), 0, pj.vidaMax);
     } else if (input.id === "perfilMasterPA") {
@@ -1315,6 +1451,10 @@ function inicializarPerfilMaster() {
     });
     el("btnAceptarPerfilMaster").addEventListener("click", aceptarPerfil);
     // Abierto desde el compendio: al cerrarse (y no por abrir una ventana hija, que lo oculta un momento) vuelve a él
+    el("btnProtagonistasPerfil").addEventListener("click", () => {
+        reproducir("click");
+        abrirPanelProtagonistas(el("panelProtagonistas").hidden, true);
+    });
     el("modalPerfilMaster").addEventListener("hidden.bs.modal", () => {
         setTimeout(() => {
             if (!volverAlCompendio || document.querySelector(".modal.show")) return;

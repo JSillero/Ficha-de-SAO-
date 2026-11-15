@@ -5435,3 +5435,160 @@ body.modo-lectura #divEquipamiento .btn-extras-equipo {
 #modalExtrasEquipo .ranura-desplegable[hidden] {
     display: none;
 }
+
+/* Habilidades del Underworld (htmlHabilidadesUnderworld en interfaz.js): perfil propio y perfil del máster */
+.habilidades-underworld .ranura-cuerpo {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.habilidades-underworld .aviso-underworld {
+    margin: 0;
+    font-size: 12px;
+    color: #888;
+}
+
+/* Panel de protagonistas (pintarProtagonistas en interfazMaster.js): a la derecha del perfil del máster, que se
+   ensancha; el formulario y el panel tienen cada uno su scroll */
+#modalPerfilMaster.con-protagonistas .modal-dialog {
+    max-width: min(1300px, 96vw);
+}
+
+#modalPerfilMaster.con-protagonistas .perfil-master-cuerpo {
+    display: flex;
+    gap: 16px;
+    overflow: hidden;
+}
+
+#modalPerfilMaster.con-protagonistas .perfil-master-cuerpo > #formPerfilMaster {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.panel-protagonistas {
+    flex: 0 0 auto;
+    width: min(440px, 40%);
+    overflow-y: auto;
+    padding: 12px;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.panel-protagonistas-titulo {
+    margin: 0 0 10px;
+    font-size: 15px;
+    font-weight: normal;
+    color: #5a5a5a;
+}
+
+.panel-protagonistas-titulo small {
+    font-size: 12px;
+    color: #8a6d2a;
+}
+
+.tabla-protagonistas-marco {
+    overflow-x: auto;
+}
+
+.tabla-protagonistas {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    color: #4D4D4D;
+}
+
+.tabla-protagonistas th,
+.tabla-protagonistas td {
+    padding: 4px 6px;
+    text-align: center;
+    white-space: nowrap;
+    border-bottom: 1px solid #f4f4f4;
+}
+
+.tabla-protagonistas thead th {
+    font-weight: normal;
+    font-size: 12px;
+    color: #5a5a5a;
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tabla-protagonistas thead th.desconectado {
+    color: #888;
+    font-style: italic;
+}
+
+.tabla-protagonistas tbody th {
+    text-align: left;
+    font-weight: normal;
+    font-size: 12px;
+    color: #666;
+}
+
+.tabla-protagonistas td.maximo {
+    color: #EBA601;
+    font-weight: bold;
+}
+
+.tabla-protagonistas .media {
+    background: #f4f4f4;
+    color: #5a5a5a;
+}
+
+.tabla-protagonistas .actual {
+    border-left: 2px solid #d9d9d9;
+    color: #3478bf;
+    font-weight: bold;
+}
+
+.panel-protagonistas-nota {
+    margin: 8px 0 0;
+    font-size: 12px;
+    color: #888;
+}
+
+/* Una columna: el panel va encima del formulario, con su propio scroll */
+@media (max-width: 1024px) {
+    #modalPerfilMaster.con-protagonistas .perfil-master-cuerpo {
+        flex-direction: column;
+        overflow-y: auto;
+    }
+
+    #modalPerfilMaster.con-protagonistas .perfil-master-cuerpo > #formPerfilMaster {
+        overflow-y: visible;
+        padding-right: 0;
+    }
+
+    .panel-protagonistas {
+        order: -1;
+        width: auto;
+        max-height: 40vh;
+    }
+}
+
+/* Habilidades del Underworld al matar un NPC: aviso en la ventana de muerte (pintarMitadMuerteNpc) y línea del
+   pop-up de recompensa (alDerrota en interfaz.js); también arriba de la ventana de botín (pintarBotin) */
+.aviso-underworld-muerte {
+    margin: 6px 0 0;
+    padding: 6px 10px;
+    border-left: 3px solid #c0392b;
+    border-radius: 4px;
+    background: #fff;
+    color: #c0392b;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+.alerta-sistema {
+    color: #c0392b;
+    font-weight: bold;
+}
+
+#modalBotin .aviso-underworld-muerte {
+    margin: 0 0 10px;
+}

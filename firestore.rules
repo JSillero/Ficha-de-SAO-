@@ -160,10 +160,15 @@ service cloud.firestore {
     function estadoValido() {
       let d = request.resource.data;
       return d.jugador == request.auth.uid
-        && d.keys().hasOnly(['jugador', 'master', 'nombre', 'vida', 'pa', 'nivel', 'iniciativa', 'estados', 'turno'])
+        && d.keys().hasOnly(['jugador', 'master', 'nombre', 'vida', 'pa', 'nivel', 'iniciativa', 'estados', 'turno', 'stats', 'uw'])
         && d.master is string
         && d.nombre is string && d.nombre.size() <= 60
-        && d.estados is list && d.estados.size() <= 30;
+        && d.estados is list && d.estados.size() <= 30
+        // Estadísticas de protagonista (o null) y habilidades del Underworld habilitadas; el máster las valida al leer
+        && d.get('uw', false) is bool
+        && (d.get('stats', null) == null
+          || (d.stats is map && d.stats.keys().hasOnly(['vidaMax', 'nivel', 'defensa', 'defensaEscudo', 'armadura', 'acierto', 'tiradaMedia',
+            'iniciativa', 'danno', 'tiradaSigilo', 'tiradaCarisma', 'vMovimiento', 'dFisico', 'dDistancia', 'dMagico', 'aguante', 'perspicacia', 'percepcionPasiva'])));
     }
 
     // Documento de fichas/{idPersonaje}: la ficha en JSON (como personajes/), del propio jugador

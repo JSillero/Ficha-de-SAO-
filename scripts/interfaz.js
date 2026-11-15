@@ -2,8 +2,8 @@ import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ESCUDO, TIPOS_ARMADURA, TIP
 import { esReliquia, usarHabilidadReliquia, motivoNoUsarHabilidad, cargarHabilidadReliquia, equipoDeRanura } from "./reliquias.js";
 import { partesDeEfecto, motivoNoUsarEfecto, usarEfectoEquipo, pasivasDeEquipo, cargarEfectos } from "./efectosEquipo.js";
 import Modificador, { TURNOS_PERMANENTE, numeroModificador, esModificadorDecimal } from "./modificador.js";
-import PJ from "./PJ.js";
-import { VALORES_COMBATE, PROFESIONES, crearResumenFicha } from "./resumenFicha.js";
+import PJ, { HABILIDADES_UNDERWORLD } from "./PJ.js";
+import { VALORES_COMBATE, PROFESIONES, crearResumenFicha, estadisticasProtagonista } from "./resumenFicha.js";
 import {
     VALORES_NPC, MAX_TIRADAS_NPC, MAX_PARTES_NPC, cargarTiradaNpc, parteNpc, tieneParte, partesExtra, parteQueOcupa,
     partesDeEquipoNpc, motivoNoQuitarParte, quitarParte, anadirParte, anadirBrazo, esCuerpoPorDefecto, PARTE_DE_MANO
@@ -37,7 +37,7 @@ import { escaparHtml } from "./html.js";
 import { getInstancia } from "./instancia.js";
 import { inicializarVentanas, abrirCapa, cerrarCapa } from "./ventanas.js";
 import {
-    inicializarOnline, getEstadoOnline, getPersonajesSala, getTodosPersonajesSala, avisarNombrePersonaje, setIdPersonajeNube, motivoNombreNoDisponible,
+    inicializarOnline, getEstadoOnline, getPersonajesSala, getTodosPersonajesSala, getSalaMaster, avisarNombrePersonaje, setIdPersonajeNube, motivoNombreNoDisponible,
     abrirAmigos, abrirAnadirAmigo, abrirGrupo, crearGrupo, salirGrupo, getGrupoSala, avisarEstadoGrupo, avisarTurno, verTurnoSala, abrirCuenta, abrirSala, abrirPersonajesNube,
     guardarEnNube, compartirArte, quitarArteDeSala, publicarEstadoDe, estaOcultoEnSala
 } from "./interfazOnline.js";
@@ -133,17 +133,21 @@ for (const element of inputs) {
                 element.value = personaje[element.id];
                 return;
             }
-            const maxPermitido = personaje.getMaxHabilidad();
-            const valorAnterior = Number(personaje[element.id]) || 0;
+            // Se escribe la suma (Underworld + invertido): el mínimo es la habilidad del Underworld y se guarda lo invertido
+            const extra = personaje.getExtraUnderworld(element.id);
+            const valorAnterior = personaje.getBaseHabilidad(element.id);
+            const maxPermitido = Math.max(valorAnterior, personaje.getMaxHabilidad());
             const disponibles = personaje.getPuntosHabilidadDisponibles();
             const maximoPosible = Math.min(maxPermitido, valorAnterior + disponibles);
+            const minimo = Math.min(extra, valorAnterior);
 
             if (val > maximoPosible) {
                 val = maximoPosible;
-            } else if (val < 0 || isNaN(val)) {
-                val = 0;
+            } else if (val < minimo || isNaN(val)) {
+                val = minimo;
             }
             element.value = val;
+            val = Math.max(0, val - extra);
         }
 
         // Si es un input de atributo/característica, aplicar restricciones de límite máximo (9) y límite total de puntos (22)
@@ -425,7 +429,11 @@ function actualizarTodo() {
         iniciativa: personaje.iniciativa, // para el orden en la cabecera del máster
         estados: Object.keys(ESTADOS_INFO).filter(clave => estaActivo(personaje, clave)),
         turno: turnoDe(personaje.idPersonaje),
-        id: personaje.idPersonaje // en modo máster, a qué personaje suyo (y su grupo) va
+        id: personaje.idPersonaje, // en modo máster, a qué personaje suyo (y su grupo) va
+        // Solo para el máster (estado de la sala, no el grupo): estadísticas si es protagonista y si tiene
+        // las habilidades del Underworld habilitadas (aviso al matar un NPC)
+        stats: personaje.protagonista && !personaje.esNpc ? estadisticasProtagonista(personaje) : null,
+        uw: personaje.tieneUnderworldActivo()
     });
 }
 
@@ -549,9 +557,24 @@ function companerosExp(instancia) {
     return candidatos.filter(p => p.grupo === elegido.grupo && p.instancia !== instancia);
 }
 
+/* ¿Tiene este candidato a la EXP las habilidades del Underworld habilitadas? Los del máster, por su ficha guardada;
+   los de los jugadores, por lo último que publicaron en su estado de la sala (uw) */
+function conUnderworldActivo(candidato) {
+    if (!candidato) return false;
+    if (candidato.instancia?.startsWith("m-")) {
+        return Boolean(npcPorId(candidato.id ?? candidato.instancia.slice(2))?.tieneUnderworldActivo?.());
+    }
+    return Boolean(candidato.id && getSalaMaster()?.estados?.[candidato.id]?.uw);
+}
+
 function pintarMitadMuerteNpc() {
     const pj = npcPorId(muerteNpcAbierta?.id);
     const instancia = document.getElementById("selectExpMuerteNpc").value;
+    const elegido = instancia ? candidatosExp().find(p => p.instancia === instancia) : null;
+    const aviso = document.getElementById("avisoUnderworldMuerteNpc");
+    aviso.hidden = !conUnderworldActivo(elegido);
+    aviso.textContent = aviso.hidden ? ""
+        : `${elegido.nombre || "Este personaje"} tiene las habilidades del Underworld habilitadas: al recibir la recompensa se avisará de que el sistema ha sido alertado.`;
     const companeros = instancia ? companerosExp(instancia) : [];
     const mitad = Math.floor((pj?.npc.expRecompensa ?? 0) / 2);
     document.getElementById("mitadMuerteNpc").textContent = companeros.length
@@ -562,7 +585,7 @@ function pintarMitadMuerteNpc() {
 /* Reparto de la derrota: un evento "derrota" para toda la sala (con el sonido de muerte). Quien mata recibe toda la
    EXP y la recompensa (Cor y objetos clave directos; los objetos, a su botín); sus compañeros de grupo, la mitad de
    la EXP. Lo aplica cada pestaña al recibirlo (alDerrota). Sin sala solo se pinta aquí, para repartirlo a mano. */
-function repartirDerrota({ nombre, exp, cor, objetos, objetosClave, para, companeros }) {
+function repartirDerrota({ nombre, exp, cor, objetos, objetosClave, para, companeros, alertaSistema = false }) {
     const mitad = Math.floor(exp / 2);
     const lineas = [];
     if (para) lineas.push(`${para.nombre || "Sin nombre"}: +${exp} EXP`);
@@ -581,7 +604,9 @@ function repartirDerrota({ nombre, exp, cor, objetos, objetosClave, para, compan
         exp,
         grupo: companeros.map(p => p.instancia),
         mitad,
-        botin: para ? { cor, objetos, objetosClave } : null
+        botin: para ? { cor, objetos, objetosClave } : null,
+        // Habilidades del Underworld habilitadas: solo lo ve quien recibe la recompensa (no va en las líneas públicas)
+        alertaSistema: Boolean(para && alertaSistema)
     });
     // Los personajes del máster no reciben sus propios eventos: lo suyo se aplica aquí
     if (evento) alDerrota(evento);
@@ -609,6 +634,8 @@ function alDerrota(evento) {
             if (cor > 0) anadirCor(p, cor);
             p.objetosClave.push(...claves);
             p.botin.push(...objetos);
+            // Lo ve también en la ventana de botín mientras le quede algo por recoger
+            if (objetos.length && (d.alertaSistema === true || p.tieneUnderworldActivo?.())) p.alertaSistemaBotin = true;
         });
         if (pj) {
             const despues = leerPersonajeDeInstancia(d.atacante);
@@ -617,7 +644,13 @@ function alDerrota(evento) {
             if (cor > 0) lineas.push(`+${cor} Cor`);
             if (claves.length) lineas.push(`Objetos clave: ${claves.map(o => o.nombre).join(", ")}`);
             if (objetos.length) lineas.push(`Botín por recoger: ${objetos.map(o => `${o.nombre} ×${o.cantidad}`).join(", ")}`);
-            mostrarPopupInfo(`${escaparHtml(despues?.nombre || "Tu personaje")} derrota a ${escaparHtml(npc)}`, lineas.map(escaparHtml));
+            const lineasHtml = lineas.map(escaparHtml);
+            // Ha matado con las habilidades del Underworld habilitadas (lo decide el máster al repartir, o por si
+            // acaso el propio personaje)
+            if (d.alertaSistema === true || despues?.tieneUnderworldActivo?.()) {
+                lineasHtml.push(`<span class="alerta-sistema">El sistema ha sido alertado</span>`);
+            }
+            mostrarPopupInfo(`${escaparHtml(despues?.nombre || "Tu personaje")} derrota a ${escaparHtml(npc)}`, lineasHtml);
             if (objetos.length && esElDeLaFicha(idDeInstancia(d.atacante))) setTimeout(abrirBotin, 600);
         }
     }
@@ -645,6 +678,9 @@ const companerosBotin = () => (getGrupoSala()?.miembros ?? []).filter(m => !esDe
 
 function pintarBotin() {
     const botin = personaje.botin ?? [];
+    // El aviso del sistema dura hasta que no queda botín por recoger
+    if (!botin.length) personaje.alertaSistemaBotin = false;
+    document.getElementById("avisoUnderworldBotin").hidden = !personaje.alertaSistemaBotin;
     document.getElementById("contadorBotin").textContent = `(${botin.length})`;
     document.getElementById("btnCogerTodoBotin").disabled = !botin.length;
     const companeros = companerosBotin();
@@ -762,7 +798,8 @@ function inicializarMuerteNpc() {
             objetos: structuredClone(pj.npc.recompensa.objetos),
             objetosClave: structuredClone(pj.npc.recompensa.objetosClave),
             para,
-            companeros: para ? companerosExp(instancia) : []
+            companeros: para ? companerosExp(instancia) : [],
+            alertaSistema: conUnderworldActivo(para)
         };
         bootstrap.Modal.getOrCreateInstance(modalEl).hide();
         const motivo = retirarNpcMuerto(datos.id);
@@ -1158,14 +1195,15 @@ function actualizarAtributos() {
 }
 
 function actualizarHabilidades() {
-    atletismoInp.value = personaje.atletismo;
-    combateInp.value = personaje.combate;
-    percepcionInp.value = personaje.percepcion;
-    sigiloInp.value = personaje.subterfugio;
-    carismaInp.value = personaje.comunicacion;
-    culturaInp.value = personaje.cultura;
-    profesionInp.value = personaje.profesion;
-    sacroInp.value = personaje.sacro;
+    // Con las habilidades del Underworld se ve la suma (Underworld + invertido); lo invertido es lo que gasta puntos
+    atletismoInp.value = personaje.getBaseHabilidad("atletismo");
+    combateInp.value = personaje.getBaseHabilidad("combate");
+    percepcionInp.value = personaje.getBaseHabilidad("percepcion");
+    sigiloInp.value = personaje.getBaseHabilidad("subterfugio");
+    carismaInp.value = personaje.getBaseHabilidad("comunicacion");
+    culturaInp.value = personaje.getBaseHabilidad("cultura");
+    profesionInp.value = personaje.getBaseHabilidad("profesion");
+    sacroInp.value = personaje.getBaseHabilidad("sacro");
     // Sacro solo se ve en los personajes del Underworld (casilla del perfil)
     document.getElementById("habSacro").hidden = !personaje.esUnderworld;
 
@@ -1190,20 +1228,21 @@ function actualizarHabilidades() {
         const btnMas = contenedor.querySelector('.btn-hab-mas');
         if (!input) return;
 
-        // Establecer atributos HTML5 min y max dinámicos según el nivel
-        input.min = 0;
+        // Establecer atributos HTML5 min y max dinámicos según el nivel. El mínimo es la habilidad del Underworld
+        const extra = personaje.getExtraUnderworld(input.id);
+        input.min = Math.min(extra, maxPorHab);
         input.max = maxPorHab;
         input.readOnly = !puedeRepartir;
-        input.title = puedeRepartir ? "" : MOTIVOS_ZONA.habilidades;
+        input.title = puedeRepartir ? (extra ? `Underworld ${extra} + ${personaje[input.id]} puntos` : "") : MOTIVOS_ZONA.habilidades;
 
-        // Si por cambio de nivel el valor actual del personaje supera el nuevo máximo, ajustarlo
+        // Si por cambio de nivel lo invertido supera el nuevo máximo, ajustarlo
         if (personaje[input.id] > maxPorHab) {
             personaje[input.id] = maxPorHab;
-            input.value = maxPorHab;
+            input.value = personaje.getBaseHabilidad(input.id);
         }
 
         const valorActual = Number(input.value) || 0;
-        // Botón '+': solo visible si hay puntos disponibles y no se ha llegado al tope
+        // Botón '+': solo visible si hay puntos disponibles y no se ha llegado al tope (contando el Underworld)
         if (btnMas) {
             if (puedeRepartir && disponibles > 0 && valorActual < maxPorHab) {
                 btnMas.classList.remove('oculto');
@@ -1211,9 +1250,9 @@ function actualizarHabilidades() {
                 btnMas.classList.add('oculto');
             }
         }
-        // Botón '-': visible si la habilidad tiene puntos (> 0)
+        // Botón '-': visible si la habilidad tiene puntos invertidos (> 0); el Underworld no se baja aquí
         if (btnMenos) {
-            if (puedeRepartir && valorActual > 0) {
+            if (puedeRepartir && (Number(personaje[input.id]) || 0) > 0) {
                 btnMenos.classList.remove('oculto');
             } else {
                 btnMenos.classList.add('oculto');
@@ -1227,7 +1266,8 @@ function actualizarHabilidades() {
 function actualizarHabilidadesEfectivas() {
     document.querySelectorAll('#habilidadesDiv .hab-efectivo').forEach(span => {
         const hab = span.dataset.hab;
-        const base = Number(personaje[hab]) || 0;
+        const base = personaje.getBaseHabilidad(hab); // lo que se ve en el campo (con el Underworld)
+        const underworld = base - (Number(personaje[hab]) || 0);
         const efectivo = personaje.getGenerico(hab);
         const diferencia = efectivo - base;
         span.classList.toggle('sube', diferencia > 0);
@@ -1243,7 +1283,7 @@ function actualizarHabilidadesEfectivas() {
         const estados = personaje.getModificadorEstados(hab);
         const modificadores = personaje.getModificador(hab) - estados;
         const armadura = hab === 'atletismo' ? Number(personaje.equipoArmadura?.penalizacionAtletismo) || 0 : 0;
-        const partes = [`Base ${base}`];
+        const partes = [underworld ? `Base ${base} (Underworld ${underworld})` : `Base ${base}`];
         if (modificadores) partes.push(`modificadores ${conSigno(modificadores)}`);
         if (estados) partes.push(`estados ${conSigno(estados)}`);
         if (armadura) partes.push(`armadura −${armadura}`);
@@ -6266,9 +6306,9 @@ function htmlFichaResumen(resumen, { perfil = false } = {}) {
         </div>
         ${deJugador ? `<div class="ranuras-dobles">
             ${interruptor("esUnderworld", "Underworld", "onirica", "Personaje del Underworld: Sacro, daño mágico y habilidades oníricas", personaje.esUnderworld)}
-            ${interruptor("protagonista", "Protagonista", "diario", "Protagonista: tiene diario (menú Social)", personaje.protagonista)}
+            ${interruptor("protagonista", "Protagonista", "diario", "Protagonista: tiene diario (menú Social) y puntos de ego", personaje.protagonista)}
         </div>
-        <div class="ranura barra-ego" title="Puntos de ego: solo los ves tú">
+        ${personaje.protagonista ? `<div class="ranura barra-ego" title="Puntos de ego: solo los ves tú">
             <span class="ranura-icono" data-icono="ego"></span>
             <span class="ranura-etiqueta">Puntos de ego</span>
             <b class="cor-total ranura-valor"><span>${personaje.puntosEgo}</span></b>
@@ -6278,6 +6318,7 @@ function htmlFichaResumen(resumen, { perfil = false } = {}) {
                 <button type="button" class="btn-cor gastar" data-ego="gastar" title="Quitar esta cantidad" aria-label="Quitar puntos de ego">${iconoSao("egoMenos")}</button>
             </span>
         </div>` : ""}
+        ${personaje.esUnderworld ? htmlHabilidadesUnderworld(personaje, perfilUnderworldAbierto) : ""}` : ""}
         ${htmlDatosPerfil()}` : "";
 
     // Lo que ven también tus compañeros, en ranuras desplegables (habilidades y valores abiertos)
@@ -6296,6 +6337,29 @@ function htmlFichaResumen(resumen, { perfil = false } = {}) {
         ${bloque("artes", "Artes equipadas", cuantos(resumen.artes.length, "arte", "artes"), artes || `<p class="lista-vacia">Ninguna.</p>`, false)}
         ${bloque("armadura", "Equipamiento", cuantos(resumen.equipo.length, "pieza", "piezas"), equipo || `<p class="lista-vacia">Nada equipado.</p>`, false)}`;
 }
+
+/* Perfil: habilidades del Underworld (solo con Underworld; no van en la ficha resumida). Interruptor para
+   habilitarlas y una pastilla por habilidad con su máximo. Lo usa también el perfil del máster. */
+function htmlHabilidadesUnderworld(pj, abierto) {
+    const filas = Object.entries(HABILIDADES_UNDERWORLD).map(([hab, { etiqueta, max }]) =>
+        `<label>${etiqueta} <input type="number" data-hab-uw="${hab}" min="0" max="${max}" value="${pj.habilidadesUnderworld[hab]}"></label>`).join("");
+    const resumen = pj.underworldHabilitado ? "Habilitadas" : "Deshabilitadas";
+    return `<details class="ranura-desplegable habilidades-underworld"${abierto ? " open" : ""}>
+            <summary><span class="ranura-icono" data-icono="onirica"></span><span class="ranura-etiqueta">Habilidades del Underworld</span><span class="ranura-resumen">${resumen}</span></summary>
+            <div class="ranura-cuerpo">
+                <div class="ranura" title="Mientras están habilitadas se suman a tus habilidades sin gastar puntos (sin pasar del máximo por nivel)">
+                    <span class="ranura-icono" data-icono="aceptar"></span>
+                    <label class="ranura-etiqueta" for="uwHabilitado-${pj.idPersonaje}">Habilitadas</label>
+                    <input type="checkbox" class="check-underworld" id="uwHabilitado-${pj.idPersonaje}" ${pj.underworldHabilitado ? "checked" : ""}>
+                </div>
+                <div class="campos-sao">${filas}</div>
+                <p class="aviso-underworld">Solo las ves tú. Pericia es Sigilo y Sentidos es Percepción.</p>
+            </div>
+        </details>`;
+}
+
+/* ¿Estaba abierta la ranura de las habilidades del Underworld? (se conserva al repintar el perfil) */
+let perfilUnderworldAbierto = false;
 
 /* Perfil: amigos, sala y grupo (sin pedir nada a la red: lo que ya se sabe), en ranuras de solo lectura */
 function htmlDatosPerfil() {
@@ -6349,8 +6413,8 @@ const PREGUNTAS_CASILLA_PERFIL = {
         desactivar: { titulo: "Underworld", texto: "¿Quitar Underworld? Sacro volverá a 0 y sus puntos quedarán libres. Las habilidades oníricas se guardan y vuelven si lo activas de nuevo." }
     },
     protagonista: {
-        activar: { titulo: "Protagonista", texto: "¿Marcar el personaje como protagonista? Tendrá un diario en el menú Social." },
-        desactivar: { titulo: "Protagonista", texto: "¿Quitar Protagonista? El diario se guarda y vuelve si lo activas de nuevo." }
+        activar: { titulo: "Protagonista", texto: "¿Marcar el personaje como protagonista? Tendrá un diario en el menú Social y puntos de ego." },
+        desactivar: { titulo: "Protagonista", texto: "¿Quitar Protagonista? El diario y los puntos de ego se guardan y vuelven si lo activas de nuevo." }
     }
 };
 
@@ -6371,8 +6435,21 @@ function inicializarPerfil() {
         actualizarTodo();
         contenido.querySelector(".barra-ego .cor-total span").textContent = personaje.puntosEgo;
     });
+    contenido.addEventListener("toggle", (e) => {
+        if (e.target.matches?.(".habilidades-underworld")) perfilUnderworldAbierto = e.target.open;
+    }, true);
     contenido.addEventListener("change", async (e) => {
         if (!fichaResumenAbierta?.perfil) return;
+        // Habilidades del Underworld: sin confirmación, se aplican y se repinta el perfil
+        const inputUw = e.target.closest("[data-hab-uw]");
+        const checkUw = e.target.closest(".check-underworld");
+        if (inputUw || checkUw) {
+            if (inputUw) personaje.setHabilidadUnderworld(inputUw.dataset.habUw, inputUw.value);
+            else personaje.setUnderworldHabilitado(checkUw.checked);
+            actualizarTodo();
+            abrirPerfil();
+            return;
+        }
         const inputNombreReal = e.target.closest(".input-nombre-real-perfil");
         if (inputNombreReal) {
             personaje.nombreReal = inputNombreReal.value.trim().slice(0, 60);
@@ -7570,6 +7647,8 @@ document.addEventListener("DOMContentLoaded", () => {
             abrirEditorObjetoClave: (...args) => abrirEditorObjetoClave(...args),
             // Artes del perfil: catálogo y formulario de la ficha, sobre el borrador
             detalleArte,
+            // Habilidades del Underworld (mismo bloque que en tu perfil)
+            htmlHabilidadesUnderworld,
             abrirEditorArte: (...args) => abrirEditorArte(...args),
             abrirEditorOnirica: (...args) => abrirEditorOnirica(...args),
             abrirCatalogo: (...args) => abrirCatalogoEn(...args),

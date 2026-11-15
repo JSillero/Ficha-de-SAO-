@@ -18,6 +18,25 @@ export const HABILIDADES_LISTA = [
    Sacro no cuenta: es especial, casi todos lo tienen a 0 y no se usa en tiradas. */
 export const EMBRIAGUEZ_CARISMA = 3;
 export const EMBRIAGUEZ_RESTO = -1;
+/* Habilidades del Underworld (perfil, solo las ve el propio personaje): mientras están habilitadas suben el mínimo
+   de la habilidad normal sin gastar puntos (en la ficha se ve la suma: Underworld + puntos invertidos). El total no
+   pasa del máximo por nivel: los puntos invertidos que sobren quedan sin asignar (ajustarHabilidadesUnderworld).
+   Pericia = Sigilo, Sentidos = Percepción. */
+export const HABILIDADES_UNDERWORLD = {
+    combate: { etiqueta: "Combate", max: 10 },
+    atletismo: { etiqueta: "Atletismo", max: 10 },
+    subterfugio: { etiqueta: "Pericia", max: 5 },
+    sacro: { etiqueta: "Sacro", max: 10 },
+    percepcion: { etiqueta: "Sentidos", max: 5 },
+    cultura: { etiqueta: "Cultura", max: 5 }
+};
+const crearHabilidadesUnderworld = () => Object.fromEntries(Object.keys(HABILIDADES_UNDERWORLD).map(hab => [hab, 0]));
+/* Valor válido de una habilidad del Underworld (entero entre 0 y su máximo) */
+export function valorHabilidadUnderworld(hab, valor) {
+    const max = HABILIDADES_UNDERWORLD[hab]?.max ?? 0;
+    return Math.min(max, Math.max(0, Math.trunc(Number(valor) || 0)));
+}
+
 export const HABILIDADES_EMBRIAGUEZ = HABILIDADES_LISTA.filter(hab => hab !== 'comunicacion' && hab !== 'sacro');
 
 /* Estados alterados. Cada uno es { valor, turnos }; turnos = TURNOS_PERMANENTE (-1) es permanente.
@@ -41,7 +60,7 @@ const CAMPOS_SIMPLES = [
     'numeroAcciones', 'izquierda', 'derecha', 'cabeza', 'pies', 'reaccionGuardada',
     'enSigilo', 'valorSigilo',
     'comidaActiva', 'tipoProfesion', 'esUnderworld', 'protagonista', 'zona', 'cor', 'puntosEgo', 'nombreReal',
-    'esNpc', 'idPlantilla',
+    'esNpc', 'idPlantilla', 'underworldHabilitado', 'habilidadesUnderworld', 'alertaSistemaBotin',
     'desbloqueosArteExtra', 'desbloqueosArteGastados',
     'notas', 'listadoArtes', 'notasBaul', 'listaDeAmigos', 'recetasProfesion', 'comportamientoCombate'
 ];
@@ -82,7 +101,10 @@ export default class PJ {
         this.tipoProfesion = "herrero"; // oficio: herrero, armero, cocinero o alquimista
         this.sacro = 0;
         this.esUnderworld = false; // perfil: habilita Sacro, daño mágico y habilidades oníricas
-        this.protagonista = false; // perfil: tiene diario
+        this.protagonista = false; // perfil: tiene diario y puntos de ego
+        /* Habilidades del Underworld (HABILIDADES_UNDERWORLD): solo con esUnderworld y habilitadas */
+        this.underworldHabilitado = false;
+        this.habilidadesUnderworld = crearHabilidadesUnderworld();
 
         /* NPC del máster (npc.js): sin características ni habilidades; valores de combate a mano en npc.
            Se decide al crearlo y no cambia. idPlantilla: plantilla del compendio de la que salió (o null). */
@@ -124,6 +146,7 @@ export default class PJ {
         this.objetosClave = []; // [{ nombre, descripcion }]: no ocupan hueco ni se usan
         this.armasLanzadas = []; // [{ mano, equipo }]: lanzas y cuchillos lanzados sin recoger (objetos.js)
         this.botin = []; // objetos de la recompensa de un NPC por recoger (ventana de botín; sin límite)
+        this.alertaSistemaBotin = false; // el botín viene de un NPC matado con las habilidades del Underworld habilitadas
         this.comidaActiva = ""; // nombre de la comida cuyo efecto está activo (sus modificadores llevan origen "comida")
         this.cor = 0; // monedas: no ocupan hueco, sin límite, nunca negativas
         this.puntosEgo = 0; // contador del perfil (solo lo ve el propio personaje), nunca negativo
@@ -190,6 +213,7 @@ export default class PJ {
 
     calcularCaracteristicas() {
         if (this.esNpc) return this.calcularNpc();
+        this.ajustarHabilidadesUnderworld();
         let nivelSiguiente = this.nivel + 1;
         if (this.nivel >= 150) {
             this.experienciaMax = 99999999999999999;
@@ -201,7 +225,7 @@ export default class PJ {
 
         this.puntosArteMax = 3 + (this.nivel > 30 ? Math.floor((this.nivel - 16) / 15) : 0) + this.getModificador("arte");
         // Sin memoria de artes hasta el nivel 16
-        this.espaciosArte = (this.nivel >= 16 ? 4 + Math.floor(this.cultura / 10) : 0) + this.getModificador("espacios");
+        this.espaciosArte = (this.nivel >= 16 ? 4 + Math.floor(this.getBaseHabilidad("cultura") / 10) : 0) + this.getModificador("espacios");
         this.aguante = this.fortaleza + (this.voluntad / 2) + this.getModificador("aguante");;
         // La oscuridad resta PV máximos hasta un descanso largo. Los PV son enteros aunque el Aguante tenga ,5
         this.vidaMax = Math.floor(this.aguante * (Math.floor((this.nivel - 1) / 5) + 1)) + this.getModificador("vidaMax")
@@ -300,11 +324,53 @@ export default class PJ {
         this.calcularCaracteristicas();
     }
 
+    /* ¿Suman ahora las habilidades del Underworld? (casilla Underworld y habilitadas en el perfil) */
+    tieneUnderworldActivo() {
+        return Boolean(this.esUnderworld && this.underworldHabilitado && !this.esNpc);
+    }
+
+    /* Lo que suma la habilidad del Underworld a una habilidad (0 si no está activa) */
+    getExtraUnderworld(hab) {
+        return this.tieneUnderworldActivo() ? Number(this.habilidadesUnderworld?.[hab]) || 0 : 0;
+    }
+
+    /* Valor base de una habilidad: habilidad del Underworld (mínimo gratuito) + puntos invertidos, sin pasar del
+       máximo por nivel. Sin modificadores: eso es getGenerico. */
+    getBaseHabilidad(hab) {
+        const invertido = Number(this[hab]) || 0;
+        const extra = this.getExtraUnderworld(hab);
+        if (!extra) return invertido;
+        return Math.min(Math.max(invertido, this.getMaxHabilidad()), invertido + extra);
+    }
+
+    /* Con las habilidades del Underworld activas, lo invertido no puede hacer pasar el total del máximo por nivel:
+       lo que sobre vuelve a los puntos sin asignar (al deshabilitarlas no se recupera). */
+    ajustarHabilidadesUnderworld() {
+        if (!this.tieneUnderworldActivo()) return;
+        const max = this.getMaxHabilidad();
+        for (const hab of Object.keys(HABILIDADES_UNDERWORLD)) {
+            const tope = Math.max(0, max - this.getExtraUnderworld(hab));
+            if ((Number(this[hab]) || 0) > tope) this[hab] = tope;
+        }
+    }
+
+    setHabilidadUnderworld(hab, valor) {
+        if (!(hab in HABILIDADES_UNDERWORLD)) return;
+        this.habilidadesUnderworld[hab] = valorHabilidadUnderworld(hab, valor);
+        this.calcularCaracteristicas();
+    }
+
+    setUnderworldHabilitado(valor) {
+        this.underworldHabilitado = Boolean(valor);
+        this.calcularCaracteristicas();
+    }
+
     getGenerico(atributo) {
         // Sin Underworld, Sacro es 0 (tampoco cuentan sus modificadores)
         if (!this.puedeUsarHabilidad(atributo)) return 0;
         let penalizacion = (atributo === 'atletismo') ? (Number(this.equipoArmadura?.penalizacionAtletismo) || 0) : 0;
-        const valor = parseInt(this[atributo]) + parseInt(this.getModificador(atributo)) - penalizacion;
+        const base = HABILIDADES_LISTA.includes(atributo) ? this.getBaseHabilidad(atributo) : parseInt(this[atributo]);
+        const valor = base + parseInt(this.getModificador(atributo)) - penalizacion;
         // El Atletismo efectivo no baja de 0. Combate sí puede (la quemadura sobrante daña PV).
         return atributo === 'atletismo' ? Math.max(0, valor) : valor;
     }
@@ -355,7 +421,9 @@ export default class PJ {
 
     subirHabilidad(nombreHab) {
         if (!this.puedeUsarHabilidad(nombreHab)) return false;
-        if (this.getPuntosHabilidadDisponibles() > 0 && this[nombreHab] < this.getMaxHabilidad()) {
+        // Con las habilidades del Underworld el total (invertido + extra) tampoco pasa del máximo
+        if (this.getPuntosHabilidadDisponibles() > 0 && this[nombreHab] < this.getMaxHabilidad()
+            && this.getBaseHabilidad(nombreHab) < this.getMaxHabilidad()) {
             this[nombreHab]++;
             this.calcularCaracteristicas();
             return true;
@@ -458,6 +526,11 @@ export default class PJ {
         this.esUnderworld = jsonObject.esUnderworld === undefined ? Number(this.sacro) > 0 : Boolean(this.esUnderworld);
         if (!this.esUnderworld) this.sacro = 0;
         this.protagonista = Boolean(this.protagonista);
+        this.underworldHabilitado = Boolean(this.underworldHabilitado);
+        this.alertaSistemaBotin = Boolean(this.alertaSistemaBotin);
+        const uw = this.habilidadesUnderworld && typeof this.habilidadesUnderworld === "object" ? this.habilidadesUnderworld : {};
+        this.habilidadesUnderworld = Object.fromEntries(Object.keys(HABILIDADES_UNDERWORLD)
+            .map(hab => [hab, valorHabilidadUnderworld(hab, uw[hab])]));
         // NPC: sin características ni habilidades (npc.js guarda sus valores)
         this.esNpc = Boolean(this.esNpc);
         this.idPlantilla = this.esNpc && this.idPlantilla ? String(this.idPlantilla).slice(0, 60) : null;
@@ -465,6 +538,7 @@ export default class PJ {
         if (this.esNpc) {
             this.esUnderworld = false;
             this.protagonista = false;
+            this.underworldHabilitado = false;
         }
         this.cor = Math.max(0, Math.floor(Number(this.cor) || 0));
         this.puntosEgo = Math.max(0, Math.floor(Number(this.puntosEgo) || 0));

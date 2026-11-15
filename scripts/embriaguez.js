@@ -20,7 +20,7 @@ export function estaEmbriagado(pj) {
 /* Valor de la habilidad con modificadores y armadura, sin el mínimo de 0 que getGenerico aplica al Atletismo */
 function valorSinMinimo(pj, habilidad) {
     const armadura = habilidad === "atletismo" ? Number(pj.equipoArmadura?.penalizacionAtletismo) || 0 : 0;
-    return (Number(pj[habilidad]) || 0) + (Number(pj.getModificador(habilidad)) || 0) - armadura;
+    return pj.getBaseHabilidad(habilidad) + (Number(pj.getModificador(habilidad)) || 0) - armadura;
 }
 
 /** Habilidades que están por debajo de 0 estando embriagado, con su valor: [{ habilidad, valor }]
