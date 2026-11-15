@@ -485,6 +485,9 @@ export default class PJ {
                 valor: Math.trunc(Number(guardado.valor) || 0),
                 turnos: Math.trunc(Number(guardado.turnos) || 0)
             };
+            // Duración con la que empezó (para dibujar los turnos gastados); las fichas antiguas no la tienen
+            const totales = Math.trunc(Number(guardado.turnosTotales) || 0);
+            if (totales > 0) this.estados[estado].turnosTotales = totales;
             // Marcado para quitarse con el descanso corto (solo se guarda si es true)
             if (guardado.descansoCorto) this.estados[estado].descansoCorto = true;
             // Provocado por la comida activa: se quita con ella

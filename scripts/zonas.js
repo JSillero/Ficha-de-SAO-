@@ -10,7 +10,7 @@ import { TURNOS_PERMANENTE } from "./modificador.js";
 import { restablecerAcciones as restablecerPartes } from "./turno.js";
 import { equiposDePartes } from "./npc.js";
 import { quitarComida } from "./objetos.js";
-import { ESTADOS_INFO, quitarEstado } from "./estados.js";
+import { ESTADOS_INFO, quitarEstado, esEstadoNegativo } from "./estados.js";
 import { reiniciarEnfriamientos } from "./reliquias.js";
 
 /* Zonas: etiqueta e icono (iconos.js y imgs/<icono>.svg) */
@@ -22,8 +22,6 @@ export const ZONAS = {
 
 export const ZONA_POR_DEFECTO = "noSegura";
 
-/* Estados que no se curan con el descanso largo (no son negativos) */
-const ESTADOS_POSITIVOS = ["regeneracion"];
 
 /** Zona segura o base: no se gastan acciones ni se recibe daño */
 export function esZonaSegura(pj) {
@@ -172,7 +170,7 @@ export function descansoLargo(pj) {
     const resumen = descansoCorto(pj).filter(linea => linea !== "Sin cambios");
 
     for (const [clave, estado] of Object.entries(pj.estados)) {
-        if (!estadoActivo(estado) || ESTADOS_POSITIVOS.includes(clave)) continue;
+        if (!estadoActivo(estado) || !esEstadoNegativo(clave)) continue;
         quitarEstado(pj, clave);
         resumen.push(`Cura: ${etiquetaEstado(clave)}`);
     }

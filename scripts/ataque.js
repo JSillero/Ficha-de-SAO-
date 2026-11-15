@@ -4,7 +4,7 @@
 
 import { ARMAS, ELEMENTOS } from "./equipamiento.js";
 import { combinarModos } from "./dados.js";
-import { ESTADOS_INFO, TIPOS_DANNO } from "./estados.js";
+import { ESTADOS_INFO, TIPOS_DANNO, CURAR_NEGATIVOS } from "./estados.js";
 import { anadirEstadosAlGolpe } from "./estadosAlAcertar.js";
 
 /* Nombre del arma para el efecto del golpe */
@@ -161,17 +161,21 @@ export function calcularDannoLanzamientoArma(pj, item, critico) {
 
 /**
  * Efecto que un golpe lleva al objetivo (poción aplicada al arma o efecto de una arrojadiza):
- * { nombre, pv, estado, elemental }, o null si no hace nada. Va en el golpe para que quien lo
- * reciba se lo aplique (aplicarEfectoEnObjetivo en objetos.js).
+ * { nombre, pv, estado: null, estadosObjeto, elemental }, o null si no hace nada. Va en el golpe para que quien
+ * lo reciba se lo aplique (aplicarEfectoEnObjetivo en objetos.js). `estado` queda a null por compatibilidad.
  */
 export function efectoDeObjeto(objeto) {
     if (!objeto) return null;
     const pv = Number(objeto.pv) || 0;
-    const estado = objeto.estado?.clave ? { ...objeto.estado } : null;
+    const estadosObjeto = estadosDeObjeto(objeto).map(estado => ({ ...estado }));
     const elemental = objeto.elemental?.tipo && Number(objeto.elemental.cantidad) > 0 ? { ...objeto.elemental } : null;
-    if (!pv && !estado && !elemental) return null;
-    return { nombre: objeto.nombre || "Poción", pv, estado, elemental };
+    if (!pv && !estadosObjeto.length && !elemental) return null;
+    return { nombre: objeto.nombre || "Poción", pv, estado: null, estadosObjeto, elemental };
 }
+
+/* Estados de un objeto (lista `estados`; el antiguo `estado` era uno solo) */
+const estadosDeObjeto = (objeto) => (Array.isArray(objeto?.estados) ? objeto.estados : objeto?.estado ? [objeto.estado] : [])
+    .filter(estado => estado?.clave);
 
 /**
  * Daño elemental del arma: [{ tipo, cantidad, etiqueta }] de los elementos con daño > 0.
@@ -187,7 +191,8 @@ export function dannoElementalArma(item) {
 
 const conMult = (valor, mult) => mult > 1 ? `${valor}×${mult}` : `${valor}`;
 
-/* Texto del efecto de una poción o arrojadiza sobre el objetivo (PV, estado y daño elemental) */
+/* Texto del efecto de una comida, poción o arrojadiza (PV, PA, estados y daño elemental). Los estados de la
+   comida duran hasta el descanso corto */
 export function describirEfecto(objeto, conNombre = true) {
     const partes = [];
     const pv = Number(objeto?.pv) || 0;
@@ -195,11 +200,15 @@ export function describirEfecto(objeto, conNombre = true) {
     if (pv < 0) partes.push(`${-pv} de daño`);
     const pa = Number(objeto?.pa) || 0;
     if (pa > 0) partes.push(`recupera ${pa} PA`);
-    const estado = objeto?.estado;
-    if (estado?.clave) {
-        const etiqueta = ESTADOS_INFO[estado.clave]?.etiqueta ?? estado.clave;
-        if (estado.quitar) partes.push(`cura ${etiqueta.toLowerCase()}`);
-        else partes.push(`${etiqueta} ${estado.valor}${estado.turnos > 0 ? ` (${estado.turnos} turnos)` : ""}`);
+    for (const estado of estadosDeObjeto(objeto)) {
+        if (estado.clave === CURAR_NEGATIVOS) { if (estado.quitar) partes.push("cura los estados negativos (salvo oscuridad y embriaguez)"); continue; }
+        const info = ESTADOS_INFO[estado.clave];
+        const etiqueta = info?.etiqueta ?? estado.clave;
+        if (estado.quitar) { partes.push(`cura ${etiqueta.toLowerCase()}`); continue; }
+        const duracion = objeto?.tipo === "comida" ? "hasta el descanso corto"
+            : Number(estado.turnos) === -1 ? "permanente"
+            : `${estado.turnos} turno${Number(estado.turnos) === 1 ? "" : "s"}`;
+        partes.push(`${etiqueta}${info?.unidad ? ` ${estado.valor}` : ""} (${duracion})`);
     }
     const elemental = objeto?.elemental;
     if (elemental?.tipo && Number(elemental.cantidad) > 0) {
@@ -242,7 +251,7 @@ export function calcularDannoLanzamiento(pj, objeto, critico) {
         notas.push("Ataque desde el sigilo. Si el objetivo no muere, sales del sigilo.");
     }
     if (critico) notas.push("Crítico: bonificador de daño multiplicado.");
-    if (objeto?.estado?.clave || objeto?.elemental?.tipo) notas.push(`Efecto: ${describirEfecto(objeto)}`);
+    if (estadosDeObjeto(objeto).length || objeto?.elemental?.tipo) notas.push(`Efecto: ${describirEfecto(objeto)}`);
 
     return {
         total: dannoObjeto + bono * multBono,

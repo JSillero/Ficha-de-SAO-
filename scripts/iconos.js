@@ -308,6 +308,52 @@ const GLIFOS = {
         <path class="s" d="M16 42V36C16 26 24 20 34 20H66C76 20 84 26 84 36V42Z"/>
         <rect class="f" x="16" y="42" width="68" height="4"/>
         <rect class="f" x="43" y="44" width="14" height="16" rx="2"/>`,
+    /* Combate (copiado de imgs/combate.svg) es el botón de atacar con un arma; usarHabilidad (la silueta antigua de
+       imgs/atletismo.svg), el de usar una habilidad de reliquia o un efecto. */
+    combate: `
+        <g transform="rotate(5.5 54 47.5)">
+            <polygon class="s" points="54,30.604 60.833,22 62.448,32.868 72.667,28.833 68.632,39.052 79.5,40.667 70.896,47.5 79.5,54.333 68.632,55.948 72.667,66.167 62.448,62.132 60.833,73 54,64.396 47.167,73 45.552,62.132 35.333,66.167 39.368,55.948 28.5,54.333 37.104,47.5 28.5,40.667 39.368,39.052 35.333,28.833 45.552,32.868 47.167,22"/>
+            <polygon class="f" points="54,36.567 58.421,31 59.466,38.032 66.079,35.421 63.468,42.034 70.5,43.079 64.933,47.5 70.5,51.921 63.468,52.966 66.079,59.579 59.466,56.968 58.421,64 54,58.433 49.579,64 48.534,56.968 41.921,59.579 44.532,52.966 37.5,51.921 43.067,47.5 37.5,43.079 44.532,42.034 41.921,35.421 48.534,38.032 49.579,31"/>
+        </g>
+        <g transform="rotate(20.5 37 48.75)">
+            <rect class="f" x="25.5" y="11.25" width="23" height="75"/>
+            <polygon class="s" points="37,11.5 29.5,18 29.5,66.5 44.5,66.5 44.5,18 37,11.5"/>
+            <polygon class="p" points="29.5,18 29.5,66.5 37,66.5 37,11.5"/>
+            <rect class="p" x="32.75" y="69" width="8.5" height="17"/>
+            <rect class="p" x="27.5" y="66" width="19" height="4"/>
+        </g>`,
+    // Usar un escudo: la estrella de impacto de Combate con un escudo en lugar de la espada
+    usarEscudo: `
+        <g transform="rotate(5.5 54 47.5)">
+            <polygon class="s" points="54,30.604 60.833,22 62.448,32.868 72.667,28.833 68.632,39.052 79.5,40.667 70.896,47.5 79.5,54.333 68.632,55.948 72.667,66.167 62.448,62.132 60.833,73 54,64.396 47.167,73 45.552,62.132 35.333,66.167 39.368,55.948 28.5,54.333 37.104,47.5 28.5,40.667 39.368,39.052 35.333,28.833 45.552,32.868 47.167,22"/>
+            <polygon class="f" points="54,36.567 58.421,31 59.466,38.032 66.079,35.421 63.468,42.034 70.5,43.079 64.933,47.5 70.5,51.921 63.468,52.966 66.079,59.579 59.466,56.968 58.421,64 54,58.433 49.579,64 48.534,56.968 41.921,59.579 44.532,52.966 37.5,51.921 43.067,47.5 37.5,43.079 44.532,42.034 41.921,35.421 48.534,38.032 49.579,31"/>
+        </g>
+        <g transform="translate(37 50) rotate(-12) scale(0.66) translate(-50 -50)">
+            <path class="tf" style="stroke-width:12" d="M50 16L76 24V46C76 64 64 76 50 84C36 76 24 64 24 46V24Z"/>
+            <path class="p" d="M50 16L76 24V46C76 64 64 76 50 84C36 76 24 64 24 46V24Z"/>
+            <path class="s" d="M50 16L76 24V46C76 64 64 76 50 84Z"/>
+            <path class="t" d="M50 30V66M38 44H62" style="stroke:var(--fondo)"/>
+        </g>`,
+    usarHabilidad: `
+        <clipPath id="sao-recorte-circulo"><circle cx="50" cy="50" r="50"/></clipPath>
+        <g clip-path="url(#sao-recorte-circulo)">
+            <circle class="p" style="opacity:.1" cx="50" cy="62.5" r="37.5"/>
+            <circle class="p" style="opacity:.2" cx="50" cy="70" r="30"/>
+            <polygon class="p" points="53.697,71.722 53.318,70.016 55.783,67.741 56.541,57.599 52.75,53.333 47.252,53.333 43.46,57.599 44.219,67.741 46.683,70.016 46.304,71.722 38.5,73.543 38.5,98.775 39.479,106.414 39.077,110 60.924,110 60.522,106.414 62.418,91.627 66.666,110 71.6,110 65.072,74.376"/>
+            <polygon class="p" points="46.088,85.333 38.903,85.167 22.122,40.357 26.512,39.583"/>
+        </g>
+        <rect class="p" x="26.5" y="29.5" width="58" height="6" transform="rotate(-23 50 50)"/>`,
+    /* Ver / ocultar (filtro de modificadores personalizados) */
+    ver: `
+        <path class="p" d="M12 50C24 30 38 22 50 22C62 22 76 30 88 50C76 70 62 78 50 78C38 78 24 70 12 50Z"/>
+        <circle class="f" cx="50" cy="50" r="17"/>
+        <circle class="p" cx="50" cy="50" r="9"/>`,
+    ocultar: `
+        <path class="p" d="M12 50C24 30 38 22 50 22C62 22 76 30 88 50C76 70 62 78 50 78C38 78 24 70 12 50Z"/>
+        <circle class="f" cx="50" cy="50" r="17"/>
+        <circle class="p" cx="50" cy="50" r="9"/>
+        <path class="tf" style="stroke-width:16" d="M22 80L78 20"/>
+        <path class="t" style="stroke-width:7" d="M22 80L78 20"/>`,
     descartar: `
         <rect class="p" x="22" y="22" width="56" height="8" rx="2"/>
         <rect class="s" x="41" y="14" width="18" height="8" rx="2"/>
@@ -494,6 +540,8 @@ const lanzando = (arma) => `<g transform="translate(63 37) scale(0.74) translate
 const recogiendo = (arma) => `<g transform="translate(42 44) scale(0.8) translate(-50 -50)">${arma}</g>
     <path class="t" style="stroke-width:7" d="M84 58A20 20 0 0 1 60 84"/>
     <polygon class="p" points="52,84 64,74 66,92"/>`;
+// La habilidad Atletismo usa la misma silueta que usar una habilidad (imgs/atletismo.svg)
+GLIFOS.atletismo = GLIFOS.usarHabilidad;
 GLIFOS.lanzarCuchillo = lanzando(GLIFOS.cuchillo);
 GLIFOS.lanzarLanza = lanzando(GLIFOS.lanza);
 GLIFOS.recogerCuchillo = recogiendo(GLIFOS.cuchillo);

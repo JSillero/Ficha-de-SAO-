@@ -74,18 +74,19 @@ export function crearPersonajePrueba() {
         return equipo;
     };
 
-    // Un objeto de cada tipo, con todo lo anidado (modificadores, estado, elemental, equipo)
+    // Un objeto de cada tipo, con todo lo anidado (modificadores, estados, elemental, equipo). El café usa el formato
+    // antiguo (un solo `estado`) para comprobar que carga como lista
     const pocion = cargarObjeto({ tipo: "pocion", nombre: "poción", descripcion: "cura", cantidad: 2, pv: 4, pa: 1,
-        estado: { clave: "regeneracion", valor: 1, turnos: 3, quitar: false } });
+        estados: [{ clave: "regeneracion", valor: 1, turnos: 3, quitar: false }, { clave: "veneno", valor: 0, turnos: TURNOS_PERMANENTE, quitar: true }] });
     const objetos = [
         { tipo: "comida", nombre: "café", cantidad: 3, modificadores: [{ nombre: "café", modificado: "percepcion", numero: 2, turnos: TURNOS_PERMANENTE }],
             estado: { clave: "regeneracion", valor: 1, turnos: TURNOS_PERMANENTE, quitar: false } },
         pocion,
-        { tipo: "pocion", nombre: "antídoto", cantidad: 1, pv: 0, estado: { clave: "veneno", valor: 0, turnos: TURNOS_PERMANENTE, quitar: true } },
+        { tipo: "pocion", nombre: "antídoto", cantidad: 1, pv: 0, estados: [{ clave: "veneno", valor: 0, turnos: TURNOS_PERMANENTE, quitar: true }] },
         { tipo: "equipo", nombre: "hacha", descripcion: "pesada", equipo: crearEquipo("hacha", "hacha") },
         { tipo: "cristal", nombre: "cristal", descripcion: "teletransporte", cantidad: 1 },
         { tipo: "material", nombre: "mineral", cantidad: 5 },
-        { tipo: "arrojadiza", nombre: "daga", cantidad: 4, danno: 2, estado: { clave: "veneno", valor: 2, turnos: TURNOS_PERMANENTE },
+        { tipo: "arrojadiza", nombre: "daga", cantidad: 4, danno: 2, estados: [{ clave: "veneno", valor: 2, turnos: 3 }, { clave: "aturdido", valor: 1, turnos: TURNOS_PERMANENTE }],
             elemental: { tipo: "fuego", cantidad: 3 } }
     ].map(cargarObjeto);
     // 10 huecos: los 5 base + el modificador "inventario" +5 de abajo

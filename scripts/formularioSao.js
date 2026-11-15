@@ -204,7 +204,8 @@ export function prepararFormularioSao(form) {
         pintarIconos(raiz);
         mejorarNumeros(raiz);
         raiz.querySelectorAll("select.listValores:not(.select-vestido), select.req-tipo:not(.select-vestido), select.req-clave:not(.select-vestido)")
-            .forEach(select => crearRejilla(select, { despuesDe: select.closest(".mod-equipo, .requisito-arte") }));
+            // En el editor de modificadores de la ficha, el panel va debajo de la fila (a todo lo ancho del editor)
+            .forEach(select => crearRejilla(select, { despuesDe: select.closest(".mod-equipo, .requisito-arte, .fila-mod-campos") }));
         raiz.querySelectorAll('select[data-campo="clave"]:not(.select-vestido)').forEach(select =>
             crearRejilla(select, { icono: (v) => ESTADOS_INFO[v]?.icono ?? null }));
     };

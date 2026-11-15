@@ -28,7 +28,7 @@ import {
     correr, puedeCorrer, puedeMoverse, velocidadMovimiento, velocidadCorrer,
     modoSigiloPorArmadura, puedeEntrarEnSigilo, entrarEnSigilo, salirDeSigilo, dannoHemorragia, parteDisponible
 } from "./turno.js";
-import { ESTADOS_INFO, TIPOS_DANNO, aplicarDanno, activarEstado, quitarEstado, estaActivo, estiloColor } from "./estados.js";
+import { ESTADOS_INFO, TIPOS_DANNO, aplicarDanno, activarEstado, quitarEstado, estaActivo, estiloColor, CURAR_NEGATIVOS } from "./estados.js";
 import { cargarEstadoAlAcertar, cargarEstadosAlAcertar, describirEstadosAlAcertar, MAX_ESTADOS_AL_ACERTAR } from "./estadosAlAcertar.js";
 import { iconoSao, tieneIconoSao } from "./iconos.js";
 import { mostrarPopup, getHistorialPopups, vaciarHistorialPopups } from "./popups.js";
@@ -62,7 +62,7 @@ import {
     equiparArte, desequiparArte, motivoNoEquiparArte, motivoNoDesequiparArte, usarArte, motivoNoUsarArte, partesDeArte,
     cargarArte, cargarRequisito, cumpleRequisitos, ajustarMemoriaArtes, GRUPOS_ARTE, TIPOS_REQUISITO,
     desbloqueosDisponibles, desbloqueosNaturales, anadirDesbloqueos, quitarDesbloqueos, motivoNoConseguirArte, conseguirArte,
-    motivoInactiva, crearOnirica, motivoNoCrearOnirica,
+    motivoInactiva, crearOnirica, motivoNoCrearOnirica, arteActiva,
     ETIQUETAS_CARACTERISTICA, ETIQUETAS_HABILIDAD, ETIQUETAS_ARMADURA as ETIQUETAS_TIPO_ARMADURA
 } from "./artes.js";
 
@@ -364,7 +364,8 @@ function aplicarModoNpc() {
     ultimoModoNpc = npc;
     valoresCombateDiv.innerHTML = "";
     listadoModificadores.innerHTML = "";
-    document.querySelectorAll("#divEquipamiento .mods-equipo[data-mods]").forEach(lista => { lista.innerHTML = ""; });
+    delete listadoModificadores.dataset.html;
+    document.querySelectorAll("#divEquipamiento .mods-equipo[data-mods]").forEach(lista => { lista.innerHTML = ""; delete lista.dataset.html; });
 }
 
 function actualizarTodo() {
@@ -393,7 +394,7 @@ function actualizarTodo() {
     parseModificadoresEquipo();
     pintarHabilidadesReliquia();
     pintarEfectosEquipo();
-    pintarExtrasArmaNpc();
+    pintarBotonesExtras();
     pintarArmasLanzadas();
     actualizarObjetos();
     if (document.getElementById("modalBotin").classList.contains("show")) pintarBotin();
@@ -858,7 +859,7 @@ setBloqueoEmision(() => Boolean(lectura));
 const PERMITIDOS_LECTURA = [
     "#hudMaster", "#hudGrupo", "#avisoLectura", "#nombre", "[data-bs-dismiss]", ".btn-modal-sao.cancelar", "summary",
     "#contenedor-popups-dados", "#panelDebug", "#btnInventario", "#btnSocial", "#btnArtes", "#btnOpciones",
-    "#btnPaginaAnterior", "#btnPaginaSiguiente", "#listaArtesPasivas",
+    "#btnPaginaAnterior", "#btnPaginaSiguiente", "#listaArtesPasivas", "#btnSoloModsPropios",
     // Compendio de objetos: añadir los objetos del jugador no cambia su ficha (dar y editar salen desactivados)
     "#modalCompendioObjetos", ".btn-al-compendio", "#btnAbrirCompendioObjetos"
 ].join(", ");
@@ -1474,12 +1475,39 @@ document.getElementById('fileInput').addEventListener('change', function (event)
 /* Modificadores ___________________________________________________________ */
 const listadoModificadores = document.getElementById("listadoModificadores");
 
+/* Borrador del modificador abierto: { indice (null = nuevo), mod (copia) }. Los cambios solo se aplican al pulsar
+   Guardar; cerrarlo o abrir otro lo descarta. El nuevo se edita arriba del todo, fuera de las tarjetas. */
+let borradorMod = null;
+const FUENTE_MOD_NUEVO = "nuevo";
+const copiaModificador = (mod) => Object.assign(new Modificador(), JSON.parse(JSON.stringify(mod)));
+
 document.getElementById("anadirMod").addEventListener("click", () => {
     // Por defecto es permanente: dura hasta que el usuario lo edite o lo elimine
-    personaje.modificadores.push(new Modificador("", personaje.esNpc ? "defensa" : "atletismo", 0, TURNOS_PERMANENTE));
-    personaje.calcularCaracteristicas();
-    actualizarTodo();
-    listadoModificadores.lastElementChild?.querySelector(".nombreMod")?.focus();
+    borradorMod = { indice: null, mod: new Modificador("", personaje.esNpc ? "defensa" : "atletismo", 0, TURNOS_PERMANENTE) };
+    fuenteModAbierta = FUENTE_MOD_NUEVO;
+    actualizarModificadores();
+    listadoModificadores.querySelector(".fila-modificador .nombreMod")?.focus();
+});
+
+/* Filtro "solo personalizados" (los del +): comodidad de quien mira, se recuerda en este navegador */
+const CLAVE_SOLO_MODS_PROPIOS = "fichaSAO.soloModsPropios";
+let soloModsPropios = false;
+try { soloModsPropios = localStorage.getItem(CLAVE_SOLO_MODS_PROPIOS) === "1"; } catch { /* sin almacenamiento */ }
+const btnSoloModsPropios = document.getElementById("btnSoloModsPropios");
+function pintarBotonSoloModsPropios() {
+    const texto = soloModsPropios ? "Mostrar todos los modificadores" : "Mostrar solo los personalizados";
+    btnSoloModsPropios.innerHTML = iconoSao(soloModsPropios ? "ocultar" : "ver");
+    btnSoloModsPropios.title = texto;
+    btnSoloModsPropios.setAttribute("aria-label", texto);
+    btnSoloModsPropios.setAttribute("aria-pressed", String(soloModsPropios));
+}
+pintarBotonSoloModsPropios();
+btnSoloModsPropios.addEventListener("click", () => {
+    soloModsPropios = !soloModsPropios;
+    try { localStorage.setItem(CLAVE_SOLO_MODS_PROPIOS, soloModsPropios ? "1" : "0"); } catch { /* sin almacenamiento */ }
+    reproducir("click");
+    pintarBotonSoloModsPropios();
+    actualizarModificadores();
 });
 
 /* Atributos que se pueden modificar (valor = nombre que usa PJ.getModificador) */
@@ -1532,10 +1560,9 @@ function opcionesAtributo(seleccionado) {
 }
 
 /* Un único listener por tipo de evento para toda la lista: sigue funcionando aunque se regenere */
-function modificadorDeEvento(e) {
-    const fila = e.target.closest(".fila-modificador");
-    return fila ? personaje.modificadores[Number(fila.dataset.index)] : null;
-}
+/* Los cambios van al borrador (borradorMod) y no se repinta nada mientras se edita: así el clic en Guardar
+   no se pierde aunque el campo con el foco dispare su change justo antes */
+const modificadorDeEvento = (e) => e.target.closest(".fila-modificador") ? borradorMod?.mod ?? null : null;
 
 listadoModificadores.addEventListener("input", (e) => {
     const mod = modificadorDeEvento(e);
@@ -1546,89 +1573,208 @@ listadoModificadores.addEventListener("change", (e) => {
     const mod = modificadorDeEvento(e);
     if (!mod) return;
     const fila = e.target.closest(".fila-modificador");
-    if (e.target.classList.contains("listValores")) mod.modificado = e.target.value;
+    const cantidad = fila.querySelector(".cantidadMod");
+    const duracion = fila.querySelector(".duracionMod");
+    if (e.target.classList.contains("listValores")) {
+        mod.modificado = e.target.value;
+        // Las debilidades admiten decimales; el resto, enteros
+        const decimal = esModificadorDecimal(mod.modificado);
+        cantidad.toggleAttribute("data-decimal", decimal);
+        if (decimal) cantidad.step = "0.25"; else cantidad.removeAttribute("step");
+        mod.numero = numeroModificador(mod.modificado, cantidad.value);
+        cantidad.value = mod.numero;
+    }
     if (e.target.classList.contains("cantidadMod")) mod.numero = numeroModificador(mod.modificado, e.target.value);
     if (e.target.classList.contains("duracionMod")) {
         // Un modificador temporal dura al menos 1 turno
         mod.turnos = Math.max(1, parseInt(e.target.value) || 1);
     }
     if (e.target.classList.contains("checkPermanenteMod")) {
-        mod.turnos = e.target.checked
-            ? TURNOS_PERMANENTE
-            : Math.max(1, parseInt(fila.querySelector(".duracionMod").value) || 1);
+        mod.turnos = e.target.checked ? TURNOS_PERMANENTE : Math.max(1, parseInt(duracion.value) || 1);
+        duracion.disabled = e.target.checked;
+        duracion.value = e.target.checked ? "" : mod.turnos;
     }
     if (e.target.classList.contains("checkDescansoMod")) {
         // Se quita al hacer un descanso corto (la comida siempre lo hace)
         if (e.target.checked) mod.descansoCorto = true;
         else delete mod.descansoCorto;
-        actualizarModificadores();
-        return;
     }
-    if (e.target.classList.contains("nombreMod")) return; // el nombre no cambia ningún cálculo
+});
+
+function guardarBorradorMod() {
+    if (!borradorMod) return;
+    const { indice, mod } = borradorMod;
+    if (indice === null) personaje.modificadores.push(mod);
+    else personaje.modificadores[indice] = mod;
+    borradorMod = null;
+    fuenteModAbierta = null;
     personaje.calcularCaracteristicas();
     actualizarTodo();
-});
+}
 
 listadoModificadores.addEventListener("click", (e) => {
+    // Pulsar una fuente la abre (las tuyas, para editarlas; las demás dicen de dónde vienen) o la cierra (sin guardar)
+    const fuente = e.target.closest(".fuente-mod");
+    if (fuente) {
+        fuenteModAbierta = fuenteModAbierta === fuente.dataset.fuente ? null : fuente.dataset.fuente;
+        borradorMod = null; // actualizarModificadores crea el de la fuente abierta si es tuya
+        reproducir("click");
+        actualizarModificadores();
+        listadoModificadores.querySelector(".fila-modificador .nombreMod")?.focus();
+        return;
+    }
+    if (e.target.closest(".guardar-mod")) { guardarBorradorMod(); return; }
     if (!e.target.closest(".quitar-mod")) return;
-    const fila = e.target.closest(".fila-modificador");
-    personaje.modificadores.splice(Number(fila.dataset.index), 1);
+    // En uno nuevo solo se descarta el borrador
+    if (borradorMod?.indice != null) personaje.modificadores.splice(borradorMod.indice, 1);
+    borradorMod = null;
+    fuenteModAbierta = null;
     personaje.calcularCaracteristicas();
     actualizarTodo();
 });
+// Intro en el nombre guarda
+listadoModificadores.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && e.target.classList.contains("nombreMod")) { e.preventDefault(); guardarBorradorMod(); }
+});
+prepararFormularioSao(listadoModificadores); // − / + y la rejilla del atributo en el editor (formularioSao.js)
+
+/* Modificadores agrupados por atributo, con todo lo que modifica la ficha (lo mismo que suma PJ.getModificador):
+   los del personaje (se editan aquí), el equipo, las artes pasivas, los efectos pasivos del equipo y los estados.
+   Cada parte es una "fuente": { clave, atributo, numero, nombre, icono, duracion, info, indice (solo las propias) } */
+let fuenteModAbierta = null; // clave de la fuente abierta ("p:<índice>" para las propias)
+
+const ICONOS_ATRIBUTO = {
+    atletismo: "movimiento", combate: "espada", percepcion: "percepcion", subterfugio: "cegado", comunicacion: "amigos",
+    cultura: "diario", profesion: "material", sacro: "onirica", defensa: "escudo", armadura: "armadura",
+    iniciativa: "iniciativa", vMovimiento: "movimiento", dFisico: "fisico", dDistancia: "arrojadiza", dMagico: "magia",
+    aguante: "aguante", vidaMax: "regeneracion", arte: "artes", espacios: "artesSinEquipar", perspicacia: "perspicacia",
+    percepcionPasiva: "percepcion", regeneracion: "regeneracion", inventario: "inventario", acierto: "espada"
+};
+const iconoAtributo = (atributo) => ICONOS_ATRIBUTO[atributo]
+    ?? TIPOS_DANNO[String(atributo).replace(/^(res|deb)_/, "")]?.icono ?? "ajustes";
+const etiquetaAtributo = (atributo) => gruposAtributos().flatMap(([, lista]) => lista).find(([valor]) => valor === atributo)?.[1]
+    ?? ETIQUETAS_ATRIBUTO[atributo] ?? atributo;
+
+function duracionMod(mod) {
+    if (mod.origen === "comida" || mod.descansoCorto) return "desc. corto";
+    return Modificador.esPermanente(mod) ? "∞" : `${mod.turnos} t`;
+}
+
+function fuentesModificadores() {
+    const pj = personaje;
+    const fuentes = [];
+    const nombreEquipo = (equipo) => equipo.nombre?.trim() || etiquetaTipoEquipo(equipo.tipo);
+    // Del personaje (también los de la comida)
+    pj.modificadores.forEach((mod, indice) => fuentes.push({
+        clave: `p:${indice}`, indice, atributo: mod.modificado, numero: Number(mod.numero) || 0,
+        nombre: mod.nombre?.trim() || "Sin nombre", icono: mod.origen === "comida" ? "comida" : "ajustes", duracion: duracionMod(mod)
+    }));
+    // Del equipo puesto (manos, armadura, accesorios y, en un NPC, sus otras partes)
+    const ranuras = [["manoDerecha", "mano derecha"], ["manoIzquierda", "mano izquierda"], ["equipoArmadura", "armadura"]]
+        .map(([prop, ranura]) => ({ equipo: pj[prop], ranura, clave: prop }))
+        .concat(pj.accesorios.map((equipo, i) => ({ equipo, ranura: `accesorio ${i + 1}`, clave: `accesorio-${i}` })))
+        .concat(partesExtra(pj).filter(p => p.equipo?.tipo).map(p => ({ equipo: p.equipo, ranura: p.nombre, clave: `parte-${p.id}` })));
+    ranuras.forEach(({ equipo, ranura, clave }) => (equipo?.modificadores ?? []).forEach((mod, i) => fuentes.push({
+        clave: `e:${clave}:${i}`, atributo: mod.modificado, numero: Number(mod.numero) || 0,
+        nombre: nombreEquipo(equipo), icono: iconoObjeto({ tipo: "equipo", equipo }),
+        info: `Viene de ${nombreEquipo(equipo)} (${ranura}). Se cambia en su tarjeta de equipo.`
+    })));
+    // Artes pasivas activas
+    pj.artes.filter(arte => arte.tipo === "pasiva" && arteActiva(pj, arte)).forEach(arte => arte.modificadores.forEach((mod, i) => fuentes.push({
+        clave: `a:${arte.id}:${i}`, atributo: mod.modificado, numero: Number(mod.numero) || 0, nombre: arte.nombre,
+        icono: arte.onirica ? "onirica" : "artePasiva", info: `Arte pasiva ${arte.nombre}. Se cambia en Artes.`
+    })));
+    // Efectos pasivos del equipo puesto
+    pasivasDeEquipo(pj).forEach(({ equipo, efecto }) => efecto.modificadores.forEach((mod, i) => fuentes.push({
+        clave: `f:${efecto.id}:${i}`, atributo: mod.modificado, numero: Number(mod.numero) || 0, nombre: `${efecto.nombre} (efecto)`,
+        icono: "artePasiva", info: `Efecto ${efecto.nombre} de ${nombreEquipo(equipo)}. Se cambia en su tarjeta de equipo.`
+    })));
+    // Estados: lo que resta cada uno por separado (mismo cálculo que PJ.getModificadorEstados, con solo ese estado)
+    const atributos = new Set(gruposAtributos().flatMap(([, lista]) => lista.map(([valor]) => valor)));
+    Object.keys(ESTADOS_INFO).filter(clave => estaActivo(pj, clave)).forEach(clave => {
+        const soloEste = { esNpc: pj.esNpc, estados: { [clave]: pj.estados[clave] } };
+        atributos.forEach(atributo => {
+            const numero = PJ.prototype.getModificadorEstados.call(soloEste, atributo);
+            if (numero) fuentes.push({
+                clave: `s:${clave}:${atributo}`, atributo, numero, nombre: ESTADOS_INFO[clave].etiqueta,
+                icono: ESTADOS_INFO[clave].icono, duracion: pj.estados[clave].turnos < 0 ? "" : `${pj.estados[clave].turnos} t`,
+                info: `Estado ${ESTADOS_INFO[clave].etiqueta} (${pj.estados[clave].valor}). Se cambia en Estados.`
+            });
+        });
+    });
+    return fuentes;
+}
+
+/* Editor de un modificador propio (las clases son las de siempre: los listeners de arriba las leen) */
+function htmlEditorModificador(mod, indice) {
+    const permanente = Modificador.esPermanente(mod);
+    const deComida = mod.origen === "comida";
+    return `<div class="fila-modificador editor-mod" data-index="${indice}">
+        <input type="text" class="nombreMod" placeholder="Nombre del modificador" aria-label="Nombre del modificador" value="${escaparHtml(mod.nombre === "nombre" ? "" : (mod.nombre ?? ""))}">
+        <div class="fila-mod-campos">
+            <select class="listValores" aria-label="Atributo">${opcionesAtributo(mod.modificado)}</select>
+            <input type="number" class="cantidadMod" aria-label="Cantidad" title="Cantidad (negativa para restar)" value="${Number(mod.numero) || 0}"
+                ${esModificadorDecimal(mod.modificado) ? "data-decimal step=\"0.25\"" : ""}>
+        </div>
+        <div class="fila-mod-campos">
+            <label class="campo-estado">Turnos <input type="number" min="1" class="duracionMod" value="${permanente ? "" : mod.turnos}" ${permanente ? "disabled" : ""}></label>
+            <label class="casilla-tipo"><input type="checkbox" class="checkPermanenteMod" ${permanente ? "checked" : ""}> Permanente</label>
+            <label class="casilla-tipo" title="Se quita al hacer un descanso corto"><input type="checkbox" class="checkDescansoMod"
+                ${deComida || mod.descansoCorto ? "checked" : ""} ${deComida ? "disabled" : ""}> Descanso corto</label>
+            <span class="botones-editor-mod">
+                <button type="button" class="btn-objeto guardar-mod" title="Guardar modificador" aria-label="Guardar modificador">${iconoSao("aceptar")}</button>
+                ${indice === FUENTE_MOD_NUEVO
+                    ? `<button type="button" class="btn-objeto quitar-mod" title="Cancelar" aria-label="Cancelar">${iconoSao("cancelar")}</button>`
+                    : `<button type="button" class="btn-objeto quitar-mod" title="Eliminar modificador" aria-label="Eliminar modificador">${iconoSao("descartar")}</button>`}
+            </span>
+        </div>
+        ${deComida ? `<span class="pista-mod">De la comida: se quita con el descanso corto</span>` : ""}
+    </div>`;
+}
 
 function actualizarModificadores() {
-    // Las filas solo se regeneran si cambia el número de modificadores, para no perder el foco
-    if (listadoModificadores.children.length !== personaje.modificadores.length) {
-        listadoModificadores.innerHTML = personaje.modificadores.map((mod, index) => `
-            <div class="fila-modificador" data-index="${index}">
-                <div class="fila-mod-cabecera">
-                    <input type="text" class="nombreMod" placeholder="Nombre del modificador" aria-label="Nombre del modificador">
-                    <button type="button" class="quitar-mod" title="Eliminar modificador" aria-label="Eliminar modificador">×</button>
-                </div>
-                <div class="fila-mod-campos">
-                    <select class="listValores" aria-label="Atributo">${opcionesAtributo(mod.modificado)}</select>
-                    <input type="number" class="cantidadMod" aria-label="Cantidad" title="Cantidad (negativa para restar)">
-                    <label>Turnos <input type="number" min="1" class="duracionMod"></label>
-                    <label><input type="checkbox" class="checkPermanenteMod"> Permanente</label>
-                    <label title="Se quita al hacer un descanso corto"><input type="checkbox" class="checkDescansoMod"> Descanso corto</label>
-                </div>
-                <span class="pista-mod"></span>
-            </div>`).join("");
+    const fuentes = fuentesModificadores();
+    // Una tarjeta por atributo, en el orden de la lista de atributos (los desconocidos al final)
+    const orden = gruposAtributos().flatMap(([, lista]) => lista.map(([valor]) => valor));
+    // Con el filtro, solo las tarjetas con algún personalizado y solo esas fichas (el total sigue siendo el real)
+    const visibles = soloModsPropios ? fuentes.filter(f => f.indice !== undefined) : fuentes;
+    const atributos = [...new Set(visibles.map(f => f.atributo))]
+        .sort((a, b) => (orden.indexOf(a) + 1 || 999) - (orden.indexOf(b) + 1 || 999));
+    const nuevo = fuenteModAbierta === FUENTE_MOD_NUEVO;
+    if (fuenteModAbierta && !nuevo && !visibles.some(f => f.clave === fuenteModAbierta)) fuenteModAbierta = null;
+    // El borrador corresponde a la fuente abierta; si no (se ha cerrado o han cambiado los índices), se rehace
+    const abiertaPropia = fuentes.find(f => f.clave === fuenteModAbierta && f.indice !== undefined);
+    if (nuevo) {
+        if (borradorMod?.indice !== null) { borradorMod = null; fuenteModAbierta = null; }
+    } else if (!abiertaPropia) {
+        borradorMod = null;
+    } else if (borradorMod?.indice !== abiertaPropia.indice) {
+        borradorMod = { indice: abiertaPropia.indice, mod: copiaModificador(personaje.modificadores[abiertaPropia.indice]) };
     }
-
-    personaje.modificadores.forEach((mod, index) => {
-        const fila = listadoModificadores.children[index];
-        const permanente = Modificador.esPermanente(mod);
-        const numero = Number(mod.numero) || 0;
-        const inputNombre = fila.querySelector(".nombreMod");
-        const select = fila.querySelector(".listValores");
-        const inputCantidad = fila.querySelector(".cantidadMod");
-        const inputTurnos = fila.querySelector(".duracionMod");
-
-        // No se pisa el campo que el usuario está editando
-        if (document.activeElement !== inputNombre) inputNombre.value = mod.nombre === "nombre" ? "" : (mod.nombre ?? "");
-        if (document.activeElement !== select && select.querySelector(`option[value="${mod.modificado}"]`)) select.value = mod.modificado;
-        if (document.activeElement !== inputCantidad) inputCantidad.value = numero;
-        // Las debilidades (deb_) admiten decimales
-        inputCantidad.toggleAttribute("data-decimal", esModificadorDecimal(mod.modificado));
-        if (document.activeElement !== inputTurnos) inputTurnos.value = permanente ? "" : mod.turnos;
-        inputTurnos.disabled = permanente;
-        fila.querySelector(".checkPermanenteMod").checked = permanente;
-        // La comida siempre termina con el descanso corto: casilla marcada y fija
-        const deComida = mod.origen === "comida";
-        const checkDescanso = fila.querySelector(".checkDescansoMod");
-        checkDescanso.checked = deComida || Boolean(mod.descansoCorto);
-        checkDescanso.disabled = deComida;
-
-        fila.classList.toggle("mod-positivo", numero > 0);
-        fila.classList.toggle("mod-negativo", numero < 0);
-        const pista = [permanente
-            ? "Permanente: dura hasta que lo edites o lo borres"
-            : `Quedan ${mod.turnos} turno${mod.turnos === 1 ? "" : "s"}`];
-        if (deComida || mod.descansoCorto) pista.push("se quita con el descanso corto");
-        fila.querySelector(".pista-mod").textContent = pista.join(" · ");
-    });
+    const conSigno = (n) => (n > 0 ? `+${formatearNumero(n)}` : n < 0 ? `−${formatearNumero(-n)}` : "0");
+    const htmlNuevo = fuenteModAbierta === FUENTE_MOD_NUEVO ? htmlEditorModificador(borradorMod.mod, FUENTE_MOD_NUEVO) : "";
+    const html = htmlNuevo + (atributos.map(atributo => {
+        const total = Math.round(fuentes.filter(f => f.atributo === atributo).reduce((s, f) => s + f.numero, 0) * 100) / 100;
+        const propias = visibles.filter(f => f.atributo === atributo);
+        const abierta = propias.find(f => f.clave === fuenteModAbierta);
+        const detalle = !abierta ? ""
+            : abierta.indice !== undefined ? htmlEditorModificador(borradorMod.mod, abierta.indice)
+            : `<div class="info-fuente-mod">${escaparHtml(abierta.info)}</div>`;
+        return `<div class="grupo-mod">
+            <div class="grupo-mod-cabecera"><span class="grupo-mod-icono">${iconoSao(iconoAtributo(atributo))}</span>
+                <span class="grupo-mod-nombre">${escaparHtml(etiquetaAtributo(atributo))}</span>
+                <span class="grupo-mod-total ${total > 0 ? "positivo" : total < 0 ? "negativo" : ""}">${conSigno(total)}</span></div>
+            <div class="fuentes-mod">${propias.map(f => `<button type="button" class="fuente-mod${f.indice !== undefined ? " editable" : ""}"
+                data-fuente="${escaparHtml(f.clave)}" aria-expanded="${f.clave === fuenteModAbierta}" title="${escaparHtml(f.info ?? "Pulsa para editarlo")}">
+                <span class="fuente-mod-icono">${iconoSao(f.icono)}</span>${escaparHtml(f.nombre)} ${conSigno(f.numero)}${f.duracion ? ` <span class="t">${f.duracion}</span>` : ""}</button>`).join("")}</div>
+            ${detalle}
+        </div>`;
+    }).join("") || (htmlNuevo ? "" : `<p class="lista-vacia">${soloModsPropios ? "No hay modificadores personalizados." : "Sin modificadores."}</p>`));
+    // Solo se regenera si cambia algo (así no se pierde el campo con el foco mientras se escribe)
+    if (listadoModificadores.dataset.html !== html) {
+        listadoModificadores.dataset.html = html;
+        listadoModificadores.innerHTML = html;
+    }
 }
 
 /* Equipo ___________________________________________________________________________________ */
@@ -1744,7 +1890,7 @@ function inicializarEquipamiento() {
 
         // Sin modo master el equipo no se edita aquí: se equipa y se guarda desde el inventario
         if (!MODO_MASTER) {
-            elemento.querySelectorAll(".equipamiento-main-inputs input").forEach(input => { input.readOnly = true; });
+            elemento.querySelectorAll(".equipamiento-main-inputs input, .inputNombreEquipo").forEach(input => { input.readOnly = true; });
         }
         const btnGuardar = elemento.querySelector(".btn-guardar-equipo");
         if (btnGuardar) {
@@ -2021,7 +2167,7 @@ function actualizarEquipamiento() {
 
         // Un escudo no tiene daño, solo defensa; una reliquia sin arma no tiene ninguno de los dos ni ataque
         if (campoDanno) campoDanno.style.display = esEscudo || esReliquiaSinArma ? "none" : "";
-        if (btnUsar) btnUsar.style.display = esReliquiaSinArma ? "none" : "";
+        if (btnUsar) btnUsar.hidden = esReliquiaSinArma || !ARMAS[item.tipo];
         if (campoDefensa) campoDefensa.style.display = esEscudo ? "" : "none";
         if (inputDefensa && document.activeElement !== inputDefensa) {
             inputDefensa.value = item.defensa ?? 0;
@@ -2049,6 +2195,14 @@ function actualizarEquipamiento() {
         }
         const vacio = elemento.querySelector(".equipamiento-vacio");
         if (vacio) vacio.style.display = (!tieneTipo && !MODO_MASTER) ? "" : "none";
+        // Cabecera: el icono del equipo (o el de la ranura, apagado, si está vacía) y el nombre solo si hay algo
+        if (inputNombre) inputNombre.hidden = !tieneTipo;
+        const icono = elemento.querySelector(".equipamiento-icono");
+        if (icono) {
+            const clave = tieneTipo ? iconoObjeto({ tipo: "equipo", equipo: item }) : (propEquipo === "equipoArmadura" ? "armadura" : "espada");
+            if (icono.dataset.icono !== clave) { icono.dataset.icono = clave; icono.innerHTML = iconoSao(clave); }
+            icono.classList.toggle("vacio", !tieneTipo);
+        }
         actualizarBotonGuardar(elemento.querySelector(".btn-guardar-equipo"), propEquipo);
 
         if (inputNombre && document.activeElement !== inputNombre) {
@@ -2150,15 +2304,17 @@ function tarjetaUsaElemental(item, campo) {
     return Boolean(ARMAS[item?.tipo]) && !ARMAS[item.tipo].escudo;
 }
 
+/* Equipo al que pertenece un bloque elemental: el de la ranura de su tarjeta (manos, armadura o parte de un NPC) */
+const equipoDeBloque = (bloque) => equipoDeRanura(personaje, ranuraDeTarjeta(bloque));
+
 function inicializarBloquesElementales() {
     document.querySelectorAll(".equipamiento .bloque-elemental").forEach(bloque => {
-        const propEquipo = getPropiedadEquipo(bloque.closest(".equipamiento"));
         const campo = bloque.dataset.elemental;
         const valores = bloque.querySelector(".valores-elementales");
         valores.innerHTML = ELEMENTOS.map(elemento => campoElemental(campo, elemento, MODO_MASTER ? "" : "readonly")).join("");
         valores.addEventListener("input", (e) => {
             const elemento = e.target.dataset.elemento;
-            const item = personaje[propEquipo];
+            const item = equipoDeBloque(bloque);
             if (!elemento || !item) return;
             item[campo] = cargarElementales(campo, { ...item[campo], [elemento]: e.target.value });
             if (campo === "debilidades") personaje.calcularCaracteristicas();
@@ -2173,9 +2329,10 @@ function inicializarBloquesElementales() {
     }
 }
 
+/* Repinta los bloques de todas las tarjetas (también las de las partes de un NPC, que se crean después) */
 function actualizarBloquesElementales() {
     document.querySelectorAll(".equipamiento .bloque-elemental").forEach(bloque => {
-        const item = personaje[getPropiedadEquipo(bloque.closest(".equipamiento"))];
+        const item = equipoDeBloque(bloque);
         const campo = bloque.dataset.elemental;
         let visibles = 0;
         bloque.querySelectorAll("input[data-elemento]").forEach(input => {
@@ -2207,33 +2364,52 @@ function leerElementalesFormulario(campo) {
 
 /* Estados al acertar (estadosAlAcertar.js) en los formularios de objetos y de artes: un acordeón con una fila por
    estado (estado, potencia, turnos o permanente y probabilidad). acordeon = el <details>, que se abre solo si hay
-   alguno. Devuelve { rellenar(lista), leer() }. */
-function crearEditorEstadosAlAcertar(acordeon) {
+   alguno. opciones: { probabilidad (columna %), cura (fichas Provoca / Cura; curando se puede elegir "Todos los
+   negativos", CURAR_NEGATIVOS), turnos (sin ellos, la comida: dura hasta el descanso corto) }; configurar(opciones)
+   las cambia sin perder las filas.
+   Devuelve { rellenar(lista), leer(), configurar(opciones) }. */
+function crearEditorEstadosAlAcertar(acordeon, opcionesIniciales = {}) {
     const contenedor = acordeon.querySelector(".editor-estados-acertar");
+    const POR_DEFECTO = { probabilidad: true, cura: false, turnos: true };
+    let config = { ...POR_DEFECTO, ...opcionesIniciales };
     let estados = [];
-    const opciones = (clave) => Object.entries(ESTADOS_INFO)
-        .map(([valor, info]) => `<option value="${valor}" ${valor === clave ? "selected" : ""}>${escaparHtml(info.etiqueta)}</option>`).join("");
+    // Cada fila guarda todo ({ clave, valor, turnos, probabilidad, quitar }); leer() da lo que piden las opciones
+    const normalizar = (datos) => {
+        if (datos?.clave === CURAR_NEGATIVOS) return { clave: CURAR_NEGATIVOS, valor: 1, turnos: 3, probabilidad: 100, quitar: true };
+        const estado = cargarEstadoAlAcertar(datos);
+        return estado ? { ...estado, quitar: Boolean(datos.quitar) } : null;
+    };
+    const opciones = (clave, cura) => (cura ? `<option value="${CURAR_NEGATIVOS}" ${clave === CURAR_NEGATIVOS ? "selected" : ""} title="Salvo oscuridad y embriaguez">Todos los negativos</option>` : "")
+        + Object.entries(ESTADOS_INFO)
+            .map(([valor, info]) => `<option value="${valor}" ${valor === clave ? "selected" : ""}>${escaparHtml(info.etiqueta)}</option>`).join("");
+    const idEditor = `editor-estados-${Math.random().toString(36).slice(2, 8)}`; // nombres de los radios Provoca / Cura
     const pintar = () => {
         contenedor.innerHTML = `
             <ul class="lista-estados-acertar">${estados.map((estado, i) => {
                 const permanente = estado.turnos === TURNOS_PERMANENTE;
-                const conValor = Boolean(ESTADOS_INFO[estado.clave]?.unidad);
+                const cura = config.cura && estado.quitar;
+                const conValor = Boolean(ESTADOS_INFO[estado.clave]?.unidad) && !cura;
+                const radio = (valor, texto, marcado, titulo) => `<label class="casilla-tipo" title="${titulo}">
+                    <input type="radio" name="${idEditor}-${i}" data-campo="quitar" value="${valor}" ${marcado ? "checked" : ""}> ${texto}</label>`;
                 return `<li class="fila-estado-acertar" data-index="${i}">
-                    <select data-campo="clave" aria-label="Estado">${opciones(estado.clave)}</select>
-                    <label title="${conValor ? escaparHtml(ESTADOS_INFO[estado.clave].unidad) : "Este estado no tiene potencia"}">Potencia
+                    ${config.cura ? `<span class="fichas-modo-estado" role="radiogroup" aria-label="Provoca o cura">
+                        ${radio(0, "Provoca", !cura, "El objeto provoca el estado")}${radio(1, "Cura", cura, "El objeto quita el estado")}</span>` : ""}
+                    <select data-campo="clave" aria-label="Estado">${opciones(estado.clave, cura)}</select>
+                    <label title="${conValor ? escaparHtml(ESTADOS_INFO[estado.clave].unidad) : cura ? "Cura el estado" : "Este estado no tiene potencia"}">Potencia
                         <input type="number" data-campo="valor" min="1" value="${estado.valor}" ${conValor ? "" : "disabled"}></label>
-                    <label>Turnos <input type="number" data-campo="turnos" min="1" value="${permanente ? 3 : estado.turnos}" ${permanente ? "disabled" : ""}></label>
-                    <label><input type="checkbox" data-campo="permanente" ${permanente ? "checked" : ""}> Permanente</label>
-                    <label title="Probabilidad de que se aplique al acertar">% <input type="number" data-campo="probabilidad" data-incremento="5" min="1" max="100" value="${estado.probabilidad}"></label>
+                    ${config.turnos ? `<label>Turnos <input type="number" data-campo="turnos" min="1" value="${permanente ? 3 : estado.turnos}" ${permanente || cura ? "disabled" : ""}></label>
+                    <label><input type="checkbox" data-campo="permanente" ${permanente ? "checked" : ""} ${cura ? "disabled" : ""}> Permanente</label>` : ""}
+                    ${config.probabilidad ? `<label title="Probabilidad de que se aplique al acertar">% <input type="number" data-campo="probabilidad" data-incremento="5" min="1" max="100" value="${estado.probabilidad}"></label>` : ""}
                     <button type="button" class="btn-objeto" data-accion="quitar" title="Quitar estado" aria-label="Quitar estado">${iconoSao("descartar")}</button>
                 </li>`;
             }).join("")}</ul>
+            ${!config.turnos && estados.length ? `<p class="pista-estados-acertar">Duran hasta el descanso corto</p>` : ""}
             ${estados.length < MAX_ESTADOS_AL_ACERTAR ? `<button type="button" class="btn-anadir-ranura" data-accion="anadir" title="Añadir estado" aria-label="Añadir estado">+</button>` : ""}`;
     };
     contenedor.addEventListener("click", (e) => {
         const accion = e.target.closest("[data-accion]")?.dataset.accion;
         if (accion === "anadir") {
-            estados.push(cargarEstadoAlAcertar({ clave: "veneno" }));
+            estados.push(normalizar({ clave: "veneno" }));
         } else if (accion === "quitar") {
             estados.splice(Number(e.target.closest("[data-index]").dataset.index), 1);
         } else return;
@@ -2248,17 +2424,34 @@ function crearEditorEstadosAlAcertar(acordeon) {
         const estado = { ...estados[i] };
         if (campoEstado === "clave") Object.assign(estado, { clave: e.target.value, valor: undefined, turnos: undefined });
         else if (campoEstado === "permanente") estado.turnos = e.target.checked ? TURNOS_PERMANENTE : 3;
+        else if (campoEstado === "quitar") {
+            estado.quitar = e.target.value === "1";
+            // "Todos los negativos" solo existe curando
+            if (!estado.quitar && estado.clave === CURAR_NEGATIVOS) Object.assign(estado, { clave: "veneno", valor: undefined, turnos: undefined });
+        }
         else estado[campoEstado] = e.target.value;
-        estados[i] = cargarEstadoAlAcertar(estado) ?? estados[i];
+        estados[i] = normalizar(estado) ?? estados[i];
         pintar();
     });
     return {
         rellenar(lista) {
-            estados = cargarEstadosAlAcertar(structuredClone(lista ?? []));
+            estados = (Array.isArray(lista) ? structuredClone(lista) : []).map(normalizar).filter(Boolean).slice(0, MAX_ESTADOS_AL_ACERTAR);
             acordeon.open = estados.length > 0;
             pintar();
         },
-        leer: () => cargarEstadosAlAcertar(estados)
+        configurar(nuevas) {
+            const siguiente = { ...POR_DEFECTO, ...nuevas };
+            if (JSON.stringify(siguiente) === JSON.stringify(config)) return;
+            config = siguiente;
+            pintar();
+        },
+        leer: () => estados.map(({ clave, valor, turnos, probabilidad, quitar }) => {
+            const curar = config.cura && quitar;
+            const estado = { clave, valor: curar ? 0 : valor, turnos: !config.turnos || curar ? TURNOS_PERMANENTE : turnos };
+            if (config.probabilidad) estado.probabilidad = probabilidad;
+            if (config.cura) estado.quitar = curar;
+            return estado;
+        })
     };
 }
 
@@ -2537,10 +2730,12 @@ function pintarBotonUsar(boton, item, partes) {
     const arma = ARMAS[item?.tipo];
     if (!arma) return;
 
-    // El icono solo se regenera si cambia el tipo
-    if (boton.dataset.icono !== item.tipo) {
-        boton.dataset.icono = item.tipo;
-        boton.innerHTML = iconoSao(item.tipo);
+    // Icono de la habilidad Combate (atacar) o su versión con escudo (usarlo); distinto del icono del arma de la
+    // cabecera para no confundirlos. Solo se regenera si cambia
+    const icono = arma.escudo ? "usarEscudo" : "combate";
+    if (boton.dataset.icono !== icono) {
+        boton.dataset.icono = icono;
+        boton.innerHTML = iconoSao(icono);
     }
 
     const nombre = item.nombre?.trim() || arma.etiqueta;
@@ -2581,13 +2776,26 @@ function pintarModsEquipo(ul) {
     const lista = listaModsEquipo(ul.dataset.mods);
     if (!lista) return;
 
+    // Sin modo máster no se editan aquí: fichas de solo lectura ("Combate +1", en verde o rojo)
+    if (!MODO_MASTER) {
+        const html = lista.map(mod => {
+            const numero = Number(mod.numero) || 0;
+            return `<li class="mod-ficha ${numero > 0 ? "mod-positivo" : numero < 0 ? "mod-negativo" : ""}">${escaparHtml(etiquetaAtributo(mod.modificado))} ${conSigno(numero)}</li>`;
+        }).join("");
+        if (ul.dataset.html !== html) {
+            ul.dataset.html = html;
+            ul.innerHTML = html;
+        }
+        return;
+    }
+
     // Las filas solo se regeneran si cambia el número de modificadores, para no perder el foco
     if (ul.children.length !== lista.length) {
         ul.innerHTML = lista.map((mod, index) => `
             <li class="mod-equipo" data-index="${index}">
-                <select class="listValores" aria-label="Atributo" ${MODO_MASTER ? "" : "disabled"}>${opcionesAtributo(mod.modificado)}</select>
-                <input type="number" class="cantidadMod" aria-label="Cantidad" title="Cantidad (negativa para restar)" ${MODO_MASTER ? "" : "readonly"}>
-                <button type="button" class="quitar-mod" title="Eliminar modificador" aria-label="Eliminar modificador">×</button>
+                <select class="listValores" aria-label="Atributo">${opcionesAtributo(mod.modificado)}</select>
+                <input type="number" class="cantidadMod" aria-label="Cantidad" title="Cantidad (negativa para restar)">
+                <button type="button" class="btn-objeto quitar-mod" title="Eliminar modificador" aria-label="Eliminar modificador">${iconoSao("descartar")}</button>
             </li>`).join("");
     }
 
@@ -2709,6 +2917,31 @@ function ranuraDeTarjeta(elemento) {
     return getPropiedadEquipo(elemento.closest(".equipamiento"));
 }
 
+/* Pastilla de una habilidad de reliquia (en la tarjeta solo se lee y se usa; se edita en Extras), con el estilo de los efectos:
+   nombre, enfriamiento en segmentos (llenos = cargado), descripción y Usar con el icono de Atletismo */
+function pastillaHabilidadReliquia(ranura, equipo, habilidad, i) {
+    const coste = ranura.startsWith("accesorio-") ? "la acción de un brazo"
+        : TIPOS_DOS_MANOS.includes(equipo.tipo) ? "las acciones de las dos manos" : "la acción de esa mano";
+    const nombre = habilidad.nombre.trim() || "Habilidad";
+    const total = Math.max(0, Number(habilidad.enfriamiento) || 0);
+    const restante = Math.max(0, Number(habilidad.restante) || 0);
+    const texto = !total ? "Sin enfriamiento"
+        : restante > 0 ? `Faltan ${restante} turno${restante === 1 ? "" : "s"}` : `Lista · enfriamiento ${total} t`;
+    const dibujados = Math.min(MAX_SEGMENTOS_ESTADO, total);
+    const llenos = Math.round(dibujados * (total ? (total - restante) / total : 1));
+    const segmentos = Array.from({ length: dibujados }, (_, n) => `<i${n < llenos ? ' class="on"' : ""}></i>`).join("");
+    const titulo = motivoNoUsarHabilidad(personaje, ranura, i) ?? `Usar ${nombre}: muestra su descripción y gasta ${coste}`;
+    const descripcion = habilidad.descripcion.trim()
+        ? `<span class="efecto-descripcion" title="${escaparHtml(habilidad.descripcion)}">${escaparHtml(habilidad.descripcion)}</span>` : "";
+    return `<li class="habilidad-reliquia pastilla-reliquia efecto-equipo${restante > 0 ? " en-enfriamiento" : ""}" data-index="${i}">
+        <span class="efecto-icono">${iconoSao("reliquia")}</span>
+        <span class="efecto-texto"><b>${escaparHtml(nombre)}</b>
+            <span class="segmentos-estado">${segmentos}<span class="txt">${texto}</span></span>${descripcion}</span>
+        <button type="button" class="btn-usar-habilidad btn-usar-icono" ${restante > 0 ? "disabled" : ""}
+            title="${escaparHtml(titulo)}" aria-label="${escaparHtml(titulo)}">${iconoSao("usarHabilidad")}</button>
+    </li>`;
+}
+
 function pintarHabilidadesReliquia() {
     document.querySelectorAll("#divEquipamiento .reliquia-habilidades").forEach(caja => {
         const ranura = ranuraDeTarjeta(caja);
@@ -2717,36 +2950,16 @@ function pintarHabilidadesReliquia() {
         caja.hidden = !visible;
         if (!visible) return;
 
-        if (!caja.firstElementChild) {
-            caja.innerHTML = `
-                <div class="equipamiento-mods-header">
-                    <span>Habilidades de reliquia:</span>
-                    ${MODO_MASTER ? `<button type="button" class="btn-anadir-habilidad" title="Añadir habilidad" aria-label="Añadir habilidad">+</button>` : ""}
-                </div>
-                <ul class="lista-habilidades-reliquia" data-vacia="${MODO_MASTER ? "Sin habilidades: añade una con +" : "Sin habilidades"}"></ul>`;
-        }
-        const ul = caja.querySelector(".lista-habilidades-reliquia");
+        // Pastillas de solo lectura (se editan en Extras, #modalExtrasEquipo); se regeneran solo si cambian
         const habilidades = equipo.reliquia.habilidades;
-        if (ul.children.length !== habilidades.length) {
-            ul.innerHTML = habilidades.map((_, i) => filaHabilidadReliquia(i, true, MODO_MASTER)).join("");
+        const html = `<div class="equipamiento-mods-header"><span>Habilidades de reliquia:</span></div>
+            ${habilidades.length
+                ? `<ul class="lista-efectos-equipo">${habilidades.map((h, i) => pastillaHabilidadReliquia(ranura, equipo, h, i)).join("")}</ul>`
+                : `<p class="lista-vacia">Sin habilidades</p>`}`;
+        if (caja.dataset.html !== html) {
+            caja.dataset.html = html;
+            caja.innerHTML = html;
         }
-        rellenarFilasHabilidades(ul, habilidades);
-
-        const coste = ranura.startsWith("accesorio-") ? "la acción de un brazo"
-            : TIPOS_DOS_MANOS.includes(equipo.tipo) ? "las acciones de las dos manos" : "la acción de esa mano";
-        habilidades.forEach((habilidad, i) => {
-            const fila = ul.children[i];
-            const boton = fila.querySelector(".btn-usar-habilidad");
-            const enEnfriamiento = habilidad.restante > 0;
-            boton.disabled = enEnfriamiento;
-            boton.textContent = enEnfriamiento ? `${habilidad.restante} t` : "Usar";
-            boton.title = motivoNoUsarHabilidad(personaje, ranura, i)
-                ?? `Usar ${habilidad.nombre.trim() || "la habilidad"}: muestra su descripción y gasta ${coste}`;
-            boton.setAttribute("aria-label", boton.title);
-            fila.classList.toggle("en-enfriamiento", enEnfriamiento);
-            // Barra de enfriamiento: lo que falta respecto al total
-            fila.style.setProperty("--enfriamiento", habilidad.enfriamiento > 0 ? habilidad.restante / habilidad.enfriamiento : 0);
-        });
     });
 }
 
@@ -2777,56 +2990,17 @@ function inicializarHabilidadesReliquia() {
     };
 
     contenedor.addEventListener("click", (e) => {
-        const anadir = MODO_MASTER && e.target.closest(".btn-anadir-habilidad");
-        if (anadir) {
-            const habilidades = equipoDeRanura(personaje, ranuraDeTarjeta(anadir))?.reliquia?.habilidades;
-            if (!habilidades) return;
-            reproducir("click");
-            habilidades.push(cargarHabilidadReliquia({ enfriamiento: 1 }));
-            actualizarTodo();
-            anadir.closest(".reliquia-habilidades").querySelector(".habilidad-reliquia:last-child .nombreHabilidad")?.focus();
-            return;
-        }
-        const quitar = MODO_MASTER && e.target.closest(".reliquia-habilidades .quitar-habilidad");
-        if (quitar) {
-            const { ranura, indice, habilidad } = datosFila(quitar);
-            if (!habilidad) return;
-            const conContenido = habilidad.nombre.trim() || habilidad.descripcion.trim();
-            if (conContenido && !confirm(`¿Eliminar la habilidad ${habilidad.nombre.trim() || "sin nombre"}?`)) return;
-            equipoDeRanura(personaje, ranura).reliquia.habilidades.splice(indice, 1);
-            actualizarTodo();
-            return;
-        }
         const usar = e.target.closest(".btn-usar-habilidad");
         if (usar) {
             const { ranura, indice } = datosFila(usar);
             usarHabilidad(ranura, indice);
         }
     });
-
-    // Edición (solo en modo master). Texto: se guarda al escribir, sin repintar (no se pierde el foco)
-    if (!MODO_MASTER) return;
-    contenedor.addEventListener("input", (e) => {
-        if (!e.target.closest(".reliquia-habilidades")) return;
-        const { habilidad } = datosFila(e.target);
-        if (!habilidad) return;
-        if (e.target.classList.contains("nombreHabilidad")) habilidad.nombre = e.target.value;
-        if (e.target.classList.contains("descripcionHabilidad")) habilidad.descripcion = e.target.value;
-    });
-
-    contenedor.addEventListener("change", (e) => {
-        if (!e.target.classList.contains("enfriamientoHabilidad") || !e.target.closest(".reliquia-habilidades")) return;
-        const { habilidad } = datosFila(e.target);
-        if (!habilidad) return;
-        habilidad.enfriamiento = Math.max(0, parseInt(e.target.value) || 0);
-        habilidad.restante = Math.min(habilidad.restante, habilidad.enfriamiento);
-        actualizarTodo();
-    });
 }
 
 /* Efectos del equipo (reglas en efectosEquipo.js) ____________________________ */
 // Cada .efectos-equipo está en la tarjeta de su ranura (manos, armadura, accesorios). Se crean y
-// editan en el formulario de objetos; aquí solo se ven y se usan las activas.
+// editan en el formulario de objetos o, con el equipo puesto, en Extras; aquí solo se ven y se usan las activas.
 
 /* Coste de usar un efecto activo, en texto */
 function textoCosteEfecto(ranura, efecto) {
@@ -2853,9 +3027,8 @@ function detalleEfecto(efecto) {
 
 function filaEfectoEquipo(ranura, efecto, i) {
     const detalle = escaparHtml(detalleEfecto(efecto));
-    // NPC: los efectos se editan y se quitan desde la propia tarjeta
-    const editar = personaje.esNpc ? `<button type="button" class="btn-editar-efecto" title="Editar efecto" aria-label="Editar efecto">${iconoSao("editar")}</button>
-        <button type="button" class="quitar-mod btn-quitar-efecto" title="Quitar efecto" aria-label="Quitar efecto">×</button>` : "";
+    // Se editan y se quitan en Extras (#modalExtrasEquipo), no desde la tarjeta
+    const editar = "";
     // Descripción: hasta dos líneas (el resto se corta con …); entera al pasar el ratón
     const descripcion = efecto.descripcion?.trim()
         ? `<span class="efecto-descripcion" title="${escaparHtml(efecto.descripcion)}">${escaparHtml(efecto.descripcion)}</span>` : "";
@@ -2871,7 +3044,7 @@ function filaEfectoEquipo(ranura, efecto, i) {
     return `<li class="efecto-equipo activa" data-index="${i}">
         <span class="efecto-icono">${iconoSao("arteActiva")}</span>
         <span class="efecto-texto"><b>${escaparHtml(efecto.nombre)}<small> - ${detalle}</small></b>${descripcion}</span>
-        <button type="button" class="btn-usar-efecto" ${motivo ? "disabled" : ""} title="${escaparHtml(titulo)}" aria-label="${escaparHtml(titulo)}">Usar</button>
+        <button type="button" class="btn-usar-efecto btn-usar-icono" ${motivo ? "disabled" : ""} title="${escaparHtml(titulo)}" aria-label="${escaparHtml(titulo)}">${iconoSao("usarHabilidad")}</button>
         ${editar}
     </li>`;
 }
@@ -2922,28 +3095,6 @@ function inicializarEfectosEquipo() {
         mostrarDetalleArte(efecto);
     };
     contenedor.addEventListener("click", async (e) => {
-        // NPC: editar o quitar un efecto desde la tarjeta
-        const editar = e.target.closest(".btn-editar-efecto");
-        const quitar = e.target.closest(".btn-quitar-efecto");
-        if (editar || quitar) {
-            const { ranura, indice, efecto } = datosFila(editar || quitar);
-            const efectos = equipoDeRanura(personaje, ranura)?.efectos;
-            if (!efecto || !efectos) return;
-            reproducir("click");
-            if (editar) {
-                abrirEditorEfecto(efecto, null, (nuevo) => {
-                    efectos[indice] = nuevo;
-                    personaje.calcularCaracteristicas();
-                    actualizarTodo();
-                });
-                return;
-            }
-            if (!(await confirmarSao({ titulo: "Quitar efecto", texto: `¿Quitar ${efecto.nombre}?` }))) return;
-            efectos.splice(efectos.indexOf(efecto), 1);
-            personaje.calcularCaracteristicas();
-            actualizarTodo();
-            return;
-        }
         const usar = e.target.closest(".btn-usar-efecto");
         if (usar) {
             reproducir("click");
@@ -2962,83 +3113,149 @@ function inicializarEfectosEquipo() {
     });
 }
 
-/* NPC: reliquia y efectos de un arma desde la ficha (manos y otras partes) __________
- * "Es reliquia" le da (o le quita) habilidades de reliquia; "+ Crear efecto" abre el formulario de artes en modo
- * efecto. Un objeto de tipo reliquia siempre lo es. */
-function pintarExtrasArmaNpc() {
-    if (!personaje.esNpc) return;
-    document.querySelectorAll("#divEquipamiento .extras-arma-npc").forEach(caja => {
-        const ranura = ranuraDeTarjeta(caja);
-        const equipo = equipoDeRanura(personaje, ranura);
-        caja.hidden = !equipo?.tipo;
-        if (!equipo?.tipo) return;
-        const check = caja.querySelector(".check-reliquia-npc");
-        check.checked = esReliquia(equipo);
-        check.disabled = equipo.tipo === TIPO_RELIQUIA;
-        check.closest("label").title = check.disabled ? "Una reliquia siempre lo es" : "Con habilidades que se usan a mano y tienen enfriamiento";
-        // Estados al acertar: solo en armas de ataque (no escudos ni reliquias sin arma)
-        const botonEstados = caja.querySelector(".btn-estados-npc");
-        if (botonEstados) {
-            botonEstados.hidden = !ARMAS[equipo.tipo] || Boolean(ARMAS[equipo.tipo].escudo);
-            const n = equipo.estadosAlAcertar?.length ?? 0;
-            botonEstados.textContent = n ? `Estados al acertar (${n})` : "Estados al acertar";
-        }
+/* Extras del equipo puesto: habilidades de reliquia, efectos y estados al acertar ____________________________
+ * Solo en modo máster o en un NPC: el botón .btn-extras-equipo de cada tarjeta (manos, armadura, accesorios y
+ * partes del NPC) abre #modalExtrasEquipo, que edita una copia y la aplica al aceptar. Un objeto de tipo reliquia
+ * siempre lo es; pueden ser reliquia las armas de ataque y los accesorios; los estados al acertar, solo en armas. */
+const puedeEditarExtras = () => MODO_MASTER || personaje.esNpc;
+const esArmaDeAtaque = (tipo) => Boolean(ARMAS[tipo]) && !ARMAS[tipo].escudo;
+const puedeSerReliquia = (tipo) => tipo === TIPO_RELIQUIA || tipo === TIPO_ACCESORIO || esArmaDeAtaque(tipo);
+
+function pintarBotonesExtras() {
+    document.querySelectorAll("#divEquipamiento .btn-extras-equipo").forEach(boton => {
+        const equipo = equipoDeRanura(personaje, ranuraDeTarjeta(boton));
+        boton.hidden = !puedeEditarExtras() || !equipo?.tipo;
+        if (boton.hidden) return;
+        if (!boton.firstElementChild) boton.innerHTML = iconoSao("ajustes");
+        const partes = [puedeSerReliquia(equipo.tipo) ? "reliquia" : "", "efectos", esArmaDeAtaque(equipo.tipo) ? "estados al acertar" : ""].filter(Boolean);
+        const titulo = `Extras: ${partes.join(", ")}`;
+        boton.title = titulo;
+        boton.setAttribute("aria-label", titulo);
     });
 }
 
-function inicializarExtrasArmaNpc() {
-    const contenedor = document.getElementById("divEquipamiento");
-    contenedor.addEventListener("change", async (e) => {
-        const check = e.target.closest(".check-reliquia-npc");
-        if (!check || !personaje.esNpc) return;
-        const equipo = equipoDeRanura(personaje, ranuraDeTarjeta(check));
-        if (!equipo?.tipo) return;
-        if (check.checked) equipo.reliquia = equipo.reliquia ?? { habilidades: [] };
-        else {
-            const conHabilidades = equipo.reliquia?.habilidades?.length;
-            if (conHabilidades && !(await confirmarSao({ titulo: "Quitar reliquia", texto: `Se borrarán sus ${conHabilidades} habilidades de reliquia. ¿Seguir?` }))) {
-                actualizarTodo();
-                return;
-            }
-            equipo.reliquia = null;
-        }
-        actualizarTodo();
-    });
-    // Estados al acertar del arma: se editan en #modalEstadosAcertar y se guardan al aceptar
-    const modalEstados = document.getElementById("modalEstadosAcertar");
-    const editorEstados = crearEditorEstadosAlAcertar(document.getElementById("editorEstadosAcertarNpc"));
-    let equipoEstados = null;
-    contenedor.addEventListener("click", (e) => {
-        const boton = e.target.closest(".btn-estados-npc");
-        if (!boton || !personaje.esNpc) return;
-        const equipo = equipoDeRanura(personaje, ranuraDeTarjeta(boton));
-        if (!ARMAS[equipo?.tipo] || ARMAS[equipo.tipo].escudo) return;
-        reproducir("click");
-        equipoEstados = equipo;
-        document.getElementById("modalEstadosAcertarLabel").textContent = `Estados al acertar: ${equipo.nombre?.trim() || ARMAS[equipo.tipo].etiqueta}`;
-        editorEstados.rellenar(equipo.estadosAlAcertar);
-        bootstrap.Modal.getOrCreateInstance(modalEstados).show();
-    });
-    document.getElementById("btnGuardarEstadosAcertar").addEventListener("click", () => {
-        if (equipoEstados) equipoEstados.estadosAlAcertar = editorEstados.leer();
-        equipoEstados = null;
-        reproducir("click");
-        bootstrap.Modal.getOrCreateInstance(modalEstados).hide();
-        actualizarTodo();
-    });
-    modalEstados.addEventListener("hidden.bs.modal", () => { equipoEstados = null; });
+function inicializarExtrasEquipo() {
+    const modalEl = document.getElementById("modalExtrasEquipo");
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    const campo = (id) => document.getElementById(id);
+    const checkReliquia = campo("extrasEsReliquia");
+    const listaHabilidades = campo("extrasListaHabilidades");
+    const listaEfectos = campo("extrasListaEfectos");
+    const editorEstados = crearEditorEstadosAlAcertar(campo("extrasEstados"));
+    // Lo que se edita (copia del equipo de la ranura)
+    let ranura = null;
+    let tipo = "";
+    let habilidades = [];
+    let efectos = [];
 
-    contenedor.addEventListener("click", (e) => {
-        const boton = e.target.closest(".btn-efecto-npc");
-        if (!boton || !personaje.esNpc) return;
+    const pintarResumenes = () => {
+        ponerResumen(campo("extrasHabilidades"), habilidades.length ? `${habilidades.length} habilidad${habilidades.length === 1 ? "" : "es"}` : "Ninguna");
+        ponerResumen(campo("extrasEfectos"), efectos.map(efecto => efecto.nombre).join(", ") || "Ninguno");
+        ponerResumen(campo("extrasEstados"), describirEstadosAlAcertar(editorEstados.leer()) || "Ninguno");
+    };
+    const pintar = () => {
+        const conReliquia = tipo === TIPO_RELIQUIA || (puedeSerReliquia(tipo) && checkReliquia.checked);
+        campo("ranuraExtrasReliquia").hidden = !puedeSerReliquia(tipo);
+        checkReliquia.disabled = tipo === TIPO_RELIQUIA;
+        checkReliquia.closest(".ranura").title = checkReliquia.disabled ? "Una reliquia siempre lo es" : "Con habilidades que se usan a mano y tienen enfriamiento";
+        campo("extrasHabilidades").hidden = !conReliquia;
+        campo("extrasEstados").hidden = !esArmaDeAtaque(tipo);
+        listaHabilidades.innerHTML = habilidades.map((_, i) => filaHabilidadReliquia(i, false)).join("");
+        rellenarFilasHabilidades(listaHabilidades, habilidades);
+        listaEfectos.innerHTML = efectos.map((efecto, i) => `
+            <li class="efecto-objeto" data-index="${i}">
+                <span class="efecto-icono">${iconoSao(efecto.tipo === "pasiva" ? "artePasiva" : "arteActiva")}</span>
+                <span class="efecto-texto"><b>${escaparHtml(efecto.nombre)}</b>
+                    <small>${efecto.tipo === "pasiva" ? "Pasiva · " : "Activa · "}${escaparHtml(detalleEfecto(efecto))}</small></span>
+                <button type="button" class="btn-objeto editar-efecto" title="Editar efecto" aria-label="Editar efecto">${iconoSao("editar")}</button>
+                <button type="button" class="btn-objeto quitar-mod" title="Eliminar efecto" aria-label="Eliminar efecto">${iconoSao("descartar")}</button>
+            </li>`).join("") || `<li class="lista-vacia">Sin efectos.</li>`;
+        pintarResumenes();
+    };
+
+    // Desde el botón de una tarjeta
+    document.getElementById("divEquipamiento").addEventListener("click", (e) => {
+        const boton = e.target.closest(".btn-extras-equipo");
+        if (!boton || !puedeEditarExtras()) return;
         const equipo = equipoDeRanura(personaje, ranuraDeTarjeta(boton));
         if (!equipo?.tipo) return;
         reproducir("click");
-        abrirEditorEfecto(null, null, (efecto) => {
-            equipo.efectos = [...(equipo.efectos ?? []), efecto];
+        ranura = ranuraDeTarjeta(boton);
+        tipo = equipo.tipo;
+        checkReliquia.checked = Boolean(equipo.reliquia) || tipo === TIPO_RELIQUIA;
+        habilidades = structuredClone(equipo.reliquia?.habilidades ?? []).map(cargarHabilidadReliquia);
+        efectos = cargarEfectos(structuredClone(equipo.efectos ?? []));
+        editorEstados.rellenar(equipo.estadosAlAcertar ?? []);
+        campo("modalExtrasEquipoLabel").textContent = `Extras: ${equipo.nombre?.trim() || etiquetaTipoEquipo(equipo.tipo)}`;
+        // Las ranuras desplegables que ya tienen algo se abren solas
+        campo("extrasHabilidades").open = habilidades.length > 0;
+        campo("extrasEfectos").open = efectos.length > 0;
+        pintar();
+        modal.show();
+    });
+
+    checkReliquia.addEventListener("change", pintar);
+    campo("extrasAnadirHabilidad").addEventListener("click", () => {
+        reproducir("click");
+        habilidades.push(cargarHabilidadReliquia({ enfriamiento: 1 }));
+        pintar();
+        listaHabilidades.lastElementChild?.querySelector(".nombreHabilidad")?.focus();
+    });
+    listaHabilidades.addEventListener("input", (e) => {
+        const habilidad = habilidades[Number(e.target.closest(".habilidad-reliquia")?.dataset.index)];
+        if (!habilidad) return;
+        if (e.target.classList.contains("nombreHabilidad")) habilidad.nombre = e.target.value;
+        if (e.target.classList.contains("descripcionHabilidad")) habilidad.descripcion = e.target.value;
+        if (e.target.classList.contains("enfriamientoHabilidad")) {
+            habilidad.enfriamiento = Math.max(0, parseInt(e.target.value) || 0);
+            habilidad.restante = Math.min(habilidad.restante, habilidad.enfriamiento);
+        }
+        pintarResumenes();
+    });
+    listaHabilidades.addEventListener("click", (e) => {
+        if (!e.target.closest(".quitar-habilidad")) return;
+        habilidades.splice(Number(e.target.closest(".habilidad-reliquia").dataset.index), 1);
+        pintar();
+    });
+    // Efectos: el formulario de artes en modo efecto se abre como ventana hija y vuelve aquí
+    campo("extrasAnadirEfecto").addEventListener("click", () => {
+        reproducir("click");
+        abrirEditorEfecto(null, modalEl, (efecto) => { efectos.push(efecto); pintar(); });
+    });
+    listaEfectos.addEventListener("click", async (e) => {
+        const fila = e.target.closest(".efecto-objeto");
+        if (!fila) return;
+        const i = Number(fila.dataset.index);
+        if (e.target.closest(".quitar-mod")) {
+            const efecto = efectos[i];
+            if (!(await confirmarSao({ titulo: "Eliminar efecto", texto: `¿Eliminar el efecto ${efecto.nombre}?` }))) return;
+            efectos.splice(efectos.indexOf(efecto), 1);
+            pintar();
+        } else if (e.target.closest(".editar-efecto")) {
+            reproducir("click");
+            abrirEditorEfecto(efectos[i], modalEl, (efecto) => { efectos[i] = efecto; pintar(); });
+        }
+    });
+    campo("extrasEstados").addEventListener("change", pintarResumenes);
+    campo("extrasEstados").addEventListener("click", () => requestAnimationFrame(pintarResumenes));
+
+    campo("btnGuardarExtrasEquipo").addEventListener("click", () => {
+        const equipo = ranura ? equipoDeRanura(personaje, ranura) : null;
+        if (equipo?.tipo) {
+            const conReliquia = tipo === TIPO_RELIQUIA || (puedeSerReliquia(tipo) && checkReliquia.checked);
+            equipo.reliquia = conReliquia ? { ...(equipo.reliquia ?? {}), habilidades: habilidades.map(cargarHabilidadReliquia) } : null;
+            equipo.efectos = efectos;
+            if (esArmaDeAtaque(tipo)) equipo.estadosAlAcertar = editorEstados.leer();
             personaje.calcularCaracteristicas();
-            actualizarTodo();
-        });
+        }
+        reproducir("click");
+        modal.hide();
+        actualizarTodo();
+    });
+    // Al cerrarse de verdad (no al abrir el formulario de efectos encima) se olvida la copia
+    modalEl.addEventListener("hidden.bs.modal", () => {
+        if (seVaAUnaHija(modalEl)) return;
+        ranura = null;
     });
 }
 
@@ -3080,10 +3297,13 @@ function generarAccesorios() {
             <div class="tarjeta-accesorio" data-index="${i}">
                 <div class="accesorio-cabecera">
                     <span class="accesorio-icono">${iconoSao("accesorio")}</span>
-                    <input type="text" class="inputNombreAccesorio" placeholder="${MODO_MASTER ? `Accesorio ${i + 1}` : "Vacío: equipa desde el inventario"}"
-                        aria-label="Nombre del accesorio ${i + 1}" ${MODO_MASTER ? "" : "readonly"}>
-                    <span class="accesorio-marca-reliquia" hidden>Reliquia</span>
-                    <button type="button" class="btn-guardar-equipo" data-ranura="accesorio-${i}">${iconoSao("inventario")}</button>
+                    <div class="equipamiento-titulo">
+                        <span class="equipamiento-ranura"><b>Accesorio ${i + 1}</b> <span class="accesorio-marca-reliquia" hidden>Reliquia</span>
+                            <button type="button" class="btn-objeto btn-extras-equipo" hidden></button>
+                            <button type="button" class="btn-guardar-equipo" data-ranura="accesorio-${i}">${iconoSao("inventario")}</button></span>
+                        <input type="text" class="inputNombreAccesorio" placeholder="${MODO_MASTER ? `Accesorio ${i + 1}` : "Vacío: equipa desde el inventario"}"
+                            aria-label="Nombre del accesorio ${i + 1}" ${MODO_MASTER ? "" : "readonly"}>
+                    </div>
                 </div>
                 <p class="equipamiento-descripcion"></p>
                 <div class="equipamiento-mods-header">
@@ -3123,6 +3343,8 @@ const listaPartesNpcEl = document.getElementById("listaPartesNpc");
 const tarjetasPartesNpcEl = document.getElementById("tarjetasPartesNpc");
 const accionesPartesNpcEl = document.getElementById("accionesPartesNpc");
 const NOMBRES_BRAZO = { izquierda: "Brazo izquierdo", derecha: "Brazo derecho" };
+/* Icono de cada parte en la lista (las que crea el máster, el de personaje) */
+const ICONOS_PARTE_NPC = { izquierda: "fisico", derecha: "fisico", cabeza: "comida", pies: "movimiento" };
 const valorFoco = (input, valor) => { if (input && document.activeElement !== input) input.value = valor; };
 
 function pintarPartesNpc() {
@@ -3133,18 +3355,23 @@ function pintarPartesNpc() {
     if (listaPartesNpcEl.dataset.firma !== firma) {
         listaPartesNpcEl.dataset.firma = firma;
         const faltan = Object.keys(NOMBRES_BRAZO).filter(id => !tieneParte(personaje, id));
-        listaPartesNpcEl.innerHTML = `<span class="titulo-partes-npc">Partes del cuerpo</span>` + partes.map(p => `
-            <span class="parte-npc" data-parte="${escaparHtml(p.id)}">
-                <input type="text" class="nombre-parte-npc" maxlength="60" aria-label="Nombre de la parte">
-                <button type="button" class="quitar-mod" data-accion="quitarParte">×</button>
-            </span>`).join("")
-            + faltan.map(id => `<button type="button" class="btn-cabecera btn-brazo-npc" data-brazo="${id}">+ ${NOMBRES_BRAZO[id]}</button>`).join("");
+        // Estilo SAO: cada parte es una pastilla con su icono, el nombre sobre una línea y quitar; volver a añadir
+        // un brazo, pastillas con texto debajo (el + del título añade una parte nueva)
+        listaPartesNpcEl.innerHTML = `<span class="titulo-partes-npc">Partes del cuerpo</span>
+            <div class="partes-npc-pastillas">${partes.map(p => `
+                <span class="parte-npc" data-parte="${escaparHtml(p.id)}">
+                    <span class="parte-npc-icono">${iconoSao(ICONOS_PARTE_NPC[p.id] ?? "personaje")}</span>
+                    <input type="text" class="nombre-parte-npc" maxlength="60" aria-label="Nombre de la parte">
+                    <button type="button" class="btn-objeto" data-accion="quitarParte">${iconoSao("descartar")}</button>
+                </span>`).join("")}</div>`
+            + (faltan.length ? `<div class="botones-ranura">${faltan.map(id =>
+                `<button type="button" class="btn-pastilla-sao btn-brazo-npc" data-brazo="${id}">+ ${NOMBRES_BRAZO[id]}</button>`).join("")}</div>` : "");
     }
     partes.forEach(p => {
         const fila = listaPartesNpcEl.querySelector(`[data-parte="${CSS.escape(p.id)}"]`);
         if (!fila) return;
         valorFoco(fila.querySelector("input"), p.nombre);
-        const quitar = fila.querySelector("button");
+        const quitar = fila.querySelector("[data-accion='quitarParte']");
         const motivo = motivoNoQuitarParte(personaje, p.id);
         quitar.disabled = Boolean(motivo);
         quitar.title = motivo || `Quitar ${p.nombre}`;
@@ -3163,9 +3390,16 @@ const candidatasSegundaParte = (id) => partesExtra(personaje)
 function htmlTarjetaParte(parte, ocupa) {
     const equipo = parte.equipo;
     const arma = ARMAS[equipo?.tipo];
+    // Cabecera (estilo SAO, como las manos): icono, parte y tipo, nombre, desplegable y atacar
     const cabecera = `<div class="equipamiento-tipo-row">
-            <label><b>${escaparHtml(parte.nombre)}:</b></label>
+            <span class="equipamiento-icono${arma && !ocupa ? "" : " vacio"}">${iconoSao(arma && !ocupa ? iconoObjeto({ tipo: "equipo", equipo }) : "espada")}</span>
+            <div class="equipamiento-titulo">
+                <span class="equipamiento-ranura"><b>${escaparHtml(parte.nombre)}:</b>${arma && !ocupa ? ` <span class="tipoEquipoTexto">${escaparHtml(arma.etiqueta)}</span>
+                    <button type="button" class="btn-objeto btn-extras-equipo" hidden></button>` : ""}</span>
+                ${arma && !ocupa ? `<input type="text" class="inputNombreEquipo" data-campo="nombre" placeholder="Nombre" maxlength="60" aria-label="Nombre del equipo">` : ""}
+            </div>
             ${ocupa ? "" : `<select class="tipoEquipo parte-tipo" aria-label="Equipo de ${escaparHtml(parte.nombre)}">${OPCIONES_TIPO_PARTE}</select>`}
+            ${arma && !ocupa ? `<span class="acciones-arma"><button type="button" class="btn-usar-equipo" data-accion="usar"></button></span>` : ""}
         </div>`;
     if (ocupa) {
         return cabecera + `<p class="equipamiento-vacio">Ocupada por el arma a dos manos de ${escaparHtml(parteNpc(personaje, ocupa)?.nombre ?? "otra parte")}</p>`;
@@ -3179,24 +3413,17 @@ function htmlTarjetaParte(parte, ocupa) {
     const campos = arma.escudo ? numero("defensa", "Defensa", 0) : numero("danno", "Daño", 0) + numero("acierto", "Acierto")
         + `<div class="campo-numero"><label>Dado:</label><select data-campo="dado"><option value="">Del tipo</option>
             <option value="0">Bajo</option><option value="1">Medio</option><option value="2">Alto</option></select></div>`;
-    const elemental = arma.escudo ? "" : `<div class="bloque-elemental partes-elemental" title="Se suma a cada ataque, aparte del daño físico">
+    // Mismo marcado que el daño elemental de las manos (campoElemental; lo repinta actualizarBloquesElementales)
+    const elemental = arma.escudo ? "" : `<div class="bloque-elemental" data-elemental="dannoElemental" title="Se suma a cada ataque, aparte del daño físico">
             <span class="subtitulo-elemental">Daño elemental:</span>
-            <div class="valores-elementales">${ELEMENTOS.map(elemento => `<label class="valor-elemental" title="${escaparHtml(TIPOS_DANNO[elemento].etiqueta)}">
-                ${iconoSao(TIPOS_DANNO[elemento].icono ?? elemento)}<input type="number" min="0" data-elemental="${elemento}"></label>`).join("")}</div>
+            <div class="valores-elementales">${ELEMENTOS.map(elemento => campoElemental("dannoElemental", elemento, MODO_MASTER ? "" : "readonly")).join("")}</div>
         </div>`;
     return cabecera + `<div class="equipamiento-detalles" style="display: flex;">
             <div class="equipamiento-main-inputs">
-                <input type="text" class="inputNombreEquipo" data-campo="nombre" placeholder="Nombre" maxlength="60">
                 ${campos}${segunda}
-                <span class="acciones-arma"><button type="button" class="btn-usar-equipo" data-accion="usar"></button></span>
             </div>
             ${elemental}
             <p class="equipamiento-estados-acertar" hidden></p>
-            <div class="extras-arma-npc">
-                <label><input type="checkbox" class="check-reliquia-npc"> Es reliquia</label>
-                <button type="button" class="btn-cabecera btn-efecto-npc">+ Crear efecto</button>
-                <button type="button" class="btn-cabecera btn-estados-npc">Estados al acertar</button>
-            </div>
             <div class="reliquia-habilidades" hidden></div>
             <div class="efectos-equipo" hidden></div>
         </div>`;
@@ -3227,7 +3454,6 @@ function pintarTarjetasPartesNpc() {
             const clave = campo.dataset.campo;
             valorFoco(campo, clave === "nombre" ? equipo.nombre ?? "" : (equipo[clave] ?? ""));
         });
-        tarjeta.querySelectorAll("[data-elemental]").forEach(input => valorFoco(input, equipo.dannoElemental?.[input.dataset.elemental] ?? 0));
         // Estados que provoca el arma al acertar (como en las manos, actualizarPocionesArmas)
         const lineaEstados = tarjeta.querySelector(".equipamiento-estados-acertar");
         if (lineaEstados) {
@@ -3238,7 +3464,8 @@ function pintarTarjetasPartesNpc() {
         }
         const usar = tarjeta.querySelector("[data-accion='usar']");
         if (usar) pintarBotonUsar(usar, equipo, partesDeEquipoNpc(personaje, parte.id));
-    });
+    });    // Daño elemental con los valores del equipo (las tarjetas pueden haberse regenerado ahora mismo)
+    actualizarBloquesElementales();
 }
 
 /* Casillas de acción por parte (cuando el NPC no tiene el cuerpo de siempre) */
@@ -3321,9 +3548,9 @@ function inicializarPartesNpc() {
         }
         const equipo = parte.equipo;
         const campo = e.target.dataset.campo;
-        const elemento = e.target.dataset.elemental;
+        const elemento = e.target.dataset.elemento;
         if (!equipo || (!campo && !elemento)) return; // reliquia y efectos tienen sus propias escuchas
-        if (elemento) equipo.dannoElemental[elemento] = Math.max(0, Math.trunc(Number(e.target.value) || 0));
+        if (elemento) equipo.dannoElemental = cargarValoresElementales({ ...equipo.dannoElemental, [elemento]: e.target.value });
         else if (campo === "nombre") equipo.nombre = e.target.value.trim().slice(0, 60);
         else if (campo === "dado") equipo.dado = e.target.value === "" ? null : Number(e.target.value);
         else if (campo === "parteSecundaria") equipo.parteSecundaria = e.target.value || null;
@@ -3331,6 +3558,14 @@ function inicializarPartesNpc() {
         else if (campo) equipo[campo] = Math.max(0, Math.trunc(Number(e.target.value) || 0));
         personaje.calcularCaracteristicas();
         actualizarTodo();
+    });
+    // Daño elemental: se guarda mientras se escribe (si algo repinta la ficha antes del change, no se pierde)
+    tarjetasPartesNpcEl.addEventListener("input", (e) => {
+        const elemento = e.target.dataset.elemento;
+        const equipo = parteNpc(personaje, e.target.closest("[data-parte]")?.dataset.parte)?.equipo;
+        if (!elemento || !equipo) return;
+        equipo.dannoElemental = cargarValoresElementales({ ...equipo.dannoElemental, [elemento]: e.target.value });
+        marcarElementalesActivos(e.target.closest(".valores-elementales"));
     });
     tarjetasPartesNpcEl.addEventListener("click", (e) => {
         const usar = e.target.closest("[data-accion='usar']");
@@ -3598,6 +3833,15 @@ const chipsEstados = document.getElementById("chipsEstados");
 /* En un NPC los estados restan otros valores (PJ.getModificadorEstados) */
 const UNIDADES_ESTADO_NPC = { quemadura: "−Acierto", electrocutado: "−Defensa y Movimiento", deslumbrado: "−Percepción pasiva" };
 const listaEstadosActivos = document.getElementById("listaEstadosActivos");
+/* Estado que se acaba de activar desde los chips: su pastilla sale abierta (y las demás se cierran) */
+let estadoRecienActivado = null;
+/* Borradores de las pastillas abiertas: { clave: { valor, turnos, descansoCorto, origen… } } (copia del estado);
+   solo se aplican con Guardar */
+const borradoresEstado = {};
+/* Estado nuevo que se está creando desde los chips (aún sin aplicar): su pastilla sale con el borrador */
+let estadoNuevo = null;
+/* Segmentos de turnos que se dibujan como mucho */
+const MAX_SEGMENTOS_ESTADO = 10;
 
 function inicializarEstados() {
     chipsEstados.innerHTML = Object.entries(ESTADOS_INFO).map(([clave, info]) => `
@@ -3608,55 +3852,128 @@ function inicializarEstados() {
         </button>`
     ).join("");
 
-    // Clic en un chip: activa el estado con sus valores por defecto o lo quita
+    // Clic en un chip: si no está activo abre una pastilla nueva con sus valores por defecto (no se aplica hasta
+    // Guardar); si ya está activo (o es el nuevo), abre su pastilla para editarlo. Se quita con la papelera
     chipsEstados.addEventListener("click", (e) => {
         const chip = e.target.closest(".chip-estado");
         if (!chip) return;
-        const estado = chip.dataset.estado;
-        if (estaActivo(personaje, estado)) quitarEstado(personaje, estado);
-        else activarEstado(personaje, estado);
-        actualizarTodo();
+        const clave = chip.dataset.estado;
+        reproducir("click");
+        if (!estaActivo(personaje, clave) && estadoNuevo !== clave) {
+            if (estadoNuevo) delete borradoresEstado[estadoNuevo]; // solo un estado nuevo a la vez
+            estadoNuevo = clave;
+            const info = ESTADOS_INFO[clave];
+            borradoresEstado[clave] = { valor: info.valorPorDefecto ?? 1, turnos: info.turnos ?? TURNOS_PERMANENTE };
+        }
+        estadoRecienActivado = clave;
+        actualizarEstados();
     });
+    prepararFormularioSao(listaEstadosActivos); // − / + en el valor y los turnos (formularioSao.js)
 
+    // Los cambios van al borrador de la pastilla (borradoresEstado) y solo se aplican con Guardar. No se repinta
+    // nada más que sus campos, así el clic en Guardar no se pierde aunque el campo con el foco dispare su change
     listaEstadosActivos.addEventListener("change", (e) => {
         const fila = e.target.closest(".fila-estado");
         if (!fila) return;
         const clave = fila.dataset.estado;
-        const estado = personaje.estados[clave];
+        const borrador = borradorEstado(clave);
         const inputTurnos = fila.querySelector(".turnosEstado");
         const turnosPorDefecto = Math.max(1, ESTADOS_INFO[clave].turnos);
 
         if (e.target.classList.contains("valorEstado")) {
-            estado.valor = Math.max(0, parseInt(e.target.value) || 0);
+            borrador.valor = Math.max(0, parseInt(e.target.value) || 0);
         }
         if (e.target.classList.contains("turnosEstado")) {
             // 0 = último turno (termina al iniciar el siguiente)
             const turnos = parseInt(e.target.value);
-            estado.turnos = Number.isFinite(turnos) ? Math.max(0, turnos) : 1;
+            borrador.turnos = Number.isFinite(turnos) ? Math.max(0, turnos) : 1;
         }
         if (e.target.classList.contains("checkPermanenteEstado")) {
-            estado.turnos = e.target.checked
+            borrador.turnos = e.target.checked
                 ? TURNOS_PERMANENTE
                 : Math.max(1, parseInt(inputTurnos.value) || turnosPorDefecto);
         }
         if (e.target.classList.contains("checkDescansoEstado")) {
             // Se quita al hacer un descanso corto
-            if (e.target.checked) estado.descansoCorto = true;
-            else delete estado.descansoCorto;
+            if (e.target.checked) borrador.descansoCorto = true;
+            else delete borrador.descansoCorto;
         }
-
-        // Un valor de 0 equivale a quitar el estado
-        if (estado.valor === 0) quitarEstado(personaje, clave);
-        personaje.calcularCaracteristicas();
-        actualizarTodo();
+        pintarCamposEstado(fila, borrador);
     });
 
     listaEstadosActivos.addEventListener("click", (e) => {
-        const boton = e.target.closest(".quitar-estado");
-        if (!boton) return;
-        quitarEstado(personaje, boton.closest(".fila-estado").dataset.estado);
+        const fila = e.target.closest(".fila-estado");
+        if (!fila) return;
+        const clave = fila.dataset.estado;
+        if (e.target.closest(".guardar-estado")) {
+            const borrador = borradoresEstado[clave];
+            const nuevo = clave === estadoNuevo;
+            delete borradoresEstado[clave];
+            if (nuevo) estadoNuevo = null;
+            fila.open = false;
+            if (borrador) {
+                const anterior = personaje.estados[clave];
+                if (nuevo) activarEstado(personaje, clave, borrador.valor, borrador.turnos);
+                else {
+                    // Si cambian los turnos, esa es la nueva duración completa (turnos gastados en gris)
+                    if (borrador.turnos !== anterior.turnos) {
+                        if (borrador.turnos > 0) borrador.turnosTotales = borrador.turnos;
+                        else delete borrador.turnosTotales;
+                    }
+                    personaje.estados[clave] = borrador;
+                }
+                if (borrador.descansoCorto) personaje.estados[clave].descansoCorto = true;
+                // Un valor de 0 equivale a quitar el estado
+                if (borrador.valor === 0) quitarEstado(personaje, clave);
+                personaje.calcularCaracteristicas();
+            }
+            actualizarTodo();
+            return;
+        }
+        if (!e.target.closest(".quitar-estado")) return;
+        // En uno nuevo, cancelar: no se había aplicado
+        delete borradoresEstado[clave];
+        if (clave === estadoNuevo) estadoNuevo = null;
+        else quitarEstado(personaje, clave);
         actualizarTodo();
     });
+
+    // Cerrar una pastilla sin guardar descarta su borrador; si era nueva, desaparece (toggle no burbujea: en captura)
+    listaEstadosActivos.addEventListener("toggle", (e) => {
+        const fila = e.target;
+        if (!fila.classList?.contains("fila-estado") || fila.open) return;
+        const clave = fila.dataset.estado;
+        delete borradoresEstado[clave];
+        if (clave === estadoNuevo) {
+            estadoNuevo = null;
+            actualizarEstados();
+            return;
+        }
+        const estado = personaje.estados[clave];
+        if (estado) pintarCamposEstado(fila, estado);
+    }, true);
+}
+
+function borradorEstado(clave) {
+    borradoresEstado[clave] ??= { ...personaje.estados[clave] };
+    return borradoresEstado[clave];
+}
+
+/* Campos de una pastilla abierta con los datos dados (el estado o su borrador), sin pisar el que tiene el foco */
+function pintarCamposEstado(fila, datos) {
+    // -1 = permanente; 0 = último turno (termina al iniciar el siguiente)
+    const permanente = datos.turnos < 0;
+    const inputValor = fila.querySelector(".valorEstado");
+    const inputTurnos = fila.querySelector(".turnosEstado");
+    if (inputValor && document.activeElement !== inputValor) inputValor.value = datos.valor;
+    if (document.activeElement !== inputTurnos) inputTurnos.value = permanente ? "" : datos.turnos;
+    inputTurnos.disabled = permanente;
+    fila.querySelector(".checkPermanenteEstado").checked = permanente;
+    // El estado de la comida termina con ella (descanso corto): casilla marcada y fija
+    const deComida = datos.origen === "comida";
+    const checkDescanso = fila.querySelector(".checkDescansoEstado");
+    checkDescanso.checked = deComida || Boolean(datos.descansoCorto);
+    checkDescanso.disabled = deComida;
 }
 
 /* Texto de ayuda bajo cada estado activo con su efecto actual */
@@ -3696,47 +4013,90 @@ function actualizarEstados() {
         chip.setAttribute("aria-pressed", String(activo));
     });
 
-    // Las filas solo se regeneran si cambia qué estados están activos, para no perder el foco
-    const activos = Object.keys(ESTADOS_INFO).filter(clave => estaActivo(personaje, clave));
-    const claves = activos.join(",") + (personaje.esNpc ? "|npc" : "");
+    // Pastillas (estilo SAO): cerradas muestran icono, nombre, los turnos como segmentos y el valor; abiertas, los
+    // campos. Solo se regeneran si cambia qué estados están activos, para no perder el foco (se conservan las abiertas).
+    // El estado nuevo (estadoNuevo, aún sin aplicar) sale también, con su borrador
+    if (estadoNuevo && (estaActivo(personaje, estadoNuevo) || !borradoresEstado[estadoNuevo])) estadoNuevo = null;
+    const activos = Object.keys(ESTADOS_INFO).filter(clave => estaActivo(personaje, clave) || clave === estadoNuevo);
+    const claves = activos.join(",") + (estadoNuevo ? `|nuevo:${estadoNuevo}` : "") + (personaje.esNpc ? "|npc" : "");
     if (listaEstadosActivos.dataset.claves !== claves) {
         listaEstadosActivos.dataset.claves = claves;
+        const abiertos = new Set([...listaEstadosActivos.querySelectorAll(".fila-estado[open]")].map(f => f.dataset.estado));
         listaEstadosActivos.innerHTML = activos.map(clave => {
             const info = ESTADOS_INFO[clave];
+            const unidad = (personaje.esNpc && UNIDADES_ESTADO_NPC[clave]) || info.unidad;
+            const nuevo = clave === estadoNuevo;
             return `
-            <div class="fila-estado icono-activo" data-estado="${clave}" style="${estiloColor(info)}" title="${info.descripcion}">
-                <span class="fila-icono">${iconoSao(info.icono)}</span>
-                <span class="nombre-estado">${info.etiqueta}</span>
-                ${info.unidad ? `<label>${(personaje.esNpc && UNIDADES_ESTADO_NPC[clave]) || info.unidad} <input type="number" min="0" class="valorEstado"></label>` : ""}
-                <label>Turnos <input type="number" min="0" class="turnosEstado"></label>
-                <label><input type="checkbox" class="checkPermanenteEstado"> Permanente</label>
-                <label title="Se quita al hacer un descanso corto"><input type="checkbox" class="checkDescansoEstado"> Descanso corto</label>
-                <button type="button" class="quitar-estado" title="Quitar" aria-label="Quitar ${info.etiqueta}">×</button>
-                <span class="pista-estado"></span>
-            </div>`;
+            <details class="fila-estado icono-activo${nuevo ? " nuevo" : ""}" data-estado="${clave}" style="${estiloColor(info)}" title="${info.descripcion}">
+                <summary>
+                    <span class="fila-icono">${iconoSao(info.icono)}</span>
+                    <span class="estado-titulo"><span class="nombre-estado">${info.etiqueta}</span><span class="segmentos-estado"></span></span>
+                    ${unidad ? `<span class="valor-estado"><b></b><small>${unidad}</small></span>` : ""}
+                </summary>
+                <div class="estado-cuerpo">
+                    <div class="estado-campos">
+                        ${unidad ? `<label class="campo-estado">Valor <input type="number" min="0" class="valorEstado" aria-label="${unidad}"></label>` : ""}
+                        <label class="campo-estado">Turnos <input type="number" min="0" class="turnosEstado"></label>
+                    </div>
+                    <div class="estado-campos">
+                        <label class="casilla-tipo"><input type="checkbox" class="checkPermanenteEstado"> Permanente</label>
+                        <label class="casilla-tipo" title="Se quita al hacer un descanso corto"><input type="checkbox" class="checkDescansoEstado"> Descanso corto</label>
+                        <span class="botones-estado">
+                            <button type="button" class="btn-objeto guardar-estado" title="Guardar" aria-label="Guardar ${info.etiqueta}">${iconoSao("aceptar")}</button>
+                            ${nuevo
+                                ? `<button type="button" class="btn-objeto quitar-estado" title="Cancelar" aria-label="Cancelar">${iconoSao("cancelar")}</button>`
+                                : `<button type="button" class="btn-objeto quitar-estado" title="Quitar" aria-label="Quitar ${info.etiqueta}">${iconoSao("descartar")}</button>`}
+                        </span>
+                    </div>
+                    <span class="pista-estado"></span>
+                </div>
+            </details>`;
         }).join("");
+        // Se conservan las que estaban abiertas
+        listaEstadosActivos.querySelectorAll(".fila-estado").forEach(fila => { fila.open = abiertos.has(fila.dataset.estado); });
     }
+    // El que se acaba de pulsar en los chips (nuevo o ya activo) sale abierto y los demás se cierran
+    if (estadoRecienActivado) {
+        listaEstadosActivos.querySelectorAll(".fila-estado").forEach(fila => { fila.open = fila.dataset.estado === estadoRecienActivado; });
+        listaEstadosActivos.querySelector(`.fila-estado[data-estado="${estadoRecienActivado}"]`)?.scrollIntoView({ block: "nearest" });
+    }
+    estadoRecienActivado = null;
+    // Los borradores de estados que ya no están activos o de pastillas cerradas se descartan
+    const abiertas = new Set([...listaEstadosActivos.querySelectorAll(".fila-estado[open]")].map(f => f.dataset.estado));
+    Object.keys(borradoresEstado).forEach(clave => { if (!abiertas.has(clave)) delete borradoresEstado[clave]; });
 
     listaEstadosActivos.querySelectorAll(".fila-estado").forEach(fila => {
-        const estado = personaje.estados[fila.dataset.estado];
-        // -1 = permanente; 0 = último turno (termina al iniciar el siguiente)
+        const clave = fila.dataset.estado;
+        // El nuevo aún no existe en el personaje: todo sale de su borrador
+        const estado = clave === estadoNuevo ? borradoresEstado[clave] : personaje.estados[clave];
+        if (!estado) return;
+        // Abierta y a medio editar: los campos muestran el borrador; lo cerrado, el estado de verdad
+        pintarCamposEstado(fila, borradoresEstado[clave] ?? estado);
         const permanente = estado.turnos < 0;
-        const inputValor = fila.querySelector(".valorEstado");
-        const inputTurnos = fila.querySelector(".turnosEstado");
-        if (inputValor && document.activeElement !== inputValor) inputValor.value = estado.valor;
-        if (document.activeElement !== inputTurnos) inputTurnos.value = permanente ? "" : estado.turnos;
-        inputTurnos.disabled = permanente;
-        fila.querySelector(".checkPermanenteEstado").checked = permanente;
-        // El estado de la comida termina con ella (descanso corto): casilla marcada y fija
         const deComida = estado.origen === "comida";
-        const checkDescanso = fila.querySelector(".checkDescansoEstado");
-        checkDescanso.checked = deComida || Boolean(estado.descansoCorto);
-        checkDescanso.disabled = deComida;
-        const pista = [pistaEstado(fila.dataset.estado)];
+        const pista = [pistaEstado(clave)];
         if (estado.turnos === 0) pista.push("Último turno: termina al iniciar el siguiente");
         if (deComida) pista.push(`De la comida (${personaje.comidaActiva || "comida"}): se quita con el descanso corto`);
         else if (estado.descansoCorto) pista.push("Se quita con el descanso corto");
         fila.querySelector(".pista-estado").textContent = pista.filter(Boolean).join(" · ");
+
+        // Cerrada: el valor y los turnos como segmentos (llenos = los que quedan) o un texto si no tiene turnos
+        const valor = fila.querySelector(".valor-estado b");
+        if (valor) valor.textContent = estado.valor;
+        const hastaDescansar = deComida || estado.descansoCorto;
+        let segmentos;
+        if (permanente) segmentos = `<span class="txt">${hastaDescansar ? "Hasta el descanso corto" : "Permanente"}</span>`;
+        else {
+            // Tantos segmentos como la duración con la que empezó (turnosTotales; si no la tiene, la de por defecto)
+            const inicial = estado.turnosTotales > 0 ? estado.turnosTotales : Math.max(ESTADOS_INFO[clave].turnos, 0);
+            const total = Math.min(MAX_SEGMENTOS_ESTADO, Math.max(estado.turnos, inicial, 1));
+            const llenos = Math.min(total, estado.turnos);
+            const texto = estado.turnos === 0 ? "Último turno" : `${estado.turnos} turno${estado.turnos === 1 ? "" : "s"}`;
+            segmentos = Array.from({ length: total }, (_, i) => `<i${i < llenos ? ' class="on"' : ""}></i>`).join("")
+                + `<span class="txt">${texto}${hastaDescansar ? " · desc. corto" : ""}</span>`;
+        }
+        const contenedor = fila.querySelector(".segmentos-estado");
+        if (contenedor.innerHTML !== segmentos) contenedor.innerHTML = segmentos;
     });
 }
 
@@ -6525,9 +6885,6 @@ function inicializarCrearObjeto() {
     const campo = (id) => document.getElementById(id);
     const selectTipo = campo("objetoTipo");
     const selectTipoEquipo = campo("objetoTipoEquipo");
-    const selectEstado = campo("objetoEstado");
-    const selectAccionEstado = campo("objetoEstadoAccion");
-    const checkPermanente = campo("objetoEstadoPermanente");
     const listaMods = campo("listaModsObjeto");
     const aviso = campo("avisoCrearObjeto");
     let destino = "inventario";
@@ -6542,6 +6899,9 @@ function inicializarCrearObjeto() {
     const listaEfectos = campo("listaEfectosObjeto");
     /* Estados que provoca el arma al acertar */
     const editorEstados = crearEditorEstadosAlAcertar(campo("detallesEstadosObjeto"));
+    /* Estados que provoca o cura una comida, poción o arrojadiza (sin probabilidad; la comida, sin turnos) */
+    const editorEstadosObjeto = crearEditorEstadosAlAcertar(campo("detallesEstadoObjeto"), { probabilidad: false });
+    const opcionesEstadosObjeto = (tipo) => ({ probabilidad: false, cura: tipo !== "arrojadiza", turnos: tipo !== "comida" });
     /* Objeto que se está editando: { lista: "inventario" | "baul", indice }, o null al crear */
     let edicion = null;
     /* Personaje al que va el objeto: el de la ficha, o el borrador del perfil del máster (libre = sin
@@ -6556,8 +6916,6 @@ function inicializarCrearObjeto() {
         `<optgroup label="Armas y escudos">${Object.entries(ARMAS).map(([clave, arma]) => `<option value="${clave}">${arma.etiqueta}</option>`).join("")}</optgroup>
         <optgroup label="Armaduras">${TIPOS_ARMADURA.map(tipo => `<option value="${tipo}">${ETIQUETAS_ARMADURA[tipo]}</option>`).join("")}</optgroup>
         <optgroup label="Otros"><option value="${TIPO_ACCESORIO}">Accesorio</option><option value="${TIPO_RELIQUIA}">Reliquia</option></optgroup>`;
-    selectEstado.innerHTML = `<option value="">Ninguno</option>` +
-        Object.entries(ESTADOS_INFO).map(([clave, info]) => `<option value="${clave}">${info.etiqueta}</option>`).join("");
     campo("objetoElemental").innerHTML = `<option value="">Ninguno</option>` +
         ELEMENTOS_ARROJADIZA.map(tipo => `<option value="${tipo}">${TIPOS_DANNO[tipo].etiqueta}</option>`).join("");
 
@@ -6578,8 +6936,6 @@ function inicializarCrearObjeto() {
             icono: (v) => iconoObjeto({ tipo: "equipo", equipo: { tipo: v } }),
             alCambiarIcono: ponerIconoRanura("iconoTipoEquipo")
         }),
-        crearRejilla(selectEstado, { icono: (v) => ESTADOS_INFO[v]?.icono ?? null, alCambiarIcono: ponerIconoRanura("iconoEstadoObjeto") }),
-        crearFichas(selectAccionEstado, { icono: (v) => (v === "quitar" ? "regeneracion" : "veneno") }),
         crearFichas(campo("objetoElemental"), { icono: (v) => TIPOS_DANNO[v]?.icono ?? null })
     ];
     const fichasTipo = selectTipo.nextElementSibling; // los iconos de tipo (crearFichas los pone tras el select)
@@ -6651,11 +7007,7 @@ function inicializarCrearObjeto() {
         modalEl.querySelectorAll("[data-equipo]").forEach(el => {
             el.style.display = el.dataset.equipo.split(" ").includes(grupoEquipo) ? "" : "none";
         });
-        const quitar = (tipo === "pocion" || tipo === "comida") && selectAccionEstado.value === "quitar";
-        modalEl.querySelectorAll(".campo-estado-valor").forEach(el => {
-            el.style.display = selectEstado.value && !quitar ? "" : "none";
-        });
-        campo("objetoEstadoTurnos").disabled = checkPermanente.checked;
+        editorEstadosObjeto.configurar(opcionesEstadosObjeto(tipo));
         campo("labelObjetoDescripcion").textContent = tipo === "cristal" ? "Mensaje al usarlo" : "Descripción";
         campo("campoHabilidadesReliquia").style.display = conHabilidades() ? "" : "none";
         pintarResumenesYVista();
@@ -6672,8 +7024,7 @@ function inicializarCrearObjeto() {
         ponerResumen(campo("campoHabilidadesReliquia"), habilidades.length ? `${habilidades.length} habilidad${habilidades.length === 1 ? "" : "es"}` : "Ninguna");
         ponerResumen(campo("detallesEfectosObjeto"), o(efectos.map(efecto => efecto.nombre).join(", ")));
         ponerResumen(campo("detallesModsObjeto"), o(textoModificadores(mods)));
-        const estado = leerEstado(selectTipo.value !== "arrojadiza");
-        ponerResumen(campo("detallesEstadoObjeto"), estado ? describirEfecto({ estado }, false) : "Ninguno");
+        ponerResumen(campo("detallesEstadoObjeto"), o(describirEfecto({ tipo: selectTipo.value, estados: editorEstadosObjeto.leer() }, false)));
         const elemento = campo("objetoElemental").value;
         ponerResumen(campo("detallesElementalArrojadiza"), elemento
             ? `${TIPOS_DANNO[elemento].etiqueta} ${campo("objetoElementalCantidad").value || 0}` : "Ninguno");
@@ -6707,15 +7058,6 @@ function inicializarCrearObjeto() {
     };
     form.addEventListener("input", pintarResumenesYVista);
     form.addEventListener("click", pintarResumenesYVista);
-
-    // Valores por defecto del estado elegido
-    selectEstado.addEventListener("change", () => {
-        const info = ESTADOS_INFO[selectEstado.value];
-        if (!info) return;
-        campo("objetoEstadoValor").value = info.valorPorDefecto ?? 1;
-        checkPermanente.checked = info.turnos === TURNOS_PERMANENTE;
-        campo("objetoEstadoTurnos").value = info.turnos === TURNOS_PERMANENTE ? 3 : info.turnos;
-    });
 
     modalEl.addEventListener("change", actualizarCampos);
     campo("btnAnadirModObjeto").addEventListener("click", () => {
@@ -6789,6 +7131,7 @@ function inicializarCrearObjeto() {
         efectos = [];
         pintarEfectos();
         editorEstados.rellenar([]);
+        editorEstadosObjeto.rellenar([]);
         aviso.textContent = "";
         edicion = null;
         ponerModo(false);
@@ -6818,13 +7161,8 @@ function inicializarCrearObjeto() {
             campo("objetoElemental").value = objeto.elemental?.tipo ?? "";
             campo("objetoElementalCantidad").value = objeto.elemental?.cantidad ?? 0;
         }
-        if (objeto.estado) {
-            selectEstado.value = objeto.estado.clave;
-            selectAccionEstado.value = objeto.estado.quitar ? "quitar" : "activar";
-            campo("objetoEstadoValor").value = objeto.estado.valor;
-            checkPermanente.checked = objeto.estado.turnos === TURNOS_PERMANENTE;
-            campo("objetoEstadoTurnos").value = objeto.estado.turnos === TURNOS_PERMANENTE ? 3 : objeto.estado.turnos;
-        }
+        editorEstadosObjeto.configurar(opcionesEstadosObjeto(objeto.tipo));
+        editorEstadosObjeto.rellenar(objeto.estados ?? []);
         if (objeto.tipo === "equipo") {
             const equipo = objeto.equipo;
             selectTipoEquipo.value = equipo.tipo;
@@ -6846,19 +7184,9 @@ function inicializarCrearObjeto() {
         campo("detallesModsObjeto").open = mods.length > 0;
         campo("detallesEfectosObjeto").open = efectos.length > 0;
         campo("campoHabilidadesReliquia").open = habilidades.length > 0;
-        campo("detallesEstadoObjeto").open = Boolean(objeto.estado);
+        campo("detallesEstadoObjeto").open = (objeto.estados ?? []).length > 0;
         campo("detallesElementalArrojadiza").open = Boolean(objeto.elemental?.tipo);
         actualizarCampos();
-    };
-
-    const leerEstado = (puedeQuitar) => {
-        if (!selectEstado.value) return null;
-        return {
-            clave: selectEstado.value,
-            valor: Math.max(0, parseInt(campo("objetoEstadoValor").value) || 0),
-            turnos: checkPermanente.checked ? TURNOS_PERMANENTE : Math.max(0, parseInt(campo("objetoEstadoTurnos").value) || 0),
-            quitar: puedeQuitar && selectAccionEstado.value === "quitar"
-        };
     };
 
     /* Los datos del formulario, listos para cargarObjeto (también para la vista previa, sin validar) */
@@ -6872,13 +7200,13 @@ function inicializarCrearObjeto() {
             descripcion: campo("objetoDescripcion").value.trim(),
             cantidad: Math.max(1, numero("objetoCantidad"))
         };
-        if (tipo === "comida") Object.assign(datos, { modificadores, estado: leerEstado(true) });
+        if (tipo === "comida") Object.assign(datos, { modificadores, estados: editorEstadosObjeto.leer() });
         if (tipo === "material") Object.assign(datos, { subtipo: campo("objetoSubtipoMaterial").value, potencia: Math.max(0, numero("objetoPotencia")) });
-        if (tipo === "pocion") Object.assign(datos, { pv: numero("objetoPv"), pa: Math.max(0, numero("objetoPa")), estado: leerEstado(true) });
+        if (tipo === "pocion") Object.assign(datos, { pv: numero("objetoPv"), pa: Math.max(0, numero("objetoPa")), estados: editorEstadosObjeto.leer() });
         if (tipo === "arrojadiza") {
             Object.assign(datos, {
                 danno: Math.max(0, numero("objetoDanno")),
-                estado: leerEstado(false),
+                estados: editorEstadosObjeto.leer(),
                 elemental: campo("objetoElemental").value
                     ? { tipo: campo("objetoElemental").value, cantidad: Math.max(0, numero("objetoElementalCantidad")) }
                     : null
@@ -7142,7 +7470,7 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarModsEquipo();
     inicializarHabilidadesReliquia();
     inicializarEfectosEquipo();
-    inicializarExtrasArmaNpc();
+    inicializarExtrasEquipo();
     inicializarArmasLanzadas();
     actualizarModificadores();
     parseModificadoresEquipo();
@@ -7165,7 +7493,7 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarCor();
     inicializarObjetosClave();
     // Estilo SAO en las ventanas pequeñas con campos (formularioSao.js)
-    ["formObjetoClave", "formExperiencia", "editorEstadosAcertarNpc", "dannoCantidades", "formSesion", "panelCuenta", "cuerpoSala"].forEach(id => prepararFormularioSao(document.getElementById(id)));
+    ["formObjetoClave", "formExperiencia", "formExtrasEquipo", "dannoCantidades", "formSesion", "panelCuenta", "cuerpoSala", "divEquipamiento"].forEach(id => prepararFormularioSao(document.getElementById(id)));
     inicializarConfirmar();
     inicializarPerfil();
     inicializarDiario();

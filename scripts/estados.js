@@ -16,7 +16,7 @@ export const DURACION_ELEMENTAL = 3;
 /**
  * Información de cada estado para la interfaz, en el orden en que se muestran.
  * - unidad: qué significa el valor (null = el estado solo está activo o no).
- * - turnos: duración al activarlo a mano (TURNOS_PERMANENTE = hasta que se quite).
+ * - turnos: duración al activarlo a mano (3 turnos; la oscuridad, TURNOS_PERMANENTE: solo la cura el descanso largo).
  * Las claves deben coincidir con ESTADOS_LISTA de PJ.js.
  */
 export const ESTADOS_INFO = {
@@ -32,23 +32,32 @@ export const ESTADOS_INFO = {
         descripcion: "Resta PV máximos. Solo se recuperan con un descanso largo en zona segura." },
     paralisis: { etiqueta: "Paralizado", icono: "paralisis", color: "#C0A000", unidad: null, turnos: DURACION_ELEMENTAL,
         descripcion: "No puede actuar mientras dure el estado." },
-    veneno: { etiqueta: "Envenenado", icono: "veneno", color: "#5E9E2F", unidad: "PV/turno", turnos: TURNOS_PERMANENTE, valorPorDefecto: 2,
+    veneno: { etiqueta: "Envenenado", icono: "veneno", color: "#5E9E2F", unidad: "PV/turno", turnos: DURACION_ELEMENTAL, valorPorDefecto: 2,
         descripcion: "Pierde PV cada turno. Se cura con antídoto del nivel del veneno." },
-    hemorragia: { etiqueta: "Hemorragia", icono: "hemorragia", color: "#B0172B", unidad: "Acumulado", turnos: TURNOS_PERMANENTE,
+    hemorragia: { etiqueta: "Hemorragia", icono: "hemorragia", color: "#B0172B", unidad: "Acumulado", turnos: DURACION_ELEMENTAL,
         descripcion: "Se acumula. Cada turno quita el Aguante en PV por cada vez que el acumulado lo contiene (Aguante 8: 15 → 8 PV, 20 → 16 PV) hasta que se cura." },
-    regeneracion: { etiqueta: "Regeneración", icono: "regeneracion", color: "#E05583", unidad: "PV/turno", turnos: TURNOS_PERMANENTE,
+    regeneracion: { etiqueta: "Regeneración", icono: "regeneracion", color: "#E05583", unidad: "PV/turno", turnos: DURACION_ELEMENTAL,
         descripcion: "Recupera PV cada turno (comida, artes, cristales). El equipo y los modificadores de Regeneración se suman a este valor." },
-    aturdido: { etiqueta: "Aturdido", icono: "aturdido", color: "#16A085", unidad: null, turnos: TURNOS_PERMANENTE,
+    aturdido: { etiqueta: "Aturdido", icono: "aturdido", color: "#16A085", unidad: null, turnos: DURACION_ELEMENTAL,
         descripcion: "Tira con desventaja en todas las tiradas (se combina con el panel y el arma)." },
-    cegado: { etiqueta: "Cegado", icono: "cegado", color: "#34495E", unidad: null, turnos: TURNOS_PERMANENTE,
+    cegado: { etiqueta: "Cegado", icono: "cegado", color: "#34495E", unidad: null, turnos: DURACION_ELEMENTAL,
         descripcion: "No puede mirar el mapa; el máster le mueve." },
-    dormido: { etiqueta: "Dormido", icono: "dormido", color: "#6D8299", unidad: null, turnos: TURNOS_PERMANENTE,
+    dormido: { etiqueta: "Dormido", icono: "dormido", color: "#6D8299", unidad: null, turnos: DURACION_ELEMENTAL,
         descripcion: "No actúa hasta que alguien le despierte." },
-    wither: { etiqueta: "Wither", icono: "wither", color: "#4E342E", colorGlifo: "#D7CCC8", unidad: null, turnos: TURNOS_PERMANENTE,
+    wither: { etiqueta: "Wither", icono: "wither", color: "#4E342E", colorGlifo: "#D7CCC8", unidad: null, turnos: DURACION_ELEMENTAL,
         descripcion: "2 de daño por turno hasta dejarlo a 1 PV (no mata)." },
-    embriaguez: { etiqueta: "Embriaguez", icono: "embriaguez", color: "#D68910", unidad: "Potencia", turnos: TURNOS_PERMANENTE,
+    embriaguez: { etiqueta: "Embriaguez", icono: "embriaguez", color: "#D68910", unidad: "Potencia", turnos: DURACION_ELEMENTAL,
         descripcion: "Por cada punto de potencia: +3 Carisma y −1 al resto de habilidades (salvo Sacro). Por cada punto que una habilidad quede por debajo de 0, 10 % de que cualquier acción salga mal y haga algo absurdo. Desventaja en resistencia a la convicción." }
 };
+
+/* Estados que no son negativos: no los cura el descanso largo ni "curar todos los negativos" de un objeto */
+const ESTADOS_POSITIVOS = ["regeneracion"];
+export const esEstadoNegativo = (clave) => Boolean(ESTADOS_INFO[clave]) && !ESTADOS_POSITIVOS.includes(clave);
+/* Clave especial de un estado de objeto (con quitar): cura todos los estados negativos activos salvo los de
+   NO_CURA_TODOS (la oscuridad solo se va con el descanso largo; la embriaguez, con el tiempo o el descanso) */
+export const CURAR_NEGATIVOS = "negativos";
+const NO_CURA_TODOS = ["oscuridad", "embriaguez"];
+export const curaConTodosLosNegativos = (clave) => esEstadoNegativo(clave) && !NO_CURA_TODOS.includes(clave);
 
 /* Estados que cura el daño de luz: todos los alterados salvo oscuridad y ceguera */
 const CURABLES_CON_LUZ = [
@@ -79,7 +88,8 @@ export function estaActivo(pj, estado) {
 }
 
 export function activarEstado(pj, estado, valor = ESTADOS_INFO[estado]?.valorPorDefecto ?? 1, turnos = ESTADOS_INFO[estado]?.turnos ?? TURNOS_PERMANENTE) {
-    pj.estados[estado] = { valor, turnos };
+    // turnosTotales: la duración con la que empezó (para dibujar los turnos gastados en gris)
+    pj.estados[estado] = turnos > 0 ? { valor, turnos, turnosTotales: turnos } : { valor, turnos };
     pj.calcularCaracteristicas();
 }
 
@@ -92,7 +102,7 @@ export function quitarEstado(pj, estado) {
 function sumarElemental(pj, estado, cantidad) {
     const actual = Number(pj.estados[estado]?.valor) || 0;
     pj.estados[estado] = actual + cantidad > 0
-        ? { ...pj.estados[estado], valor: actual + cantidad, turnos: DURACION_ELEMENTAL }
+        ? { ...pj.estados[estado], valor: actual + cantidad, turnos: DURACION_ELEMENTAL, turnosTotales: DURACION_ELEMENTAL }
         : { valor: 0, turnos: 0 };
     pj.calcularCaracteristicas();
     return actual + cantidad;

@@ -766,12 +766,16 @@
     display: none;
 }
 
-/* Atacar y lanzar van juntos al final de la fila de la tarjeta */
+/* Atacar y lanzar van juntos al final de la fila de la tarjeta (Guardar en el inventario va en la línea de la ranura) */
 .acciones-arma {
     display: flex;
     gap: 6px;
     flex: none;
     margin-left: auto;
+}
+
+.btn-usar-equipo[hidden] {
+    display: none;
 }
 
 /* Recoger armas lanzadas: dentro del h2 de Equipamiento, como el + de Modificadores (.btn-h2) */
@@ -1034,54 +1038,160 @@
     margin-top: 8px;
 }
 
+/* Estados activos (actualizarEstados en interfaz.js): pastillas desplegables. Cerradas, icono, nombre con los
+   turnos como segmentos debajo y el valor; abiertas, valor y turnos con − / +, Permanente / Descanso corto y quitar.
+   La recién activada sale abierta con el borde de su color */
 .fila-estado {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 8px;
-    border: 1px solid #d1ab52;
-    border-left-width: 4px;
-    border-radius: 5px;
-    background: #fffdf7;
-    font-size: 12px;
+    border-radius: 26px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    font-size: 13px;
 }
 
-.fila-estado {
-    border-left-color: var(--color, #d1ab52);
+.fila-estado[open] {
+    border-radius: 18px;
+    box-shadow: 0 0 0 2px var(--color, #d1ab52), 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.fila-estado > summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 14px 5px 5px;
+    list-style: none;
+    cursor: pointer;
+}
+
+.fila-estado > summary::-webkit-details-marker {
+    display: none;
 }
 
 .fila-estado .fila-icono {
-    width: 26px;
-    height: 26px;
+    width: 34px;
+    height: 34px;
     flex-shrink: 0;
 }
 
-.fila-estado .nombre-estado {
-    font-weight: bold;
-    min-width: 80px;
+.fila-estado .estado-titulo {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
 }
 
-.fila-estado input[type='number'] {
-    width: 48px;
-    text-align: center;
+.fila-estado .nombre-estado {
+    font-size: 15px;
+    line-height: 1.1;
+}
+
+.segmentos-estado {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 3px;
+}
+
+.segmentos-estado i {
+    width: 11px;
+    height: 5px;
+    border-radius: 2px;
+    background: #e6e6e6;
+    transform: skewX(-20deg);
+}
+
+.segmentos-estado i.on {
+    background: var(--color, #d1ab52);
+}
+
+.segmentos-estado .txt {
+    margin-left: 4px;
+    font-size: 11px;
+    color: #888;
+}
+
+.segmentos-estado .txt:first-child {
+    margin-left: 0;
+}
+
+.fila-estado .valor-estado {
+    margin-left: auto;
+    text-align: right;
+    line-height: 1;
+}
+
+.fila-estado .valor-estado b {
+    display: block;
+    font-size: 22px;
+    font-weight: normal;
+    color: var(--color, #4D4D4D);
+}
+
+.fila-estado .valor-estado small {
+    font-size: 10px;
+    color: #888;
+}
+
+.fila-estado .estado-cuerpo {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 2px 14px 12px 49px;
+}
+
+.fila-estado .estado-campos {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+}
+
+.fila-estado .campo-estado {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #5a5a5a;
+}
+
+/* Guardar y quitar al final de la pastilla abierta (actualizarEstados en interfaz.js) */
+.fila-estado .botones-estado {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.fila-estado .quitar-estado,
+.fila-estado .guardar-estado {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: none;
+    background: none;
+}
+
+/* Guardar y la papelera, en gris como el resto (la fila lleva .icono-activo para colorear su icono) */
+.fila-estado .quitar-estado .icono-sao,
+.fila-estado .guardar-estado .icono-sao {
+    --fondo: #4D4D4D;
+    --glifo: #FBFBFB;
+}
+
+.fila-estado .guardar-estado:hover .icono-sao {
+    --fondo: #FBFBFB;
+    --glifo: #EBA601;
+}
+
+.fila-estado .quitar-estado:hover .icono-sao {
+    --fondo: #FBFBFB;
+    --glifo: #c0392b;
 }
 
 .fila-estado .pista-estado {
-    flex-basis: 100%;
-    color: #888;
-    font-style: italic;
+    font-size: 12px;
+    color: #5a5a5a;
 }
 
-.fila-estado .quitar-estado {
-    margin-left: auto;
-    background: none;
-    border: none;
-    color: #c0392b;
-    font-size: 16px;
-    font-weight: bold;
-    line-height: 1;
-    cursor: pointer;
+.fila-estado .pista-estado:empty {
+    display: none;
 }
 
 /* Modal de daño */
@@ -2467,6 +2577,40 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
     padding-bottom: 6px;
 }
 
+/* Estados de una comida (crearEditorEstadosAlAcertar sin turnos): aviso de que duran hasta el descanso corto */
+.pista-estados-acertar {
+    margin: 0 0 6px;
+    font-size: 12px;
+    color: #5a5a5a;
+}
+
+/* Provoca / Cura (pociones y comidas, crearEditorEstadosAlAcertar con cura): dos fichas unidas, la elegida oscura */
+.fichas-modo-estado {
+    display: inline-flex;
+    padding: 2px;
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: inset 0 0 0 1px #c9c9c9;
+}
+
+.form-sao .fichas-modo-estado .casilla-tipo {
+    position: relative;
+    padding: 4px 12px;
+    background: transparent;
+}
+
+.form-sao .fichas-modo-estado .casilla-tipo:has(input:checked) {
+    background: #4D4D4D;
+    color: #FBFBFB;
+}
+
+/* El radio sigue ahí (teclado y lector de pantalla), pero no se ve */
+.fichas-modo-estado input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
 .equipamiento-descripcion {
     margin: 0;
     font-size: 12px;
@@ -3305,7 +3449,7 @@ body.modo-lectura .objeto-acciones > :not(.permitido-lectura):not(.btn-al-compen
 body.modo-lectura .objeto-eleccion,
 body.modo-lectura .btn-crear-objeto,
 body.modo-lectura .botones-cabecera-modal:not(.permitido-lectura),
-body.modo-lectura .btn-h2:not(.hud-master-anadir),
+body.modo-lectura .btn-h2:not(.hud-master-anadir):not(#btnSoloModsPropios),
 body.modo-lectura .btn-hab-mas,
 body.modo-lectura .btn-hab-menos,
 body.modo-lectura .btn-arte,
@@ -3413,45 +3557,86 @@ body:not(.modo-npc) .ficha-npc {
 }
 
 /* NPC: partes del cuerpo (pintarPartesNpc en interfaz.js): nombre editable y quitar; + en el título */
+/* NPC: lista de partes del cuerpo (pintarPartesNpc en interfaz.js), estilo SAO: tarjeta blanca como las de equipo,
+   cada parte una pastilla gris con su icono, el nombre sobre una línea y quitar; volver a añadir brazos debajo */
 .lista-partes-npc {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
+    flex-direction: column;
+    gap: 8px;
     margin-bottom: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.lista-partes-npc:empty {
+    display: none;
 }
 
 .titulo-partes-npc {
-    font-size: 13px;
-    color: #8a6d2a;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #888;
+}
+
+.partes-npc-pastillas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
 }
 
 .parte-npc {
     display: inline-flex;
     align-items: center;
-    gap: 2px;
-    padding: 2px 4px 2px 2px;
-    border: 1px solid #e3d3a6;
-    border-radius: 8px;
-    background: #fff;
+    gap: 6px;
+    padding: 3px 4px 3px 3px;
+    border-radius: 999px;
+    background: #f4f4f4;
+}
+
+.parte-npc:focus-within {
+    box-shadow: 0 0 0 2px #EBA601;
+}
+
+.parte-npc-icono {
+    width: 26px;
+    height: 26px;
+    flex: none;
 }
 
 .nombre-parte-npc {
-    width: 120px;
-    padding: 2px 6px;
+    width: 12ch;
+    min-width: 0;
+    padding: 1px 0;
     border: none;
-    border-radius: 4px;
-    background: #dce8f9;
+    border-bottom: 2px solid #c9c9c9;
+    border-radius: 0;
+    background: transparent;
     font-size: 13px;
+    color: #4D4D4D;
 }
 
-.parte-npc .quitar-mod:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
+.nombre-parte-npc:focus {
+    outline: none;
+    border-bottom-color: #EBA601;
 }
 
-.btn-brazo-npc {
-    background: #4D4D4D;
+.parte-npc .btn-objeto {
+    width: 26px;
+    height: 26px;
+}
+
+.parte-npc .btn-objeto:hover:not(:disabled) .icono-sao {
+    --glifo: #c0392b;
+}
+
+.lista-partes-npc .botones-ranura {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
 }
 
 .campo-numero[hidden] {
@@ -3533,44 +3718,6 @@ body.npc-sin-muneco #svg1 {
 .accion-parte.bloqueada {
     opacity: 0.35;
     cursor: not-allowed;
-}
-
-/* NPC: "Es reliquia" y "+ Crear efecto" en las tarjetas de arma (pintarExtrasArmaNpc en interfaz.js) */
-.extras-arma-npc {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 10px;
-    font-size: 12px;
-    color: #555;
-}
-
-.extras-arma-npc[hidden] {
-    display: none;
-}
-
-.btn-editar-efecto {
-    width: 26px;
-    height: 26px;
-    padding: 0;
-    border: none;
-    border-radius: 50%;
-    background: none;
-    cursor: pointer;
-}
-
-.btn-editar-efecto .icono-sao {
-    width: 100%;
-    height: 100%;
-}
-
-/* Fuera de las ventanas los botones son dorados (12-estilo.md §2) */
-.extras-arma-npc .btn-cabecera {
-    background: #d1ab52;
-}
-
-.extras-arma-npc .btn-cabecera:hover {
-    background: #EBA601;
 }
 
 /* Solo en modo máster (p. ej. las debilidades de armadura de un NPC en el formulario de objetos) */
@@ -4582,4 +4729,638 @@ body:not(.modo-master) .solo-master {
     .ficha-resumen.form-sao .resumen-perfil {
         grid-template-columns: 1fr;
     }
+}
+
+/* Modificadores de la ficha (actualizarModificadores en interfaz.js): una tarjeta por atributo con el total y, como
+   fichas, todo lo que lo modifica (los tuyos, equipo, artes pasivas, efectos y estados). Los tuyos (borde fino) se
+   editan al pulsarlos; los demás dicen de dónde vienen */
+.lista-modificadores.form-sao {
+    gap: 8px;
+}
+
+.grupo-mod {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 12px 10px;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.grupo-mod-cabecera {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.grupo-mod-icono {
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+}
+
+.grupo-mod-nombre {
+    font-size: 15px;
+}
+
+.grupo-mod-total {
+    margin-left: auto;
+    font-size: 20px;
+    font-variant-numeric: tabular-nums;
+}
+
+.grupo-mod-total.positivo { color: #27ae60; }
+.grupo-mod-total.negativo { color: #c0392b; }
+
+.fuentes-mod {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.fuente-mod {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 9px 2px 2px;
+    border: none;
+    border-radius: 999px;
+    background: #f4f4f4;
+    color: #5a5a5a;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+/* Personalizados (los del +, con engranaje): fondo dorado muy suave para distinguirlos sin destacar */
+.fuente-mod.editable {
+    background: rgba(209, 171, 82, 0.16);
+    box-shadow: inset 0 0 0 1px #e3d3a6;
+}
+
+.fuente-mod-icono {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.fuente-mod .t {
+    color: #888;
+}
+
+.fuente-mod[aria-expanded="true"] {
+    background: #4D4D4D;
+    color: #FBFBFB;
+    box-shadow: none;
+}
+
+.fuente-mod[aria-expanded="true"] .t {
+    color: #ddd;
+}
+
+.fuente-mod:hover {
+    transform: scale(1.03);
+}
+
+/* Lo que se abre al pulsar una fuente: el editor (tuyas) o de dónde viene (las demás) */
+.info-fuente-mod {
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: #f4f4f4;
+    font-size: 12px;
+    color: #5a5a5a;
+}
+
+.lista-modificadores .fila-modificador.editor-mod {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 12px;
+    background: #f4f4f4;
+}
+
+.lista-modificadores .editor-mod .fila-mod-campos {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 10px;
+}
+
+.lista-modificadores .editor-mod .rejilla-boton {
+    flex: 1 1 140px;
+}
+
+/* Rejilla del atributo: a todo lo ancho del editor, cada grupo en su fila y las fichas se reparten en varias líneas */
+.lista-modificadores .editor-mod .rejilla-panel {
+    width: 100%;
+    box-sizing: border-box;
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.lista-modificadores .editor-mod .rejilla-opciones {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.lista-modificadores .editor-mod .rejilla-opcion.sin-icono {
+    flex: 0 1 auto;
+    padding: 5px 10px;
+    border-radius: 999px;
+}
+
+/* Modificador nuevo (+): arriba del todo, fuera de las tarjetas, como una tarjeta más */
+.lista-modificadores > .editor-mod {
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.lista-modificadores .editor-mod .botones-editor-mod {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+}
+
+/* Botones de icono en el título (filtro de Modificadores), con los colores del + */
+.botones-h2 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-h2.btn-h2-icono .icono-sao {
+    --fondo: #FBFBFB;
+    --glifo: #d1ab52;
+    filter: none;
+}
+
+.btn-h2.btn-h2-icono[aria-pressed="true"] .icono-sao,
+.btn-h2.btn-h2-icono:hover .icono-sao {
+    --glifo: #EBA601;
+}
+
+.lista-modificadores .editor-mod .paso,
+.lista-modificadores .editor-mod .casilla-tipo {
+    background: #fff;
+}
+
+.lista-modificadores .editor-mod .casilla-tipo:has(input:checked) {
+    background: #4D4D4D;
+}
+
+.lista-modificadores .editor-mod .quitar-mod,
+.lista-modificadores .editor-mod .guardar-mod {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: none;
+    background: none;
+}
+
+.lista-modificadores .editor-mod .pista-mod {
+    font-size: 12px;
+    color: #5a5a5a;
+}
+
+.lista-modificadores .editor-mod .campo-estado {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #5a5a5a;
+    font-size: 13px;
+}
+
+/* Equipamiento de la ficha (estilo SAO "tarjeta de objeto", mismo layout de siempre; actualizarEquipamiento,
+   generarAccesorios y pintarTarjetasPartesNpc en interfaz.js): cabecera con icono, ranura y tipo en pequeño, el
+   nombre en grande y las acciones a la derecha; los valores como pastillas; los modificadores como fichas (sin modo
+   máster) o filas editables (máster). Nada se pliega: reliquias y efectos se usan desde la tarjeta */
+#divEquipamiento .equipamiento,
+#divEquipamiento .tarjeta-accesorio:not(.bloqueada) {
+    gap: 8px;
+    padding: 10px 12px 12px;
+    border: none;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+#divEquipamiento .equipamiento-tipo-row,
+#divEquipamiento .accesorio-cabecera {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 6px 10px;
+}
+
+#divEquipamiento .equipamiento-icono,
+#divEquipamiento .accesorio-icono {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+}
+
+#divEquipamiento .equipamiento-icono.vacio {
+    opacity: 0.35;
+}
+
+#divEquipamiento .equipamiento-titulo {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 120px;
+}
+
+/* Guardar en el inventario: pequeño, en la línea de la ranura (a la izquierda, lejos de atacar y usar) */
+#divEquipamiento .equipamiento-ranura .btn-guardar-equipo,
+#divEquipamiento .equipamiento-ranura .btn-extras-equipo {
+    width: 22px;
+    height: 22px;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+#divEquipamiento .equipamiento-ranura {
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #888;
+}
+
+#divEquipamiento .equipamiento-ranura b {
+    font-weight: normal;
+}
+
+#divEquipamiento .equipamiento-ranura .tipoEquipoTexto {
+    font-weight: normal;
+    color: #8a6d2a;
+}
+
+/* El nombre: título grande; con modo máster se escribe sobre una línea */
+#divEquipamiento .equipamiento-titulo .inputNombreEquipo,
+#divEquipamiento .equipamiento-titulo .inputNombreAccesorio {
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    padding: 1px 0;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    font-size: 18px;
+    color: #4D4D4D;
+}
+
+#divEquipamiento .equipamiento-titulo .inputNombreEquipo[hidden] {
+    display: none;
+}
+
+#divEquipamiento .equipamiento-titulo input[readonly] {
+    cursor: default;
+}
+
+#divEquipamiento .equipamiento-titulo input:not([readonly]) {
+    border-bottom-color: #c9c9c9;
+}
+
+#divEquipamiento .equipamiento-titulo input:not([readonly]):focus {
+    outline: none;
+    border-bottom-color: #EBA601;
+}
+
+#divEquipamiento .equipamiento-titulo .inputNombreAccesorio::placeholder {
+    font-size: 13px;
+    color: #aaa;
+}
+
+/* Desplegable de tipo (solo máster): pastilla */
+#divEquipamiento .equipamiento-tipo-row select {
+    flex: 0 0 auto;
+    min-width: 0;
+    padding: 4px 10px;
+    border: none;
+    border-radius: 999px;
+    background: #f4f4f4;
+    font-size: 13px;
+}
+
+#divEquipamiento .acciones-arma {
+    display: flex;
+    gap: 4px;
+}
+
+/* Valores (daño, defensa, armadura, acierto…): pastillas; sin modo máster el número es solo texto */
+#divEquipamiento .equipamiento-detalles {
+    padding-top: 0;
+    border-top: none;
+}
+
+#divEquipamiento .equipamiento-main-inputs {
+    gap: 6px;
+}
+
+#divEquipamiento .campo-numero {
+    gap: 6px;
+    padding: 2px 4px 2px 12px;
+    border-radius: 999px;
+    background: #f4f4f4;
+    font-size: 12px;
+    font-weight: normal;
+    color: #5a5a5a;
+}
+
+#divEquipamiento .campo-numero input[readonly] {
+    width: auto;
+    min-width: 2ch;
+    field-sizing: content;
+    padding: 2px 8px 2px 0;
+    border: none;
+    background: transparent;
+    font-size: 15px;
+    color: #4D4D4D;
+}
+
+#divEquipamiento .campo-numero select {
+    padding: 2px 6px;
+    border: none;
+    border-radius: 999px;
+    background: #fff;
+}
+
+#divEquipamiento .paso {
+    background: #fff;
+}
+
+#divEquipamiento .paso input[type="number"] {
+    width: 40px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    text-align: center;
+    font-size: 15px;
+    appearance: textfield;
+    -moz-appearance: textfield;
+}
+
+#divEquipamiento .paso input[type="number"]::-webkit-inner-spin-button,
+#divEquipamiento .paso input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Un número de solo lectura no lleva − / + */
+#divEquipamiento .paso:has(input[readonly]) {
+    padding: 0;
+    background: transparent;
+}
+
+#divEquipamiento .paso:has(input[readonly]) .paso-boton {
+    display: none;
+}
+
+#divEquipamiento .subtitulo-elemental,
+#divEquipamiento .equipamiento-mods-header > span {
+    font-size: 11px;
+    font-weight: normal;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #888;
+}
+
+#divEquipamiento .equipamiento-descripcion {
+    font-size: 12px;
+    font-style: italic;
+    color: #5a5a5a;
+}
+
+/* Modificadores del equipo */
+#divEquipamiento .equipamiento-mods-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+#divEquipamiento .btn-anadir-mod-equipo {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: #4D4D4D;
+    color: #FBFBFB;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 2px 3px rgba(0, 0, 0, 0.3);
+}
+
+#divEquipamiento .btn-anadir-mod-equipo:hover {
+    background: #FBFBFB;
+    color: #EBA601;
+}
+
+/* Sin modo máster: fichas en fila, y sin título si no hay ninguno */
+body:not(.modo-master) #divEquipamiento .mods-equipo {
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin: 0;
+}
+
+body:not(.modo-master) #divEquipamiento .mods-equipo:empty,
+body:not(.modo-master) #divEquipamiento .equipamiento-mods-header:has(+ .mods-equipo:empty) {
+    display: none;
+}
+
+#divEquipamiento .mod-ficha {
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: #f4f4f4;
+    font-size: 12px;
+    color: #5a5a5a;
+}
+
+#divEquipamiento .mod-ficha.mod-positivo {
+    background: rgba(39, 174, 96, 0.12);
+    color: #1e7e46;
+}
+
+#divEquipamiento .mod-ficha.mod-negativo {
+    background: rgba(192, 57, 43, 0.12);
+    color: #a03224;
+}
+
+/* Máster: filas editables (atributo en rejilla, valor con − / + y papelera) */
+#divEquipamiento .mod-equipo {
+    flex-wrap: nowrap;
+    gap: 6px;
+    padding: 3px 4px 3px 10px;
+    border: none;
+    border-radius: 999px;
+    background: #f4f4f4;
+}
+
+#divEquipamiento .mod-equipo .rejilla-boton {
+    flex: 1 1 60px;
+    min-width: 0;
+    font-size: 13px;
+}
+
+#divEquipamiento .mod-equipo .rejilla-panel {
+    flex-basis: 100%;
+}
+
+#divEquipamiento .mod-equipo .quitar-mod {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    background: none;
+}
+
+/* Habilidades de reliquia y efectos: filas en gris claro, como los modificadores */
+#divEquipamiento .reliquia-habilidades .habilidad-reliquia,
+#divEquipamiento .efectos-equipo .efecto-equipo {
+    border: none;
+    background: #f4f4f4;
+    box-shadow: none;
+}
+
+/* Valores elementales del equipo: el número en una caja gris sin borde junto a su icono */
+#divEquipamiento .bloque-elemental input[type="number"],
+#divEquipamiento .partes-elemental input[type="number"] {
+    width: 44px;
+    padding: 2px 4px;
+    border: none;
+    border-radius: 6px;
+    background: #f4f4f4;
+    text-align: center;
+    font-size: 14px;
+}
+
+#divEquipamiento .bloque-elemental input[readonly] {
+    background: transparent;
+    width: auto;
+    field-sizing: content;
+    min-width: 2ch;
+}
+
+/* El panel de la rejilla de un modificador, debajo de su fila */
+#divEquipamiento .mods-equipo > .rejilla-panel {
+    margin-top: 2px;
+}
+
+/* Sin modo máster la cabecera cabe en una línea (no hay desplegable de tipo) */
+body:not(.modo-master) #divEquipamiento .equipamiento-tipo-row {
+    flex-wrap: nowrap;
+}
+
+body:not(.modo-master) #divEquipamiento .equipamiento-titulo {
+    min-width: 0;
+}
+
+/* Habilidades de reliquia sin modo máster: se leen, no se editan (sin cajas) */
+#divEquipamiento .habilidad-reliquia input[readonly],
+#divEquipamiento .habilidad-reliquia textarea[readonly] {
+    border: none;
+    background: transparent;
+    resize: none;
+}
+
+#divEquipamiento .habilidad-reliquia input.nombreHabilidad[readonly] {
+    font-size: 14px;
+}
+
+/* Usar una habilidad de reliquia o un efecto de equipo (pintarHabilidadesReliquia, filaEfectoEquipo en interfaz.js):
+   botón redondo con el icono de la habilidad Atletismo, como el de atacar (Combate) */
+.btn-usar-icono,
+.btn-usar-efecto.btn-usar-icono,
+.btn-usar-habilidad.btn-usar-icono {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    min-width: 0;
+    margin-left: auto;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.2s;
+}
+
+.btn-usar-icono:hover:not(:disabled),
+.btn-usar-efecto.btn-usar-icono:hover:not(:disabled),
+.btn-usar-habilidad.btn-usar-icono:hover:not(:disabled) {
+    background: none;
+    transform: scale(1.08);
+}
+
+.btn-usar-icono:active:not(:disabled) {
+    transform: scale(0.95);
+}
+
+.btn-usar-icono:hover:not(:disabled) .icono-sao,
+.btn-usar-icono:focus-visible .icono-sao {
+    --fondo: #FBFBFB;
+    --glifo: #EBA601;
+}
+
+.btn-usar-icono:disabled,
+.btn-usar-efecto.btn-usar-icono:disabled,
+.btn-usar-habilidad.btn-usar-icono:disabled {
+    background: none;
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+/* Habilidad de reliquia sin modo máster: pastilla en fila como los efectos (sin la barra de enfriamiento antigua) */
+.habilidad-reliquia.pastilla-reliquia {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 6px;
+}
+
+.habilidad-reliquia.pastilla-reliquia::after {
+    display: none;
+}
+
+.pastilla-reliquia .efecto-icono {
+    width: 26px;
+    height: 26px;
+}
+
+.pastilla-reliquia .efecto-texto {
+    gap: 2px;
+}
+
+.pastilla-reliquia .efecto-texto b {
+    font-size: 13px;
+    font-weight: normal;
+    color: #4D4D4D;
+}
+
+/* Descripción entera (las de reliquia son lo que hace la habilidad) */
+.pastilla-reliquia .efecto-descripcion {
+    display: block;
+    font-style: normal;
+    color: #5a5a5a;
+}
+
+.pastilla-reliquia.en-enfriamiento .efecto-icono {
+    opacity: 0.5;
+}
+
+/* Extras del equipo (modo máster y NPC; pintarBotonesExtras en interfaz.js): engranaje junto a Guardar en la línea
+   de la ranura; abre #modalExtrasEquipo. En modo lectura no se ve */
+#divEquipamiento .btn-extras-equipo[hidden],
+body.modo-lectura #divEquipamiento .btn-extras-equipo {
+    display: none;
+}
+
+#modalExtrasEquipo .ranura[hidden],
+#modalExtrasEquipo .ranura-desplegable[hidden] {
+    display: none;
 }

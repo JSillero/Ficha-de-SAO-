@@ -276,7 +276,7 @@
 
                 <!-- Columna 2: Equipamiento, Modificadores y Habilidades -->
                 <div class="columnaCentral">
-                    <div id="divEquipamiento">
+                    <div id="divEquipamiento" class="form-sao">
                         <!-- A la derecha del título, un botón por arma lanzada para recogerla (pintarArmasLanzadas), como el + de Modificadores -->
                         <h2 class="h2-con-boton">Equipamiento <span id="armasLanzadas" class="armas-lanzadas" hidden></span><button type="button" id="anadirParteNpc" class="btn-h2 ficha-npc" title="Añadir parte del cuerpo" aria-label="Añadir parte del cuerpo">+</button></h2>
                         <!-- NPC: sus partes del cuerpo (renombrar, quitar) y el equipo de las que no son brazos (pintarPartesNpc) -->
@@ -293,8 +293,16 @@
                         <!-- Template reutilizable para manos de equipamiento -->
                         <template id="templateManoEquipamiento">
                             <div class="equipamiento">
+                                <!-- Cabecera (estilo SAO): icono del equipo, ranura y tipo (con Guardar en el inventario, pequeño, lejos de
+                                     los botones de uso), nombre y las acciones de uso a la derecha -->
                                 <div class="equipamiento-tipo-row">
-                                    <label><b class="tituloMano"></b></label>
+                                    <span class="equipamiento-icono"></span>
+                                    <div class="equipamiento-titulo">
+                                        <span class="equipamiento-ranura"><b class="tituloMano"></b> <span class="tipoEquipoTexto"></span>
+                                            <button type="button" class="btn-objeto btn-extras-equipo" hidden></button>
+                                            <button type="button" class="btn-guardar-equipo" title="Guardar en el inventario" aria-label="Guardar en el inventario"></button></span>
+                                        <input type="text" class="inputNombreEquipo" placeholder="Nombre" aria-label="Nombre del equipo">
+                                    </div>
                                     <select class="tipoEquipo tipoArma">
                                         <option value="">-- Dejar vacío --</option>
                                         <option value="cuchillo">Cuchillo</option>
@@ -310,13 +318,15 @@
                                         <option value="otros">Otros</option>
                                         <option value="reliquia">Reliquia</option>
                                     </select>
-                                    <span class="tipoEquipoTexto"></span>
-                                    <button type="button" class="btn-guardar-equipo" title="Guardar en el inventario" aria-label="Guardar en el inventario"></button>
+                                    <!-- Atacar y, en lanzas y cuchillos, lanzar (actualizarBotonLanzar): juntos a la derecha; ocultos con la mano vacía -->
+                                    <span class="acciones-arma">
+                                        <button type="button" class="btn-usar-equipo" title="Usar" hidden></button>
+                                        <button type="button" class="btn-lanzar-equipo" hidden></button>
+                                    </span>
                                 </div>
                                 <p class="equipamiento-vacio">Vacío: equipa desde el inventario</p>
                                 <div class="equipamiento-detalles" style="display: none;">
                                     <div class="equipamiento-main-inputs">
-                                        <input type="text" class="inputNombreEquipo" placeholder="Nombre">
                                         <div class="campo-numero">
                                             <label>Daño:</label>
                                             <input type="number" class="inputDannoEquipo" min="0" value="0">
@@ -339,11 +349,6 @@
                                                 <option value="2">Alto</option>
                                             </select>
                                         </div>
-                                        <!-- Atacar y, en lanzas y cuchillos, lanzar (actualizarBotonLanzar): siempre juntos -->
-                                        <span class="acciones-arma">
-                                            <button type="button" class="btn-usar-equipo" title="Usar">Usar</button>
-                                            <button type="button" class="btn-lanzar-equipo" hidden></button>
-                                        </span>
                                     </div>
                                     <!-- Daño elemental del arma: solo se ven los elementos que tiene -->
                                     <div class="bloque-elemental" data-elemental="dannoElemental" title="Se suma a cada ataque, aparte del daño físico">
@@ -360,13 +365,7 @@
                                         <button type="button" class="btn-anadir-mod-equipo">+</button>
                                     </div>
                                     <ul class="mods-equipo"></ul>
-                                    <!-- Solo NPC: hacer el arma reliquia y añadirle efectos desde la ficha (pintarExtrasArmaNpc) -->
-                                    <div class="extras-arma-npc ficha-npc">
-                                        <label><input type="checkbox" class="check-reliquia-npc"> Es reliquia</label>
-                                        <button type="button" class="btn-cabecera btn-efecto-npc">+ Crear efecto</button>
-                                        <button type="button" class="btn-cabecera btn-estados-npc">Estados al acertar</button>
-                                    </div>
-                                    <!-- Si el arma es reliquia: sus habilidades se editan y se usan aquí (pintarHabilidadesReliquia) -->
+                                    <!-- Si el arma es reliquia: sus habilidades se usan aquí (pintarHabilidadesReliquia; se editan en Extras) -->
                                     <div class="reliquia-habilidades" hidden></div>
                                     <!-- Efectos del equipo (pasivos y activos, efectosEquipo.js; pintarEfectosEquipo) -->
                                     <div class="efectos-equipo" hidden></div>
@@ -377,7 +376,13 @@
                         <!-- Fila 2: Armadura -->
                         <div class="equipoArmadura equipamiento">
                             <div class="equipamiento-tipo-row">
-                                <label><b>Armadura:</b></label>
+                                <span class="equipamiento-icono"></span>
+                                <div class="equipamiento-titulo">
+                                    <span class="equipamiento-ranura"><b>Armadura:</b> <span class="tipoEquipoTexto"></span>
+                                        <button type="button" class="btn-objeto btn-extras-equipo" hidden></button>
+                                        <button type="button" class="btn-guardar-equipo" title="Guardar en el inventario" aria-label="Guardar en el inventario"></button></span>
+                                    <input type="text" class="inputNombreEquipo" placeholder="Nombre" aria-label="Nombre de la armadura">
+                                </div>
                                 <select class="tipoEquipo tipoArmadura">
                                     <option value="">-- Dejar vacío --</option>
                                     <option value="pesada">Pesada</option>
@@ -386,13 +391,10 @@
                                     <option value="ropa">Ropa</option>
                                     <option value="real">Real</option>
                                 </select>
-                                <span class="tipoEquipoTexto"></span>
-                                <button type="button" class="btn-guardar-equipo" title="Guardar en el inventario" aria-label="Guardar en el inventario"></button>
                             </div>
                             <p class="equipamiento-vacio">Vacío: equipa desde el inventario</p>
                             <div class="equipamiento-detalles" style="display: none;">
                                 <div class="equipamiento-main-inputs">
-                                    <input type="text" class="inputNombreEquipo" placeholder="Nombre">
                                     <div class="campo-numero">
                                         <label>Pen. Atletismo:</label>
                                         <input type="number" class="inputPenalizacionAtletismo" min="0" value="0">
@@ -541,10 +543,13 @@
                 <div id="panelEstados">
                     <!-- Generado desde ESTADOS_INFO (estados.js) -->
                     <div id="chipsEstados" class="estados-chips"></div>
-                    <div id="listaEstadosActivos" class="estados-activos"></div>
+                    <div id="listaEstadosActivos" class="estados-activos form-objeto form-sao"></div>
                 </div>
-                <h2 class="h2-con-boton">Modificadores <button type="button" id="anadirMod" class="btn-h2" title="Añadir modificador" aria-label="Añadir modificador">+</button></h2>
-                <div id="listadoModificadores" class="lista-modificadores"></div>
+                <h2 class="h2-con-boton">Modificadores <span class="botones-h2">
+                    <!-- Filtro: solo los modificadores personalizados (actualizarModificadores en interfaz.js) -->
+                    <button type="button" id="btnSoloModsPropios" class="btn-h2 btn-h2-icono" aria-pressed="false"></button>
+                    <button type="button" id="anadirMod" class="btn-h2" title="Añadir modificador" aria-label="Añadir modificador">+</button></span></h2>
+                <div id="listadoModificadores" class="lista-modificadores form-objeto form-sao"></div>
 
                 <!-- Solo si hay artes pasivas equipadas (actualizarArtesPasivas en interfaz.js) -->
                 <h2 id="tituloArtesPasivas" style="display: none;">Artes pasivas</h2>
@@ -775,20 +780,46 @@
         </div>
     </div>
 
-    <!-- NPC: estados al acertar de un arma desde su tarjeta de la ficha (inicializarExtrasArmaNpc, crearEditorEstadosAlAcertar) -->
-    <div class="modal fade modal-sao" id="modalEstadosAcertar" tabindex="-1" aria-labelledby="modalEstadosAcertarLabel" aria-hidden="true">
+    <!-- Extras del equipo puesto (modo máster y NPC): habilidades de reliquia, efectos y estados al acertar. Se edita una
+         copia que se aplica al aceptar (inicializarExtrasEquipo en interfaz.js; botón .btn-extras-equipo de cada tarjeta) -->
+    <div class="modal fade modal-sao" id="modalExtrasEquipo" tabindex="-1" aria-labelledby="modalExtrasEquipoLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="modalEstadosAcertarLabel">Estados al acertar</h5>
+                    <h5 class="modal-title" id="modalExtrasEquipoLabel">Extras</h5>
                 </div>
                 <div class="modal-body">
-                    <div id="editorEstadosAcertarNpc" class="form-objeto form-sao">
-                        <div class="editor-estados-acertar"></div>
+                    <div id="formExtrasEquipo" class="form-objeto form-sao">
+                        <!-- Armas de ataque y accesorios (una reliquia sin arma siempre lo es) -->
+                        <div class="ranura" id="ranuraExtrasReliquia">
+                            <span class="ranura-icono" data-icono="reliquia"></span>
+                            <label class="ranura-etiqueta" for="extrasEsReliquia">Es reliquia</label>
+                            <input type="checkbox" id="extrasEsReliquia">
+                        </div>
+                        <details class="ranura-desplegable" id="extrasHabilidades">
+                            <summary><span class="ranura-icono" data-icono="reliquia"></span><span class="ranura-etiqueta">Habilidades de reliquia</span><span class="ranura-resumen"></span></summary>
+                            <div class="ranura-cuerpo">
+                                <ul id="extrasListaHabilidades" class="lista-habilidades-reliquia"></ul>
+                                <button type="button" id="extrasAnadirHabilidad" class="btn-anadir-ranura" title="Añadir habilidad" aria-label="Añadir habilidad">+</button>
+                            </div>
+                        </details>
+                        <!-- Efectos (formato de arte): se crean y editan en #modalCrearArte en modo efecto, como ventana hija -->
+                        <details class="ranura-desplegable" id="extrasEfectos">
+                            <summary><span class="ranura-icono" data-icono="artePasiva"></span><span class="ranura-etiqueta">Efectos</span><span class="ranura-resumen"></span></summary>
+                            <div class="ranura-cuerpo">
+                                <ul id="extrasListaEfectos" class="lista-efectos-objeto"></ul>
+                                <button type="button" id="extrasAnadirEfecto" class="btn-anadir-ranura" title="Añadir efecto" aria-label="Añadir efecto">+</button>
+                            </div>
+                        </details>
+                        <!-- Solo armas de ataque (crearEditorEstadosAlAcertar) -->
+                        <details class="ranura-desplegable" id="extrasEstados">
+                            <summary><span class="ranura-icono" data-icono="veneno"></span><span class="ranura-etiqueta">Estados al acertar</span><span class="ranura-resumen"></span></summary>
+                            <div class="ranura-cuerpo editor-estados-acertar"></div>
+                        </details>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn-modal-sao aceptar" id="btnGuardarEstadosAcertar" title="Guardar" aria-label="Guardar"></button>
+                    <button type="button" class="btn-modal-sao aceptar" id="btnGuardarExtrasEquipo" title="Guardar" aria-label="Guardar"></button>
                     <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cancelar" aria-label="Cancelar"></button>
                 </div>
             </div>
@@ -1230,41 +1261,11 @@
                             <textarea id="objetoDescripcion" rows="2"></textarea>
                         </div>
 
-                        <!-- Estado (comida, poción y arrojadiza). El de la comida dura lo que dure la comida -->
+                        <!-- Estados que provoca o cura (comida, poción y arrojadiza), varios; crearEditorEstadosAlAcertar sin
+                             probabilidad. Los de la comida duran hasta el descanso corto (sin turnos); la arrojadiza no cura -->
                         <details class="ranura-desplegable" id="detallesEstadoObjeto" data-campos="comida pocion arrojadiza">
-                            <summary><span class="ranura-icono" data-icono="veneno"></span><span class="ranura-etiqueta">Estado</span><span class="ranura-resumen"></span></summary>
-                            <div class="ranura-cuerpo">
-                                <div class="ranura">
-                                    <span class="ranura-icono" data-icono="veneno" id="iconoEstadoObjeto"></span>
-                                    <span class="ranura-etiqueta">Estado</span>
-                                    <select id="objetoEstado" aria-label="Estado"></select>
-                                </div>
-                                <div class="ranura ranura-fichas" data-campos="comida pocion">
-                                    <span class="ranura-icono" data-icono="regeneracion"></span>
-                                    <span class="ranura-etiqueta">Efecto</span>
-                                    <select id="objetoEstadoAccion" aria-label="Efecto sobre el estado">
-                                        <option value="activar">Provoca</option>
-                                        <option value="quitar">Cura</option>
-                                    </select>
-                                </div>
-                                <div class="ranuras-dobles">
-                                    <div class="ranura campo-estado-valor">
-                                        <span class="ranura-icono" data-icono="magia"></span>
-                                        <label class="ranura-etiqueta" for="objetoEstadoValor">Valor</label>
-                                        <input type="number" id="objetoEstadoValor" min="0" value="1">
-                                    </div>
-                                    <div class="ranura campo-estado-valor">
-                                        <span class="ranura-icono" data-icono="iniciativa"></span>
-                                        <label class="ranura-etiqueta" for="objetoEstadoTurnos">Turnos</label>
-                                        <input type="number" id="objetoEstadoTurnos" min="0" value="3">
-                                    </div>
-                                    <div class="ranura campo-estado-valor">
-                                        <span class="ranura-icono" data-icono="bloqueado"></span>
-                                        <label class="ranura-etiqueta" for="objetoEstadoPermanente">Permanente</label>
-                                        <input type="checkbox" id="objetoEstadoPermanente">
-                                    </div>
-                                </div>
-                            </div>
+                            <summary><span class="ranura-icono" data-icono="veneno"></span><span class="ranura-etiqueta">Estados</span><span class="ranura-resumen"></span></summary>
+                            <div class="ranura-cuerpo editor-estados-acertar"></div>
                         </details>
 
                         <!-- Equipamiento: extras desplegables. Resistencias (armaduras) y daño elemental (armas) se abren

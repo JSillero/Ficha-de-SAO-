@@ -4,7 +4,7 @@
 
 import Modificador, { cargarModificador, TURNOS_PERMANENTE } from "./modificador.js";
 import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, cargarEquipamiento } from "./equipamiento.js";
-import { activarEstado, quitarEstado, aplicarDanno, ESTADOS_INFO, TIPOS_DANNO } from "./estados.js";
+import { activarEstado, quitarEstado, aplicarDanno, ESTADOS_INFO, TIPOS_DANNO, CURAR_NEGATIVOS, curaConTodosLosNegativos, estaActivo } from "./estados.js";
 import { MANOS, gastarVarias, gastarTodas, partesDeMano, parteDeMano, manoVacia, puedeGastar } from "./turno.js";
 import { esZonaSegura } from "./zonas.js";
 import { cargarEfectos } from "./efectosEquipo.js";
@@ -80,15 +80,28 @@ export function ajustarInventario(pj) {
 
 /* Carga y normalización ______________________________________________________ */
 
-function cargarEstadoObjeto(datos) {
+/* Un estado que provoca o cura un objeto: { clave, valor, turnos, quitar }. La comida dura hasta el descanso
+   corto (se guarda permanente y se quita con quitarComida); una arrojadiza no cura */
+function cargarEstadoObjeto(datos, tipo = "") {
+    // Curar todos los estados negativos (solo comida y poción)
+    if (datos?.clave === CURAR_NEGATIVOS) {
+        return datos.quitar && tipo !== "arrojadiza" ? { clave: CURAR_NEGATIVOS, valor: 0, turnos: TURNOS_PERMANENTE, quitar: true } : null;
+    }
     if (!datos?.clave || !ESTADOS_INFO[datos.clave]) return null;
-    const turnos = Number(datos.turnos);
+    const turnos = Math.trunc(Number(datos.turnos));
     return {
         clave: datos.clave,
-        valor: Math.max(0, Number(datos.valor) || 0),
-        turnos: Number.isFinite(turnos) ? turnos : (ESTADOS_INFO[datos.clave].turnos ?? TURNOS_PERMANENTE),
-        quitar: Boolean(datos.quitar)
+        valor: Math.max(0, Math.trunc(Number(datos.valor) || 0)),
+        turnos: tipo === "comida" ? TURNOS_PERMANENTE
+            : Number.isFinite(turnos) ? turnos : (ESTADOS_INFO[datos.clave].turnos ?? TURNOS_PERMANENTE),
+        quitar: tipo !== "arrojadiza" && Boolean(datos.quitar)
     };
+}
+
+/** Estados de una comida, poción o arrojadiza (lista `estados`; acepta el antiguo `estado`, uno solo) */
+export function cargarEstadosObjeto(datos, tipo = "") {
+    const lista = Array.isArray(datos?.estados) ? datos.estados : datos?.estado ? [datos.estado] : [];
+    return lista.map(estado => cargarEstadoObjeto(estado, tipo)).filter(Boolean).slice(0, MAX_ESTADOS_AL_ACERTAR);
 }
 
 function cargarElemental(datos) {
@@ -125,16 +138,16 @@ export function cargarObjeto(datos) {
     switch (tipo) {
         case "comida":
             objeto.modificadores = Array.isArray(datos.modificadores) ? datos.modificadores.map(cargarModificador) : [];
-            objeto.estado = cargarEstadoObjeto(datos.estado);
+            objeto.estados = cargarEstadosObjeto(datos, tipo);
             break;
         case "pocion":
             objeto.pv = Number(datos.pv) || 0;
             objeto.pa = Math.max(0, Number(datos.pa) || 0); // PA que recupera (solo en zona segura o base)
-            objeto.estado = cargarEstadoObjeto(datos.estado);
+            objeto.estados = cargarEstadosObjeto(datos, tipo);
             break;
         case "arrojadiza":
             objeto.danno = Math.max(0, Number(datos.danno) || 0);
-            objeto.estado = cargarEstadoObjeto(datos.estado);
+            objeto.estados = cargarEstadosObjeto(datos, tipo);
             objeto.elemental = cargarElemental(datos.elemental);
             break;
         case "equipo":
@@ -390,7 +403,7 @@ export function consumirOfrecido(pj, datos, gastar = gastarEstricto(pj)) {
     return { ok: true, resumen, objeto };
 }
 
-/* Efecto de comer: sustituye a la comida anterior (sus modificadores y estado llevan origen "comida") */
+/* Efecto de comer: sustituye a la comida anterior (sus modificadores y estados llevan origen "comida") */
 function efectoComida(pj, objeto) {
     const anterior = quitarComida(pj);
     objeto.modificadores.forEach(mod => {
@@ -399,7 +412,7 @@ function efectoComida(pj, objeto) {
         pj.modificadores.push(nuevo);
     });
     pj.comidaActiva = objeto.nombre || "Comida";
-    const lineasEstado = aplicarEstadoObjeto(pj, objeto.estado, "comida");
+    const lineasEstado = (objeto.estados ?? []).flatMap(estado => aplicarEstadoObjeto(pj, estado, "comida"));
     pj.calcularCaracteristicas();
     const resumen = [`Comes ${pj.comidaActiva}`, ...lineasEstado];
     if (anterior) resumen.push(`Pierdes el efecto de ${anterior}`);
@@ -407,18 +420,28 @@ function efectoComida(pj, objeto) {
     return resumen;
 }
 
-/* Estado que provoca o cura un objeto (poción o comida). origen: marca el estado (p. ej. "comida"). */
+/* Estado que provoca o cura un objeto (poción o comida). origen: marca el estado (p. ej. "comida", que dura hasta
+   el descanso corto). */
 function aplicarEstadoObjeto(pj, estado, origen = null) {
     if (!estado?.clave) return [];
+    if (estado.clave === CURAR_NEGATIVOS) {
+        if (!estado.quitar) return [];
+        const curados = Object.keys(ESTADOS_INFO).filter(clave => curaConTodosLosNegativos(clave) && estaActivo(pj, clave));
+        curados.forEach(clave => quitarEstado(pj, clave));
+        return curados.length ? curados.map(clave => `Cura: ${ESTADOS_INFO[clave].etiqueta}`) : ["Cura los estados negativos (no había ninguno)"];
+    }
     const etiqueta = ESTADOS_INFO[estado.clave].etiqueta;
     if (estado.quitar) {
         quitarEstado(pj, estado.clave);
         return [`Cura: ${etiqueta}`];
     }
     if (!(estado.valor > 0)) return [];
-    activarEstado(pj, estado.clave, estado.valor, estado.turnos);
+    const deComida = origen === "comida";
+    const turnos = deComida ? TURNOS_PERMANENTE : estado.turnos;
+    activarEstado(pj, estado.clave, estado.valor, turnos);
     if (origen) pj.estados[estado.clave].origen = origen;
-    return [`${etiqueta} ${estado.valor}` + (estado.turnos === TURNOS_PERMANENTE ? " (permanente)" : ` (${estado.turnos} turnos)`)];
+    const duracion = deComida ? "hasta el descanso corto" : turnos === TURNOS_PERMANENTE ? "permanente" : `${turnos} turnos`;
+    return [`${etiqueta} ${estado.valor} (${duracion})`];
 }
 
 /** Las pociones que recuperan PA solo se pueden tomar en zona segura o en la base */
@@ -443,7 +466,7 @@ function aplicarEfectoPocion(pj, pocion) {
         pj.puntosArte = Math.min(pj.puntosArteMax, pj.puntosArte + pa);
         resumen.push(`PA: ${antes} → ${pj.puntosArte}`);
     }
-    resumen.push(...aplicarEstadoObjeto(pj, pocion.estado));
+    (pocion.estados ?? []).forEach(estado => resumen.push(...aplicarEstadoObjeto(pj, estado)));
     pj.calcularCaracteristicas();
     if (!resumen.length) resumen.push("Sin efecto");
     return resumen;
@@ -464,16 +487,12 @@ export function aplicarEfectoEnObjetivo(pj, efecto) {
         pj.vida = pv > 0 ? Math.min(pj.vidaMax, pj.vida + pv) : Math.max(0, pj.vida + pv);
         resumen.push(`${pv > 0 ? `Cura ${pv}` : `${-pv} de daño`} (PV: ${antes} → ${pj.vida})`);
     }
-    const estado = efecto.estado;
-    if (ESTADOS_INFO[estado?.clave]) {
-        const turnos = Number(estado.turnos);
-        resumen.push(...aplicarEstadoObjeto(pj, {
-            clave: estado.clave,
-            quitar: Boolean(estado.quitar),
-            valor: Math.max(0, Math.trunc(Number(estado.valor) || 0)),
-            turnos: Number.isFinite(turnos) ? Math.trunc(turnos) : (ESTADOS_INFO[estado.clave].turnos ?? TURNOS_PERMANENTE)
-        }));
-    }
+    // Estados de la poción o arrojadiza (estadosObjeto; los clientes antiguos mandan uno solo en `estado`)
+    const deObjeto = Array.isArray(efecto.estadosObjeto) ? efecto.estadosObjeto : efecto.estado ? [efecto.estado] : [];
+    deObjeto.slice(0, MAX_ESTADOS_AL_ACERTAR).forEach(datos => {
+        const estado = cargarEstadoObjeto(datos, "pocion");
+        if (estado) resumen.push(...aplicarEstadoObjeto(pj, estado));
+    });
     // Estados al acertar del arma o del arte (ya tirados por el atacante; vienen de otro jugador: se validan)
     const estados = (Array.isArray(efecto.estados) ? efecto.estados : []).slice(0, MAX_ESTADOS_AL_ACERTAR * 2);
     for (const datos of estados) {
