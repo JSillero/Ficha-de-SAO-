@@ -40,7 +40,8 @@ export function probabilidadFalloEmbriaguez(pj) {
 }
 
 /* Cosas absurdas que hace un borracho en Aincrad en lugar de lo que quería hacer, por tipo de acción.
-   "general": tiradas de habilidad o característica, reliquias y todo lo que no tenga apartado propio. */
+   "fortaleza", "reflejos", "voluntad", "inteligencia": tiradas de esa característica.
+   "general": tiradas de habilidad, reliquias y todo lo que no tenga apartado propio. */
 export const MENSAJES_BORRACHO = {
     arte: [
         "Empieza la postura del arte, el arma se ilumina... y se le olvida qué venía después. La luz se apaga sola.",
@@ -64,7 +65,9 @@ export const MENSAJES_BORRACHO = {
         "Se pone a susurrar «shhh» a los enemigos para que no hagan ruido.",
         "Se agacha, pierde el equilibrio y se cae encima de una armadura vieja con un estruendo.",
         "Se pega a la pared como una sombra... y se queda dormido apoyado en ella.",
-        "Se esconde detrás de un NPC que se aparta educadamente a los dos segundos."
+        "Se esconde detrás de un NPC que se aparta educadamente a los dos segundos.",
+        "Se esconde en unos arbustos y hace la peor imitación de un gato que haya existido.",
+        "Le dice al enemigo que cierre los ojos y cuente hasta 10 antes de tratar de meterse en sigilo."
     ],
     equipo: [
         "Abre el inventario para cambiar de equipo y se pone el casco al revés.",
@@ -112,7 +115,57 @@ export const MENSAJES_BORRACHO = {
         "Se para en seco a contemplar el techo del piso de arriba y se pone muy filosófico.",
         "Camina convencido hasta la puerta de la taberna de la que acaba de salir.",
         "Corre en círculos gritando que está haciendo el entrenamiento de Atletismo.",
-        "Da dos pasos y se pone a perseguir una mariposa porque «tiene una textura muy bonita»."
+        "Da dos pasos y se pone a perseguir una mariposa porque «tiene una textura muy bonita».",
+        "Deja cualquier cosa que estuviera haciendo y se pone a buscar el baño.",
+        "Afirma que «el suelo es lava» y se sube a algo o a alguien para no tocarlo."
+    ],
+    fortaleza: [
+        "Le pide a un jugador que le silbe «Eye of the Tiger» mientras hace flexiones; se queda dormido al segundo intento.",
+        "Se pone a practicar una pose de Baki y se da un golpe en la ingle. Por alguna razón lo nota como si fuese real.",
+        "Reta a un pulso a una estatua de la plaza y lo pierde por abandono.",
+        "Intenta levantar una roca para impresionar a todos; la roca es un objeto inamovible del mapa.",
+        "Hace la pose de culturista ante un espejo de agua y se cae dentro.",
+        "Se carga a un compañero a hombros «para entrenar» y los dos acaban en el suelo.",
+        "Intenta partir una tabla de un puñetazo; la tabla es indestructible y su mano no.",
+        "Empieza a contar sentadillas en voz alta y se queda atascado en la cuatro.",
+        "Le pide al tabernero el barril más pesado para llevarlo él solo y se sienta encima.",
+        "Abraza a un compañero con todas sus fuerzas y salta el aviso de acoso del sistema."
+    ],
+    reflejos: [
+        "Intenta robarle la cartera al jugador o NPC más cercano; lo único que consigue es tocarle el culo.",
+        "Ve al que tiene al lado multiplicado por cinco, cree que es una técnica ninja y le intenta imitar dando saltitos hacia los lados.",
+        "Intenta atrapar una mosca al vuelo con los palillos y se mete uno en la nariz.",
+        "Lanza una moneda de Cor al aire para cogerla con estilo y le cae en el ojo.",
+        "Esquiva con una voltereta un ataque que nadie le ha lanzado.",
+        "Hace malabares con tres pociones; solo quedan dos, y luego ninguna.",
+        "Intenta coger al vuelo la jarra que le lanzan y la para con la cara.",
+        "Se pone a hacer el pino «para tener mejores reflejos» y se queda así un buen rato.",
+        "Intenta desenfundar más rápido que su sombra y pierde.",
+        "Se agacha para esquivar una rama de árbol que estaba a tres metros de altura."
+    ],
+    voluntad: [
+        "Se imagina a todo el mundo en calzoncillos para estar menos nervioso y se empieza a reír él solo.",
+        "Se intenta convertir en supersaiyan; todos se le quedan mirando y se esfuerza tanto que se le escapa un pedo.",
+        "Jura solemnemente no volver a beber nunca y pide otra ronda para celebrarlo.",
+        "Se pone a meditar en mitad del camino y empieza a roncar a los diez segundos.",
+        "Aguanta la mirada a un NPC durante un minuto entero hasta que se echa a llorar.",
+        "Decide dejar de pensar en la comida y se pone a describir en voz alta todos los platos de la taberna.",
+        "Da un discurso motivador al grupo que termina con «...y por eso los jabalíes son nuestros amigos».",
+        "Intenta resistir la tentación de tocar un botón brillante. Lo toca.",
+        "Le confiesa a un desconocido su mayor miedo y luego le pide que se lo guarde en secreto.",
+        "Se promete no rendirse jamás y se rinde ante la cuesta de la siguiente calle."
+    ],
+    inteligencia: [
+        "Intenta hacer un cálculo de tres cifras; como le faltan dedos, se lo pide a ChatGPT en voz alta.",
+        "Trata de abrir el inventario con la lengua (lo logra), pero acaba cambiando su idioma a uno extranjero al azar.",
+        "Lee un cartel del pueblo del revés y saca una teoría muy elaborada sobre el piso 100.",
+        "Explica a todos el plan perfecto y a mitad de frase se le olvida cuál era.",
+        "Intenta recordar su propio nickname y tiene que mirarlo encima de su cabeza.",
+        "Se pone a resolver el acertijo de la mazmorra y concluye que la respuesta es «queso».",
+        "Saca el mapa para calcular la ruta más corta y se pone a dibujarle bigotes al jefe del piso.",
+        "Discute con un NPC sobre filosofía y pierde contra sus tres frases pregrabadas.",
+        "Intenta contar las monedas de Cor y cada vez le sale una cantidad distinta.",
+        "Le pregunta al Cardinal System cuánto es dos más dos y se ofende con la respuesta."
     ],
     general: [
         "Le grita a Kayaba al cielo que quiere hablar con el encargado.",

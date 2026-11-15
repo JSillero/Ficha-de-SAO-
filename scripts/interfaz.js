@@ -3691,7 +3691,8 @@ function inicializarTiradasHabilidades() {
         const nombre = icono.alt || atributo;
         icono.title = `Tirada de ${nombre}`;
         icono.addEventListener('click', () => {
-            if (fallaPorEmbriaguez(`Tirada de ${nombre}`)) return;
+            // Cada característica tiene su apartado en MENSAJES_BORRACHO (fortaleza, reflejos, voluntad, inteligencia)
+            if (fallaPorEmbriaguez(`Tirada de ${nombre}`, atributo)) return;
             const { modos, criticoFacil } = obtenerConfiguracionTirada();
             ejecutarTirada({
                 nombreAccion: nombre,
