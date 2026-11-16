@@ -5,6 +5,7 @@ import { ZONAS, ZONA_POR_DEFECTO } from "./zonas.js";
 import { cargarArtes, modificadorArtes } from "./artes.js";
 import { modificadorEfectosEquipo } from "./efectosEquipo.js";
 import { cargarDiario } from "./diario.js";
+import { cargarTrueque } from "./trueque.js";
 import { crearNpc, cargarNpc, equiposDePartes, DEFENSA_MINIMA_NPC, defensaParalisisNpc } from "./npc.js";
 
 export { TAMANO_INVENTARIO };
@@ -60,7 +61,7 @@ const CAMPOS_SIMPLES = [
     'numeroAcciones', 'izquierda', 'derecha', 'cabeza', 'pies', 'reaccionGuardada',
     'enSigilo', 'valorSigilo',
     'comidaActiva', 'tipoProfesion', 'esUnderworld', 'protagonista', 'zona', 'cor', 'puntosEgo', 'nombreReal',
-    'esNpc', 'idPlantilla', 'underworldHabilitado', 'habilidadesUnderworld', 'alertaSistemaBotin',
+    'esNpc', 'permitirTrueque', 'idPlantilla', 'underworldHabilitado', 'habilidadesUnderworld', 'alertaSistemaBotin',
     'desbloqueosArteExtra', 'desbloqueosArteGastados',
     'notas', 'listadoArtes', 'notasBaul', 'listaDeAmigos', 'recetasProfesion', 'comportamientoCombate'
 ];
@@ -146,6 +147,9 @@ export default class PJ {
         this.objetosClave = []; // [{ nombre, descripcion }]: no ocupan hueco ni se usan
         this.armasLanzadas = []; // [{ mano, equipo }]: lanzas y cuchillos lanzados sin recoger (objetos.js)
         this.botin = []; // objetos de la recompensa de un NPC por recoger (ventana de botín; sin límite)
+        this.trueque = null; // trueque en curso con lo apartado (trueque.js)
+        this.ultimoGolpe = null; // { instancia, jugador, nombre } de quien dio el último golpe (desde un pop-up), o null
+        this.permitirTrueque = false; // NPC: puede hacer trueques (los personajes siempre pueden)
         this.alertaSistemaBotin = false; // el botín viene de un NPC matado con las habilidades del Underworld habilitadas
         this.comidaActiva = ""; // nombre de la comida cuyo efecto está activo (sus modificadores llevan origen "comida")
         this.cor = 0; // monedas: no ocupan hueco, sin límite, nunca negativas
@@ -522,6 +526,7 @@ export default class PJ {
         }
         this.idPersonaje = String(this.idPersonaje || porDefecto.idPersonaje).slice(0, 60);
         if (!ZONAS[this.zona]) this.zona = ZONA_POR_DEFECTO;
+        this.permitirTrueque = this.permitirTrueque === true;
         // Fichas anteriores a la casilla Underworld: si tenían Sacro, lo eran
         this.esUnderworld = jsonObject.esUnderworld === undefined ? Number(this.sacro) > 0 : Boolean(this.esUnderworld);
         if (!this.esUnderworld) this.sacro = 0;
@@ -581,6 +586,17 @@ export default class PJ {
 
         /* Botín de NPC por recoger (las fichas antiguas no tienen) */
         this.botin = (Array.isArray(jsonObject.botin) ? jsonObject.botin : []).map(cargarObjeto).filter(Boolean);
+
+        /* Trueque en curso, con lo apartado (si se cerró a medias, la interfaz lo devuelve) */
+        this.trueque = cargarTrueque(jsonObject.trueque);
+
+        /* Quién dio el último golpe (para la muerte del personaje) */
+        const golpe = jsonObject.ultimoGolpe;
+        this.ultimoGolpe = golpe?.instancia ? {
+            instancia: String(golpe.instancia).slice(0, 120),
+            jugador: golpe.jugador ? String(golpe.jugador).slice(0, 128) : null,
+            nombre: String(golpe.nombre ?? "").slice(0, 60)
+        } : null;
 
         /* Lanzas y cuchillos lanzados sin recoger */
         this.armasLanzadas = cargarArmasLanzadas(jsonObject.armasLanzadas);
@@ -652,6 +668,8 @@ export default class PJ {
             objetosClave: this.objetosClave,
             armasLanzadas: this.armasLanzadas,
             botin: this.botin,
+            trueque: this.trueque,
+            ultimoGolpe: this.ultimoGolpe,
 
             /* Equipo */
             equipoArmadura: this.equipoArmadura,

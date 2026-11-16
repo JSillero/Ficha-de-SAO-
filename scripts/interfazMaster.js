@@ -9,7 +9,8 @@ import * as master from "./personajesMaster.js";
 import {
     htmlFilaHud, rellenarFilaHud, comprobarPlegadoHud, motivoNombreNoDisponible, motivoNombreSala, getEstadoOnline,
     getSalaMaster, publicarPersonajesMaster, echarPersonajeSala, mensajeErrorOnline, pedirFichaJugador,
-    ocultarPersonajeSala, claveOcultoSala, leerCompendioNube, guardarCompendioNube, haySesionOnline, alCambiarSesionOnline
+    ocultarPersonajeSala, claveOcultoSala, leerCompendioNube, guardarCompendioNube, haySesionOnline, alCambiarSesionOnline,
+    salirPorMuerte
 } from "./interfazOnline.js";
 import { PROFESIONES, VALORES_COMBATE, estadisticasProtagonista } from "./resumenFicha.js";
 import { ETIQUETAS_CARACTERISTICA, ETIQUETAS_HABILIDAD, ranurasUsadas, ranurasLibres, motivoInactiva } from "./artes.js";
@@ -53,6 +54,7 @@ import * as compendio from "./compendio.js";
  * @property {(id: string, turno: number) => void} fijarTurno
  * @property {(id: string, datos: object) => void} publicarEstadoDe  estado de uno suyo en su grupo (vida, PA, turno...)
  * @property {(id: string) => void} alMorirNpc  un NPC suyo que no está en la ficha ha llegado a 0 PV
+ * @property {(id: string) => void} alMorir  un personaje suyo (no NPC) fuera de la ficha empieza turno a 0 PV o menos
  */
 /** @type {ContextoMaster} */
 let ctx = null;
@@ -170,8 +172,8 @@ function listaSala(registro) {
     const indice = Object.fromEntries(master.todos().map(p => [p.id, p]));
     return master.idsEnSesion()
         .map(id => id === pj.idPersonaje
-            ? { id, nombre: String(pj.nombre ?? "").trim(), npc: Boolean(pj.esNpc) }
-            : { id, nombre: indice[id]?.resumen?.nombre ?? "", npc: Boolean(indice[id]?.resumen?.npc) })
+            ? { id, nombre: String(pj.nombre ?? "").trim(), npc: Boolean(pj.esNpc), trueque: Boolean(pj.esNpc && pj.permitirTrueque) }
+            : { id, nombre: indice[id]?.resumen?.nombre ?? "", npc: Boolean(indice[id]?.resumen?.npc), trueque: Boolean(indice[id]?.resumen?.trueque) })
         .filter(p => {
             if (p.npc) return true;
             const motivo = motivoNombreSala(p.nombre, registro);
@@ -360,6 +362,11 @@ export function alIniciarTurno(hora, iniciativa, quien) {
         const otro = new PJ();
         otro.cargarJSON(JSON.parse(datos.json));
         if (otro.zona !== "noSegura" || !mismaIniciativa(otro.iniciativa, iniciativa)) continue;
+        // A 0 PV o menos un personaje (no un NPC) no empieza el turno: muere
+        if (!otro.esNpc && otro.vida <= 0) {
+            ctx.alMorir?.(id);
+            continue;
+        }
         const resumen = iniciarTurno(otro);
         master.guardar(id, { json: otro.toJSONString(), resumen: master.resumenDe(otro) });
         ctx.fijarTurno(id, hora);
@@ -455,6 +462,24 @@ export function retirarNpcMuerto(id) {
     }
     master.quitarDeSesion(id);
     master.borrar(id);
+    actualizarHudMaster();
+    return null;
+}
+
+/**
+ * Uno de sus personajes ha muerto: sale de su grupo y de la sesión (y por tanto de la sala), pero sigue guardado.
+ * Si está en la ficha, antes se pasa a otro. Devuelve el motivo si no puede salir de la sesión, o null.
+ */
+export async function retirarPersonajeMuerto(id) {
+    await salirPorMuerte(`m-${id}`, { salirDeSala: false });
+    const motivo = master.motivoNoQuitar(id);
+    if (motivo) return motivo;
+    if (id === master.getActivo() || id === ctx.personaje().idPersonaje) {
+        const siguiente = filasCabecera().find(f => !f.jugador && f.id !== id);
+        if (!siguiente) return "Es el único personaje de la sesión";
+        cambiarA(siguiente.id);
+    }
+    master.quitarDeSesion(id);
     actualizarHudMaster();
     return null;
 }
@@ -795,6 +820,7 @@ function pintarPerfil() {
     el("perfilMasterProfesion").value = pj.tipoProfesion;
     sincronizarProfesion?.(); // las fichas que visten el select (formularioSao.js)
     el("perfilMasterUnderworld").checked = pj.esUnderworld;
+    el("perfilMasterTrueque").checked = Boolean(pj.permitirTrueque);
     el("perfilMasterProtagonista").checked = pj.protagonista;
     // Habilidades del Underworld: se conserva si la ranura estaba abierta
     const habUw = el("perfilMasterHabUnderworld");
@@ -1278,6 +1304,8 @@ function aplicarCampo(input) {
         pj.setUnderworld(input.checked);
     } else if (input.id === "perfilMasterProtagonista") {
         pj.protagonista = input.checked;
+    } else if (input.id === "perfilMasterTrueque") {
+        if (pj.esNpc) pj.permitirTrueque = input.checked;
     } else if (CARACTERISTICAS.includes(clave)) {
         const anterior = Number(pj[clave]) || 0;
         const otros = pj.getPuntosCaracteristicasGastados() - anterior;
@@ -1291,7 +1319,7 @@ function aplicarCampo(input) {
         const maximo = Math.min(Math.max(anterior, pj.getMaxHabilidad() - extra), anterior + pj.getPuntosHabilidadDisponibles());
         recalcularConservandoMaximos(() => { pj[clave] = limitar(entero(input.value, anterior + extra) - extra, 0, Math.max(0, maximo)); });
     } else if (input.id === "perfilMasterVida") {
-        pj.vida = limitar(entero(input.value, pj.vida), 0, pj.vidaMax);
+        pj.vida = Math.min(entero(input.value, pj.vida), pj.vidaMax); // puede ser negativa
     } else if (input.id === "perfilMasterPA") {
         pj.puntosArte = limitar(entero(input.value, pj.puntosArte), 0, pj.puntosArteMax);
     } else if (input.id === "perfilMasterCor") {

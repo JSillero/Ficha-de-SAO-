@@ -1,5 +1,5 @@
 import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ESCUDO, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, ELEMENTOS, cargarValoresElementales, cargarDebilidades } from "./equipamiento.js";
-import { esReliquia, usarHabilidadReliquia, motivoNoUsarHabilidad, cargarHabilidadReliquia, equipoDeRanura } from "./reliquias.js";
+import { esReliquia, usarHabilidadReliquia, motivoNoUsarHabilidad, cargarHabilidadReliquia, equipoDeRanura, partesParaUsar } from "./reliquias.js";
 import { partesDeEfecto, motivoNoUsarEfecto, usarEfectoEquipo, pasivasDeEquipo, cargarEfectos } from "./efectosEquipo.js";
 import Modificador, { TURNOS_PERMANENTE, numeroModificador, esModificadorDecimal } from "./modificador.js";
 import PJ, { HABILIDADES_UNDERWORLD } from "./PJ.js";
@@ -32,14 +32,14 @@ import { ESTADOS_INFO, TIPOS_DANNO, aplicarDanno, activarEstado, quitarEstado, e
 import { cargarEstadoAlAcertar, cargarEstadosAlAcertar, describirEstadosAlAcertar, MAX_ESTADOS_AL_ACERTAR } from "./estadosAlAcertar.js";
 import { iconoSao, tieneIconoSao } from "./iconos.js";
 import { mostrarPopup, getHistorialPopups, vaciarHistorialPopups } from "./popups.js";
-import { emitirEvento, emitirPrivado, registrarManejador, PARA_TODOS, configurarOrigen, setAplicadorDanno, setConsumidorOferta, setBloqueoEmision, setGolpesPropiosAplicables, registrarAlRecibir, esDeEstaPestana } from "./eventos.js";
+import { emitirEvento, emitirEventoYEsperar, emitirPrivado, registrarManejador, PARA_TODOS, configurarOrigen, setAplicadorDanno, setConsumidorOferta, setBloqueoEmision, setGolpesPropiosAplicables, registrarAlRecibir, esDeEstaPestana, instanciaEmisora } from "./eventos.js";
 import { escaparHtml } from "./html.js";
 import { getInstancia } from "./instancia.js";
 import { inicializarVentanas, abrirCapa, cerrarCapa } from "./ventanas.js";
 import {
     inicializarOnline, getEstadoOnline, getPersonajesSala, getTodosPersonajesSala, getSalaMaster, avisarNombrePersonaje, setIdPersonajeNube, motivoNombreNoDisponible,
     abrirAmigos, abrirAnadirAmigo, abrirGrupo, crearGrupo, salirGrupo, getGrupoSala, avisarEstadoGrupo, avisarTurno, verTurnoSala, abrirCuenta, abrirSala, abrirPersonajesNube,
-    guardarEnNube, compartirArte, quitarArteDeSala, publicarEstadoDe, estaOcultoEnSala
+    guardarEnNube, compartirArte, quitarArteDeSala, publicarEstadoDe, estaOcultoEnSala, salirPorMuerte
 } from "./interfazOnline.js";
 import {
     ZONAS, MOTIVOS_ZONA, cambiarZona, esZonaSegura, baulAccesible, puedeRepartirHabilidades, puedeRecibirDanno,
@@ -50,10 +50,11 @@ import { inicializarMaster, restaurarMaster, guardarActivo as guardarActivoMaste
     proveedorSala as proveedorSalaMaster, alCambiarSala as alCambiarSalaMaster, estaEnTurno as estaEnTurnoMaster,
     alIniciarTurno as alIniciarTurnoMaster, getUltimoTurno as getUltimoTurnoMaster,
     leerPersonaje as leerPersonajeMaster, conPersonaje as conPersonajeMaster, tamanoPaginaCompendio,
-    retirarNpcMuerto } from "./interfazMaster.js";
+    retirarNpcMuerto, retirarPersonajeMuerto } from "./interfazMaster.js";
 import * as compendio from "./compendio.js";
 import * as compendioObjetos from "./compendioObjetos.js";
 import { inicializarCompendioObjetos, anadirAlCompendio } from "./interfazCompendioObjetos.js";
+import { inicializarTrueque, comprobarTruequeColgado } from "./interfazTrueque.js";
 import { pintarIconos, crearFichas, crearRejilla, ponerResumen, prepararFormularioSao } from "./formularioSao.js";
 import { reproducir, iniciarBucle, pararBucle, precargarSonidos, estaSilenciado, setSilenciado } from "./sonidos.js";
 import { ejecutarDebug, crearPersonajePrueba, validarFicha } from "./debug.js";
@@ -375,6 +376,7 @@ function aplicarModoNpc() {
 function actualizarTodo() {
     aplicarModoNpc();
     ajustarInventario(personaje); // la capacidad cambia con el equipo, la comida o los modificadores
+    comprobarTruequeColgado(); // trueque que se quedó a medias (pestaña cerrada): devuelve lo apartado
     // En modo lectura no se avisa de nada: la ficha no es del máster
     if (!lectura) {
         comprobarMemoriaArtes();
@@ -460,6 +462,11 @@ let atacanteGolpe = null; // { jugador, instancia, nombre } del golpe que se est
 let golpeAlNpc = false;
 let vidaNpcVista = { id: null, vida: null };
 let muerteNpcAbierta = null; // { id, atacante } de la ventana abierta
+/* La misma ventana sirve para la muerte de un personaje (de un jugador o del máster): el máster elige quién recibe
+   una copia de lo que llevaba (muertePjAbierta = { victima, nombre, restos, ultimoGolpe }). Las muertes que llegan
+   con la ventana abierta esperan en colaMuertes ({ tipo: "npc", id, atacante } | { tipo: "personaje", datos }). */
+let muertePjAbierta = null;
+const colaMuertes = [];
 
 function comprobarMuerteNpc() {
     const atacante = atacanteGolpe;
@@ -481,6 +488,10 @@ const npcPorId = (id) => (id === personaje.idPersonaje ? personaje : leerPersona
 function abrirMuerteNpc(id, atacante) {
     const pj = npcPorId(id);
     if (!pj?.esNpc) return;
+    if (muertePjAbierta) {
+        colaMuertes.push({ tipo: "npc", id, atacante });
+        return;
+    }
     if (muerteNpcAbierta?.id === id) {
         if (atacante) muerteNpcAbierta.atacante = atacante;
         return;
@@ -506,10 +517,38 @@ function candidatosExp() {
         if (!p.instancia?.startsWith("m-")) return true;
         const id = p.id ?? p.instancia.slice(2);
         return id !== muerteNpcAbierta?.id && !npcPorId(id)?.esNpc;
+    }).filter(p => p.instancia !== muertePjAbierta?.victima);
+}
+
+/* Botones y etiqueta de la ventana según sea la muerte de un NPC o de un personaje */
+function textosVentanaMuerte(personajeMuerto) {
+    document.getElementById("etiquetaExpMuerteNpc").textContent = personajeMuerto ? "Recompensa para" : "EXP para";
+    const titulos = personajeMuerto
+        ? { btnCancelarMuerteNpc: "Nadie la recibe", btnAceptarMuerteNpc: "Repartir" }
+        : { btnCancelarMuerteNpc: "Todavía no (queda a 0 PV)", btnAceptarMuerteNpc: "Derrotar" };
+    Object.entries(titulos).forEach(([id, titulo]) => {
+        const boton = document.getElementById(id);
+        boton.title = titulo;
+        boton.setAttribute("aria-label", titulo);
     });
 }
 
+/* Filas de solo lectura de una recompensa: Cor, objetos y objetos clave (y la EXP si la hay) */
+function filasRecompensa({ exp = null, cor = 0, objetos = [], objetosClave = [] }) {
+    const filas = [
+        exp !== null ? `<div class="fila-objeto"><span class="objeto-icono">${iconoSao("artes")}</span><div class="objeto-info"><div class="objeto-cabecera"><span class="objeto-nombre">${exp} EXP</span></div></div></div>` : "",
+        cor > 0 ? `<div class="fila-objeto"><span class="objeto-icono">${iconoSao("cor")}</span><div class="objeto-info"><div class="objeto-cabecera"><span class="objeto-nombre">${cor} Cor</span></div></div></div>` : "",
+        ...objetos.map(objeto => `<div class="fila-objeto"><span class="objeto-icono">${iconoSao(iconoObjeto(objeto))}</span><div class="objeto-info">
+            <div class="objeto-cabecera"><span class="objeto-nombre">${escaparHtml(objeto.nombre)}</span><span class="objeto-cantidad">×${objeto.cantidad}</span></div></div></div>`),
+        ...objetosClave.map(objeto => `<div class="fila-objeto"><span class="objeto-icono">${iconoSao("llave")}</span><div class="objeto-info">
+            <div class="objeto-cabecera"><span class="objeto-nombre">${escaparHtml(objeto.nombre)}</span></div><div class="objeto-detalle">Objeto clave</div></div></div>`)
+    ].filter(Boolean);
+    return filas.length ? filas.join("") : `<p class="lista-vacia">No lleva nada.</p>`;
+}
+
 function pintarMuerteNpc() {
+    if (muertePjAbierta) return pintarMuertePersonaje();
+    textosVentanaMuerte(false);
     const { id, atacante } = muerteNpcAbierta ?? {};
     const pj = npcPorId(id);
     if (!pj) return;
@@ -538,16 +577,112 @@ function pintarMuerteNpc() {
     document.getElementById("avisoMuerteNpc").textContent = avisos.join(" ");
     pintarMitadMuerteNpc();
 
-    const filas = [
-        `<div class="fila-objeto"><span class="objeto-icono">${iconoSao("artes")}</span><div class="objeto-info"><div class="objeto-cabecera"><span class="objeto-nombre">${expRecompensa} EXP</span></div></div></div>`,
-        recompensa.cor > 0 ? `<div class="fila-objeto"><span class="objeto-icono">${iconoSao("cor")}</span><div class="objeto-info"><div class="objeto-cabecera"><span class="objeto-nombre">${recompensa.cor} Cor</span></div></div></div>` : "",
-        ...recompensa.objetos.map(objeto => `<div class="fila-objeto"><span class="objeto-icono">${iconoSao(iconoObjeto(objeto))}</span><div class="objeto-info">
-            <div class="objeto-cabecera"><span class="objeto-nombre">${escaparHtml(objeto.nombre)}</span><span class="objeto-cantidad">×${objeto.cantidad}</span></div></div></div>`),
-        ...recompensa.objetosClave.map(objeto => `<div class="fila-objeto"><span class="objeto-icono">${iconoSao("llave")}</span><div class="objeto-info">
-            <div class="objeto-cabecera"><span class="objeto-nombre">${escaparHtml(objeto.nombre)}</span></div><div class="objeto-detalle">Objeto clave</div></div></div>`)
-    ];
-    document.getElementById("recompensaMuerteNpc").innerHTML = filas.join("");
+    document.getElementById("recompensaMuerteNpc").innerHTML = filasRecompensa({ exp: expRecompensa, ...recompensa });
 }
+
+/* Muerte de un personaje (ventana del máster) ____________________________________
+ * Llega el evento "muertePersonaje" de un jugador (o muere uno de sus personajes): el máster elige quién recibe una
+ * copia de su Cor, inventario, objetos clave y equipo (por defecto quien dio el último golpe; el muerto no pierde
+ * nada). Se reparte con el evento "derrota" (exp 0, muerte: true): Cor y objetos clave directos, objetos al botín. */
+function restosDe(pj) {
+    const equipados = [pj.manoDerecha, pj.manoIzquierda, pj.equipoArmadura].filter(e => e?.tipo && e.tipo !== "ninguno")
+        .concat(pj.accesorios.filter(acc => !accesorioVacio(acc)));
+    const unicos = equipados.filter((e, i) => equipados.indexOf(e) === i);
+    return {
+        cor: cantidadSegura(pj.cor),
+        objetos: [
+            ...unicos.map(e => ({ ...equipoComoObjeto(e), equipo: { ...JSON.parse(JSON.stringify(e)), enUso: false } })),
+            ...pj.inventario.filter(Boolean).map(objeto => JSON.parse(JSON.stringify(objeto)))
+        ].slice(0, 50),
+        objetosClave: pj.objetosClave.map(objeto => ({ ...objeto })).slice(0, 50)
+    };
+}
+
+/* Datos del evento validados (vienen de otro jugador) */
+function cargarDatosMuerte(datos, autor) {
+    const restos = datos?.restos ?? {};
+    const golpe = datos?.ultimoGolpe;
+    return {
+        victima: String(datos?.victima ?? ""),
+        nombre: String(autor ?? datos?.nombre ?? "").trim().slice(0, 60) || "Sin nombre",
+        ultimoGolpe: golpe?.instancia ? { instancia: String(golpe.instancia), nombre: String(golpe.nombre ?? "").slice(0, 60) } : null,
+        restos: {
+            cor: cantidadSegura(restos.cor),
+            objetos: (Array.isArray(restos.objetos) ? restos.objetos : []).slice(0, 50).map(cargarObjeto).filter(Boolean),
+            objetosClave: cargarObjetosClave(Array.isArray(restos.objetosClave) ? restos.objetosClave.slice(0, 50) : [])
+        }
+    };
+}
+
+function abrirMuertePersonaje(datos) {
+    if (muertePjAbierta || muerteNpcAbierta) {
+        colaMuertes.push({ tipo: "personaje", datos });
+        return;
+    }
+    muertePjAbierta = datos;
+    const mostrar = () => {
+        const otra = document.querySelector(".modal.show:not(#modalMuerteNpc)");
+        if (otra) {
+            otra.addEventListener("hidden.bs.modal", () => setTimeout(mostrar, 50), { once: true });
+            return;
+        }
+        pintarMuerteNpc();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById("modalMuerteNpc")).show();
+    };
+    setTimeout(mostrar, 300);
+}
+
+/* La siguiente muerte que esperaba (al cerrarse la ventana) */
+function siguienteMuerte() {
+    const siguiente = colaMuertes.shift();
+    if (!siguiente) return;
+    if (siguiente.tipo === "npc") abrirMuerteNpc(siguiente.id, siguiente.atacante);
+    else abrirMuertePersonaje(siguiente.datos);
+}
+
+function pintarMuertePersonaje() {
+    textosVentanaMuerte(true);
+    const { nombre, restos, ultimoGolpe } = muertePjAbierta;
+    document.getElementById("modalMuerteNpcLabel").textContent = `${nombre} ha muerto`;
+    document.getElementById("textoMuerteNpc").textContent =
+        `Elige quién recibe una copia de su Cor, su inventario, sus objetos clave y su equipo. ${nombre} no pierde nada.`;
+    const enSala = Boolean(getEstadoOnline().sala);
+    const select = document.getElementById("selectExpMuerteNpc");
+    const candidatos = candidatosExp();
+    select.innerHTML = `<option value="">Nadie</option>` + candidatos
+        .map(p => `<option value="${escaparHtml(p.instancia)}">${escaparHtml(p.nombre || "Sin nombre")}</option>`).join("");
+    const preseleccionado = candidatos.find(p => p.instancia === ultimoGolpe?.instancia);
+    select.value = preseleccionado?.instancia ?? "";
+    sincronizarExpMuerteNpc?.();
+    document.getElementById("campoExpMuerteNpc").hidden = !enSala;
+    document.getElementById("mitadMuerteNpc").textContent = "";
+    const avisoUw = document.getElementById("avisoUnderworldMuerteNpc");
+    avisoUw.hidden = true;
+    avisoUw.textContent = "";
+    const avisos = [];
+    if (!enSala) avisos.push("Sin sala: repártelo a mano.");
+    else if (!ultimoGolpe) avisos.push("Nadie le dio el último golpe desde un pop-up (fue un estado o daño a mano): elige si alguien lo recibe.");
+    else if (!preseleccionado) avisos.push(`El último golpe es de ${ultimoGolpe.nombre || "alguien"}, que no puede recibirlo (un NPC o no está conectado): elige si alguien lo recibe.`);
+    document.getElementById("avisoMuerteNpc").textContent = avisos.join(" ");
+    document.getElementById("recompensaMuerteNpc").innerHTML = filasRecompensa(restos);
+}
+
+function aceptarMuertePersonaje() {
+    const datos = muertePjAbierta;
+    if (!datos) return;
+    reproducir("click");
+    const instancia = document.getElementById("selectExpMuerteNpc").value;
+    const para = candidatosExp().find(p => p.instancia === instancia) ?? null;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById("modalMuerteNpc")).hide();
+    if (!para) return;
+    repartirDerrota({ nombre: datos.nombre, exp: 0, ...structuredClone(datos.restos), para, companeros: [], muerte: true });
+}
+
+/* El máster recibe la muerte de un personaje de un jugador de su sala */
+registrarAlRecibir("muertePersonaje", (evento) => {
+    if (!MODO_MASTER || !getSalaMaster()) return;
+    abrirMuertePersonaje(cargarDatosMuerte(evento.datos, evento.personaje));
+});
 
 /* Compañeros del grupo de quien recibe la EXP (conectados): reciben la mitad */
 function companerosExp(instancia) {
@@ -568,6 +703,7 @@ function conUnderworldActivo(candidato) {
 }
 
 function pintarMitadMuerteNpc() {
+    if (muertePjAbierta) return; // la muerte de un personaje no da EXP
     const pj = npcPorId(muerteNpcAbierta?.id);
     const instancia = document.getElementById("selectExpMuerteNpc").value;
     const elegido = instancia ? candidatosExp().find(p => p.instancia === instancia) : null;
@@ -585,20 +721,21 @@ function pintarMitadMuerteNpc() {
 /* Reparto de la derrota: un evento "derrota" para toda la sala (con el sonido de muerte). Quien mata recibe toda la
    EXP y la recompensa (Cor y objetos clave directos; los objetos, a su botín); sus compañeros de grupo, la mitad de
    la EXP. Lo aplica cada pestaña al recibirlo (alDerrota). Sin sala solo se pinta aquí, para repartirlo a mano. */
-function repartirDerrota({ nombre, exp, cor, objetos, objetosClave, para, companeros, alertaSistema = false }) {
+function repartirDerrota({ nombre, exp, cor, objetos, objetosClave, para, companeros, alertaSistema = false, muerte = false }) {
     const mitad = Math.floor(exp / 2);
     const lineas = [];
-    if (para) lineas.push(`${para.nombre || "Sin nombre"}: +${exp} EXP`);
+    // muerte: lo que llevaba un personaje muerto (sin EXP; el sonido ya sonó con su muerte)
+    if (para && !muerte) lineas.push(`${para.nombre || "Sin nombre"}: +${exp} EXP`);
     if (para && companeros.length) lineas.push(`Su grupo (+${mitad} EXP): ${companeros.map(p => p.nombre || "Sin nombre").join(", ")}`);
     if (!para) lineas.push(`EXP sin repartir: ${exp}`);
     const botin = [cor > 0 ? `${cor} Cor` : "", ...objetos.map(o => `${o.nombre} ×${o.cantidad}`), ...objetosClave.map(o => o.nombre)].filter(Boolean);
-    if (botin.length) lineas.push(`Recompensa${para ? ` para ${para.nombre || "Sin nombre"}` : ""}: ${botin.join(", ")}`);
-    reproducir("muerte"); // los demás lo oyen al recibir el evento (datos.sonido)
+    if (botin.length) lineas.push(`${muerte ? "Lo que llevaba" : "Recompensa"}${para ? ` para ${para.nombre || "Sin nombre"}` : ""}: ${botin.join(", ")}`);
+    if (!muerte) reproducir("muerte"); // los demás lo oyen al recibir el evento (datos.sonido)
     const evento = emitirEvento("derrota", {
-        titulo: `${nombre} ha sido derrotado`,
-        subtitulo: "Derrota",
+        titulo: muerte ? `Lo que llevaba ${nombre}` : `${nombre} ha sido derrotado`,
+        subtitulo: muerte ? "Muerte" : "Derrota",
         lineas,
-        sonido: "muerte",
+        ...(muerte ? { muerte: true } : { sonido: "muerte" }),
         npc: nombre,
         atacante: para?.instancia ?? null,
         exp,
@@ -607,7 +744,7 @@ function repartirDerrota({ nombre, exp, cor, objetos, objetosClave, para, compan
         botin: para ? { cor, objetos, objetosClave } : null,
         // Habilidades del Underworld habilitadas: solo lo ve quien recibe la recompensa (no va en las líneas públicas)
         alertaSistema: Boolean(para && alertaSistema)
-    });
+    }, lectura ? { forzar: true, personaje: "Máster" } : {}); // en modo lectura no sale con el nombre del jugador
     // Los personajes del máster no reciben sus propios eventos: lo suyo se aplica aquí
     if (evento) alDerrota(evento);
 }
@@ -630,7 +767,7 @@ function alDerrota(evento) {
         const claves = cargarObjetosClave(Array.isArray(d.botin?.objetosClave) ? d.botin.objetosClave.slice(0, 50) : []);
         const nivelAntes = leerPersonajeDeInstancia(d.atacante)?.nivel;
         const pj = recibir(d.atacante, (p) => {
-            p.setExp((Number(p.experiencia) || 0) + exp);
+            if (exp > 0) p.setExp((Number(p.experiencia) || 0) + exp);
             if (cor > 0) anadirCor(p, cor);
             p.objetosClave.push(...claves);
             p.botin.push(...objetos);
@@ -639,7 +776,7 @@ function alDerrota(evento) {
         });
         if (pj) {
             const despues = leerPersonajeDeInstancia(d.atacante);
-            const lineas = [`+${exp} EXP`];
+            const lineas = exp > 0 ? [`+${exp} EXP`] : [];
             if (despues && despues.nivel > nivelAntes) lineas.push(`¡Sube a nivel ${despues.nivel}!`);
             if (cor > 0) lineas.push(`+${cor} Cor`);
             if (claves.length) lineas.push(`Objetos clave: ${claves.map(o => o.nombre).join(", ")}`);
@@ -650,8 +787,9 @@ function alDerrota(evento) {
             if (d.alertaSistema === true || despues?.tieneUnderworldActivo?.()) {
                 lineasHtml.push(`<span class="alerta-sistema">El sistema ha sido alertado</span>`);
             }
-            mostrarPopupInfo(`${escaparHtml(despues?.nombre || "Tu personaje")} derrota a ${escaparHtml(npc)}`, lineasHtml);
-            if (objetos.length && esElDeLaFicha(idDeInstancia(d.atacante))) setTimeout(abrirBotin, 600);
+            const titulo = d.muerte === true ? `${despues?.nombre || "Tu personaje"} recibe lo que llevaba ${npc}` : `${despues?.nombre || "Tu personaje"} derrota a ${npc}`;
+            mostrarPopupInfo(escaparHtml(titulo), lineasHtml.length ? lineasHtml : ["No llevaba nada."]);
+            if (objetos.length) abrirBotinDe(d.atacante);
         }
     }
     (Array.isArray(d.grupo) ? d.grupo : []).filter(esDeEstaPestana).forEach(instancia => {
@@ -667,26 +805,41 @@ function alDerrota(evento) {
 registrarAlRecibir("derrota", alDerrota);
 
 /* Ventana de botín (#modalBotin) ______________________________________________
- * personaje.botin: objetos de la recompensa por recoger. Coger (al inventario; lo que no cabe se queda aquí),
+ * pj.botin: objetos de la recompensa de un NPC o de un trueque por recoger. Coger (al inventario; lo que no
+ * cabe se queda aquí), Guardar en el baúl (solo en la base),
  * Ofrecer a un compañero del grupo conectado (evento "oferta" con coger: true; si no lo coge, se pierde) o
- * Descartar. "Coger todo" mete lo que quepa. Se abre al recibirlo y desde el menú del inventario. */
+ * Descartar. "Coger todo" mete lo que quepa. Se abre al recibirlo (abrirBotinDe) y desde el menú del inventario.
+ * En modo máster puede ser el botín de uno de sus personajes que no está en la ficha (instanciaBotin = "m-<id>"):
+ * se lee y se cambia con leerPersonajeDeInstancia / conPersonajeDeInstancia, y lo que ofrece sale en su nombre. */
 const listaBotinEl = document.getElementById("listaBotin");
 let eleccionBotin = null; // fila que está eligiendo a quién ofrecer
+let instanciaBotin = null; // null = el personaje de la ficha
+
+const pjBotin = () => leerPersonajeDeInstancia(instanciaBotin);
+/* Aplica un cambio al personaje del botín y lo guarda (el de la ficha repinta con actualizarTodo) */
+const conPjBotin = (fn) => conPersonajeDeInstancia(instanciaBotin, fn);
 
 /* Compañeros de grupo conectados a los que se puede ofrecer (no este mismo personaje) */
-const companerosBotin = () => (getGrupoSala()?.miembros ?? []).filter(m => !esDeEstaPestana(m.instancia));
+const companerosBotin = () => (getGrupoSala(instanciaBotin ?? undefined)?.miembros ?? []).filter(m => !esDeEstaPestana(m.instancia));
 
 function pintarBotin() {
-    const botin = personaje.botin ?? [];
+    const pj = pjBotin();
+    const botin = pj.botin ?? [];
     // El aviso del sistema dura hasta que no queda botín por recoger
-    if (!botin.length) personaje.alertaSistemaBotin = false;
-    document.getElementById("avisoUnderworldBotin").hidden = !personaje.alertaSistemaBotin;
+    if (!botin.length && pj.alertaSistemaBotin) {
+        if (pj === personaje) personaje.alertaSistemaBotin = false;
+        else conPjBotin(p => { p.alertaSistemaBotin = false; });
+    }
+    const otro = pj !== personaje;
+    document.getElementById("modalBotin").classList.toggle("botin-otro", otro);
+    document.getElementById("avisoUnderworldBotin").hidden = !(botin.length && pj.alertaSistemaBotin);
+    document.getElementById("modalBotinLabel").firstChild.textContent = otro ? `Botín de ${pj.nombre || "Sin nombre"} ` : "Botín ";
     document.getElementById("contadorBotin").textContent = `(${botin.length})`;
     document.getElementById("btnCogerTodoBotin").disabled = !botin.length;
     const companeros = companerosBotin();
     pintarLista(listaBotinEl, botin.length ? botin.map((objeto, i) => {
         const tipoInfo = TIPOS_OBJETO[objeto.tipo];
-        const cabe = cabenEnInventario(personaje, objeto) > 0;
+        const cabe = cabenEnInventario(pj, objeto) > 0;
         const eleccion = eleccionBotin === i ? `<div class="objeto-eleccion">
             ${companeros.map(m => `<button type="button" class="btn-eleccion" data-accion="ofrecerA" data-instancia="${escaparHtml(m.instancia)}">Ofrecer a ${escaparHtml(m.nombre || "Sin nombre")}</button>`).join("")}
             <button type="button" class="btn-eleccion cancelar" data-accion="cancelar">Cancelar</button></div>` : "";
@@ -699,6 +852,7 @@ function pintarBotin() {
             </div>
             <div class="objeto-acciones">
                 ${botonObjeto("coger", "inventario", cabe ? "Coger (al inventario)" : "No cabe en el inventario", !cabe)}
+                ${pj.esNpc ? "" : botonObjeto("baul", "baul", baulAccesible(pj) ? "Guardar en el baúl" : MOTIVOS_ZONA.baul, !baulAccesible(pj))}
                 ${botonObjeto("ofrecer", "amigos", companeros.length ? "Ofrecer a un compañero del grupo" : "No tienes compañeros de grupo conectados", !companeros.length)}
                 ${botonObjeto("descartar", "descartar", "Descartar")}
             </div>
@@ -707,23 +861,47 @@ function pintarBotin() {
     }).join("") : `<p class="lista-vacia">No tienes botín por recoger.</p>`);
 }
 
+/* Abre la ventana (si hay otra a la vista, cuando se cierre) */
 function abrirBotin() {
     eleccionBotin = null;
-    pintarBotin();
     const ventana = document.getElementById("modalBotin");
-    if (ventana.classList.contains("show")) return;
-    if (document.querySelector(".modal.show")) return; // ya lo verá desde el menú del inventario
+    if (ventana.classList.contains("show")) {
+        pintarBotin();
+        return;
+    }
+    const otra = document.querySelector(".modal.show");
+    if (otra) {
+        otra.addEventListener("hidden.bs.modal", () => setTimeout(abrirBotin, 50), { once: true });
+        return;
+    }
     bootstrap.Modal.getOrCreateInstance(ventana).show();
 }
 
+/** El personaje de esa instancia ha recibido botín: se le abre su ventana (en modo máster, también si no está en
+ *  la ficha) */
+function abrirBotinDe(instancia) {
+    const id = idDeInstancia(instancia);
+    setTimeout(() => {
+        const destino = esElDeLaFicha(id) ? null : instancia;
+        // Ya abierta: si es la de ese personaje se repinta; si es la de otro, se abrirá la suya al cerrarla
+        if (document.getElementById("modalBotin").classList.contains("show")) {
+            if (instanciaBotin === destino) pintarBotin();
+            else document.getElementById("modalBotin").addEventListener("hidden.bs.modal", () => abrirBotinDe(instancia), { once: true });
+            return;
+        }
+        instanciaBotin = destino;
+        abrirBotin();
+    }, 600);
+}
+
 /* Mete en el inventario lo que quepa de un objeto del botín; lo que no, se queda */
-function cogerDelBotin(indice) {
-    const objeto = personaje.botin[indice];
+function cogerDelBotin(pj, indice) {
+    const objeto = pj.botin[indice];
     if (!objeto) return 0;
-    const resto = anadirAInventario(personaje, objeto);
+    const resto = anadirAInventario(pj, objeto);
     const cogidos = objeto.cantidad - resto;
     if (resto > 0) objeto.cantidad = resto;
-    else personaje.botin.splice(indice, 1);
+    else pj.botin.splice(indice, 1);
     return cogidos;
 }
 
@@ -731,12 +909,18 @@ function inicializarBotin() {
     listaBotinEl.addEventListener("click", async (e) => {
         const boton = e.target.closest("button[data-accion]");
         const indice = Number(boton?.closest(".fila-objeto")?.dataset.index);
-        const objeto = personaje.botin[indice];
+        const objeto = pjBotin().botin[indice];
         if (!boton || boton.disabled || !objeto) return;
         reproducir("click");
         const accion = boton.dataset.accion;
         if (accion === "coger") {
-            if (!cogerDelBotin(indice)) mostrarPopupInfo("No cabe", ["Libera un hueco del inventario."]);
+            if (!conPjBotin(pj => cogerDelBotin(pj, indice))) mostrarPopupInfo("No cabe", ["Libera un hueco del inventario."]);
+        } else if (accion === "baul") {
+            conPjBotin(pj => {
+                if (!baulAccesible(pj) || !pj.botin[indice]) return;
+                anadirABaul(pj, pj.botin[indice]);
+                pj.botin.splice(indice, 1);
+            });
         } else if (accion === "ofrecer") {
             eleccionBotin = eleccionBotin === indice ? null : indice;
         } else if (accion === "cancelar") {
@@ -744,9 +928,10 @@ function inicializarBotin() {
         } else if (accion === "ofrecerA") {
             const destino = companerosBotin().find(m => m.instancia === boton.dataset.instancia);
             if (!destino) return;
-            personaje.botin.splice(indice, 1);
             eleccionBotin = null;
-            const nombre = String(personaje.nombre ?? "").trim() || "Alguien";
+            const nombre = String(pjBotin().nombre ?? "").trim() || "Alguien";
+            const como = instanciaBotin ? { instancia: instanciaBotin, personaje: nombre } : {};
+            conPjBotin(pj => { pj.botin.splice(indice, 1); });
             emitirEvento("oferta", {
                 titulo: `${nombre} ofrece ${objeto.nombre} ×${objeto.cantidad}`,
                 subtitulo: `Botín · para ${destino.nombre || "un compañero"}`,
@@ -754,20 +939,31 @@ function inicializarBotin() {
                 para: destino.instancia,
                 objeto,
                 coger: true
-            });
+            }, como);
         } else if (accion === "descartar") {
             if (!(await confirmarSao({ titulo: "Descartar botín", texto: `¿Descartar ${objeto.nombre} ×${objeto.cantidad}?` }))) return;
-            personaje.botin.splice(personaje.botin.indexOf(objeto), 1);
+            conPjBotin(pj => {
+                const i = pj.botin.findIndex(o => JSON.stringify(o) === JSON.stringify(objeto));
+                if (i >= 0) pj.botin.splice(i, 1);
+            });
         }
+        pintarBotin();
         actualizarTodo();
     });
     document.getElementById("btnCogerTodoBotin").addEventListener("click", () => {
         reproducir("click");
-        for (let i = personaje.botin.length - 1; i >= 0; i--) cogerDelBotin(i);
-        if (personaje.botin.length) mostrarPopupInfo("Botín", ["No cabe todo: lo que queda sigue en el botín."]);
+        const queda = conPjBotin(pj => {
+            for (let i = pj.botin.length - 1; i >= 0; i--) cogerDelBotin(pj, i);
+            return pj.botin.length;
+        });
+        if (queda) mostrarPopupInfo("Botín", ["No cabe todo: lo que queda sigue en el botín."]);
+        pintarBotin();
         actualizarTodo();
     });
-    document.getElementById("modalBotin").addEventListener("show.bs.modal", () => { eleccionBotin = null; pintarBotin(); });
+    const ventana = document.getElementById("modalBotin");
+    ventana.addEventListener("show.bs.modal", () => { eleccionBotin = null; pintarBotin(); });
+    // Al cerrarse vuelve a ser la del personaje de la ficha (la que abre el menú del inventario)
+    ventana.addEventListener("hidden.bs.modal", () => { instanciaBotin = null; });
 }
 
 let sincronizarExpMuerteNpc = null;
@@ -779,12 +975,17 @@ function inicializarMuerteNpc() {
     sincronizarExpMuerteNpc = crearRejilla(document.getElementById("selectExpMuerteNpc"));
     document.getElementById("selectExpMuerteNpc").addEventListener("change", pintarMitadMuerteNpc);
     document.getElementById("formMuerteNpc").addEventListener("submit", (e) => e.preventDefault());
-    modalEl.addEventListener("hidden.bs.modal", () => { muerteNpcAbierta = null; });
+    modalEl.addEventListener("hidden.bs.modal", () => {
+        muerteNpcAbierta = null;
+        muertePjAbierta = null;
+        setTimeout(siguienteMuerte, 300);
+    });
     document.getElementById("btnDerrotarNpc").addEventListener("click", () => {
         reproducir("click");
         abrirMuerteNpc(personaje.idPersonaje, null);
     });
     document.getElementById("btnAceptarMuerteNpc").addEventListener("click", () => {
+        if (muertePjAbierta) return aceptarMuertePersonaje();
         const datos = muerteNpcAbierta;
         const pj = npcPorId(datos?.id);
         if (!pj) return;
@@ -810,6 +1011,81 @@ function inicializarMuerteNpc() {
         }
         repartirDerrota(reparto);
     });
+}
+
+/* Muerte de personajes ______________________________________________________
+ * Un personaje (no un NPC, que tiene su ventana de muerte) que empieza turno a 0 PV o menos en zona no segura no lo
+ * empieza: sale la pantalla #pantallaMuerte (You_are_dead.svg). Al pulsarla se emite "muertePersonaje" a la sala
+ * (con quién dio el último golpe, personaje.ultimoGolpe) y sale de su grupo y de la sala; la ficha se queda en
+ * pantalla y puede volver a entrar. En modo máster sale de la sesión (retirarPersonajeMuerto) y sigue guardado.
+ * Varias muertes a la vez (personajes del máster con la misma iniciativa) se muestran una detrás de otra. */
+const pantallaMuerteEl = document.getElementById("pantallaMuerte");
+const muertesPendientes = []; // instancias por mostrar (null = el personaje de la ficha)
+
+/** ¿Muere al empezar turno? (solo personajes; los NPC tienen su propia muerte) */
+const muereAlEmpezarTurno = (pj) => !pj.esNpc && pj.vida <= 0;
+
+function mostrarMuerte(instancia = null) {
+    if (muertesPendientes.includes(instancia)) return;
+    muertesPendientes.push(instancia);
+    if (pantallaMuerteEl.hidden) pintarMuerte();
+}
+
+function pintarMuerte() {
+    if (!muertesPendientes.length) return;
+    const pj = leerPersonajeDeInstancia(muertesPendientes[0]);
+    document.getElementById("nombreMuerte").textContent = String(pj.nombre ?? "").trim() || "Sin nombre";
+    pantallaMuerteEl.hidden = false;
+    reproducir("muerte");
+    document.getElementById("btnMuerte").focus();
+}
+
+async function alPulsarMuerte() {
+    if (!muertesPendientes.length) return;
+    const instancia = muertesPendientes.shift();
+    pantallaMuerteEl.hidden = true;
+    reproducir("click");
+    try {
+        await morirPersonaje(instancia);
+    } catch (error) {
+        console.warn("Error al morir", error);
+    }
+    if (muertesPendientes.length) pintarMuerte();
+}
+
+async function morirPersonaje(instanciaMuerte) {
+    const idMaster = idDeInstancia(instanciaMuerte);
+    const pj = leerPersonajeDeInstancia(instanciaMuerte);
+    const nombre = String(pj.nombre ?? "").trim() || "Sin nombre";
+    const instancia = MODO_MASTER ? `m-${idMaster ?? pj.idPersonaje}` : instanciaEmisora();
+    const enSala = Boolean(getEstadoOnline().sala);
+    const ultimo = pj.ultimoGolpe;
+    const lineas = [ultimo?.nombre ? `Último golpe: ${ultimo.nombre}` : "Último golpe: nadie"];
+    if (enSala) lineas.push(MODO_MASTER ? "Sale de su grupo y de la sesión." : "Sale de su grupo y de la sala.");
+    // Se espera a que salga el aviso antes de dejar la sala (si no, podría no llegar)
+    await emitirEventoYEsperar("muertePersonaje", {
+        titulo: `${nombre} ha muerto`,
+        subtitulo: "Muerte",
+        lineas,
+        sonido: "muerte",
+        victima: instancia,
+        ultimoGolpe: ultimo,
+        // Copia de lo que llevaba: el máster decide quién la recibe (no lo pierde)
+        restos: restosDe(pj)
+    }, MODO_MASTER ? { instancia, personaje: nombre } : {});
+    // Los del máster: su pestaña no recibe sus propios eventos, la ventana se abre aquí
+    if (MODO_MASTER && enSala) abrirMuertePersonaje(cargarDatosMuerte({ victima: instancia, ultimoGolpe: ultimo, restos: restosDe(pj) }, nombre));
+    if (MODO_MASTER) {
+        const motivo = await retirarPersonajeMuerto(idMaster ?? pj.idPersonaje);
+        if (motivo) mostrarPopupInfo("Sigue en la sesión", [escaparHtml(`${nombre}: ${motivo}. Ha salido de su grupo.`)]);
+    } else if (enSala) {
+        await salirPorMuerte();
+        mostrarPopupInfo("Has muerto", ["Has salido de la sala y de tu grupo. Tu ficha sigue aquí: puedes volver a entrar."]);
+    }
+}
+
+function inicializarMuerte() {
+    document.getElementById("btnMuerte").addEventListener("click", alPulsarMuerte);
 }
 
 /* Turno ___________________________________________________________________
@@ -873,6 +1149,11 @@ function alTurnoSala(evento) {
         actualizarBrilloTurno();
         return;
     }
+    if (muereAlEmpezarTurno(personaje)) {
+        actualizarBrilloTurno();
+        mostrarMuerte(null);
+        return;
+    }
     const resumen = iniciarTurno(personaje);
     turnos.set(personaje.idPersonaje, hora);
     actualizarTodo();
@@ -898,11 +1179,15 @@ const PERMITIDOS_LECTURA = [
     "#contenedor-popups-dados", "#panelDebug", "#btnInventario", "#btnSocial", "#btnArtes", "#btnOpciones",
     ".navegador-paginas", "#listaArtesPasivas", "#btnSoloModsPropios",
     // Compendio de objetos: añadir los objetos del jugador no cambia su ficha (dar y editar salen desactivados)
-    "#modalCompendioObjetos", ".btn-al-compendio", "#btnAbrirCompendioObjetos"
+    "#modalCompendioObjetos", ".btn-al-compendio", "#btnAbrirCompendioObjetos",
+    // Trueque y botín de uno de los personajes del máster que no es la ficha que mira (interfazTrueque.js, pintarBotin)
+    "#modalTrueque", "#modalBotin.botin-otro",
+    // Muerte de uno de sus personajes (interfaz.js, bloque "Muerte de personajes")
+    "#pantallaMuerte"
 ].join(", ");
 /* Opciones de los menús de la silueta que cambian algo (las demás solo abren ventanas para mirar) */
 const OPCIONES_BLOQUEADAS_LECTURA = new Set([
-    "cargar", "guardar", "nueva", "guardarNube", "cargarNube", "anadirAmigo", "crearGrupo", "invitarGrupo", "salirGrupo"
+    "cargar", "guardar", "nueva", "guardarNube", "cargarNube", "anadirAmigo", "crearGrupo", "invitarGrupo", "salirGrupo", "trueque"
 ]);
 
 let ultimoAvisoLectura = 0;
@@ -939,7 +1224,7 @@ for (const tipo of ["pointerdown", "mousedown", "touchstart", "dblclick"]) {
 /* Desactiva los campos (los que ya lo estaban se quedan así al salir) */
 function aplicarBloqueoLectura() {
     document.querySelectorAll("input, select, textarea, [contenteditable='true']").forEach(campo => {
-        if (campo.closest("#hudMaster, #panelDebug, #modalCompendioObjetos, .navegador-paginas")) return;
+        if (campo.closest("#hudMaster, #panelDebug, #modalCompendioObjetos, #modalTrueque, .navegador-paginas")) return;
         if (campo.isContentEditable) {
             campo.dataset.bloqueoLectura = "editable";
             campo.contentEditable = "false";
@@ -1116,6 +1401,9 @@ function actualizarInformacion() {
         artePct = Math.max(0, Math.min(100, artePct));
         arteFill.style.width = artePct + '%';
     }
+
+    /* A 0 PV o menos el HUD entero en rojo (los PV pueden ser negativos) */
+    document.querySelector(".sao-bar-wrapper")?.classList.toggle("muerto", personaje.vida <= 0);
 
     /* Actualizar la barra de vida visual */
     let hpFill = document.getElementById('hp-bar-fill');
@@ -2970,14 +3258,17 @@ function pastillaHabilidadReliquia(ranura, equipo, habilidad, i) {
     const dibujados = Math.min(MAX_SEGMENTOS_ESTADO, total);
     const llenos = Math.round(dibujados * (total ? (total - restante) / total : 1));
     const segmentos = Array.from({ length: dibujados }, (_, n) => `<i${n < llenos ? ' class="on"' : ""}></i>`).join("");
-    const titulo = motivoNoUsarHabilidad(personaje, ranura, i) ?? `Usar ${nombre}: muestra su descripción y gasta ${coste}`;
+    // Sin acciones sale atenuado como el de atacar, pero se puede pulsar (pide confirmación)
+    const sinAccion = !puedeGastarVarias(personaje, partesParaUsar(personaje, ranura));
+    const titulo = motivoNoUsarHabilidad(personaje, ranura, i)
+        ?? `Usar ${nombre}: muestra su descripción y gasta ${coste}${sinAccion ? " · Sin acciones disponibles" : ""}`;
     const descripcion = habilidad.descripcion.trim()
         ? `<span class="efecto-descripcion" title="${escaparHtml(habilidad.descripcion)}">${escaparHtml(habilidad.descripcion)}</span>` : "";
     return `<li class="habilidad-reliquia pastilla-reliquia efecto-equipo${restante > 0 ? " en-enfriamiento" : ""}" data-index="${i}">
         <span class="efecto-icono">${iconoSao("reliquia")}</span>
         <span class="efecto-texto"><b>${escaparHtml(nombre)}</b>
             <span class="segmentos-estado">${segmentos}<span class="txt">${texto}</span></span>${descripcion}</span>
-        <button type="button" class="btn-usar-habilidad btn-usar-icono" ${restante > 0 ? "disabled" : ""}
+        <button type="button" class="btn-usar-habilidad btn-usar-icono${sinAccion ? " sin-accion" : ""}" ${restante > 0 ? "disabled" : ""}
             title="${escaparHtml(titulo)}" aria-label="${escaparHtml(titulo)}">${iconoSao("usarHabilidad")}</button>
     </li>`;
 }
@@ -3080,11 +3371,13 @@ function filaEfectoEquipo(ranura, efecto, i) {
         </li>`;
     }
     const motivo = motivoNoUsarEfecto(personaje, ranura, i);
-    const titulo = motivo ?? `Usar ${efecto.nombre}: gasta ${textoCosteEfecto(ranura, efecto)}`;
+    const partes = partesDeEfecto(personaje, ranura);
+    const sinAccion = partes.length > 0 && !puedeGastarVarias(personaje, partes);
+    const titulo = motivo ?? `Usar ${efecto.nombre}: gasta ${textoCosteEfecto(ranura, efecto)}${sinAccion ? " · Sin acciones disponibles" : ""}`;
     return `<li class="efecto-equipo activa" data-index="${i}">
         <span class="efecto-icono">${iconoSao("arteActiva")}</span>
         <span class="efecto-texto"><b>${escaparHtml(efecto.nombre)}<small> - ${detalle}</small></b>${descripcion}</span>
-        <button type="button" class="btn-usar-efecto btn-usar-icono" ${motivo ? "disabled" : ""} title="${escaparHtml(titulo)}" aria-label="${escaparHtml(titulo)}">${iconoSao("usarHabilidad")}</button>
+        <button type="button" class="btn-usar-efecto btn-usar-icono${sinAccion ? " sin-accion" : ""}" ${motivo ? "disabled" : ""} title="${escaparHtml(titulo)}" aria-label="${escaparHtml(titulo)}">${iconoSao("usarHabilidad")}</button>
         ${editar}
     </li>`;
 }
@@ -3752,6 +4045,11 @@ function inicializarTurno() {
         // Descansar con armas lanzadas sin recoger las pierde: se pide confirmación
         const esDescanso = boton.accion === descansoCorto || boton.accion === descansoLargo;
         if (esDescanso && !confirmarPerderArmasLanzadas()) return;
+        // A 0 PV o menos no se empieza el turno: se muere
+        if (boton.accion === iniciarTurno && muereAlEmpezarTurno(personaje)) {
+            mostrarMuerte(null);
+            return;
+        }
         const resumen = boton.accion(personaje);
         // Inicio de turno: parpadea el HUD y quienes tengan tu misma iniciativa empiezan a la vez
         if (boton.accion === iniciarTurno) {
@@ -4190,6 +4488,10 @@ function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null }) {
         const resumen = aplicarEfectoEnObjetivo(personaje, efecto);
         lineas.push(...(conCabeceras ? [`${String(efecto.nombre || "Poción")}:`, ...resumen] : resumen));
     }
+    // Quién ha dado el último golpe (si muere al empezar turno, recibe su recompensa)
+    personaje.ultimoGolpe = origen?.instancia
+        ? { instancia: origen.instancia, jugador: origen.jugador ?? null, nombre: String(origen.nombre ?? autor).slice(0, 60) }
+        : null;
     // NPC: quién ha dado el golpe, por si lo deja a 0 PV (comprobarMuerteNpc, en actualizarTodo)
     atacanteGolpe = origen ?? { jugador: null, instancia: null, nombre: autor };
     golpeAlNpc = true;
@@ -4328,6 +4630,7 @@ function inicializarDanno() {
         const vidaAntes = personaje.vida;
         // Se comparte en la sala: texto plano (las cabeceras <b>Tipo n</b> pasan a "Tipo n:")
         const resumen = aplicarTodos(personaje, dannos).map(linea => linea.replace(/^<b>(.*)<\/b>$/, "$1:"));
+        personaje.ultimoGolpe = null; // daño a mano: no es de nadie
         modal.hide();
         golpeAlNpc = true; // un NPC que ya estaba a 0 vuelve a preguntar si se le derrota (sin atacante)
         actualizarTodo();
@@ -4697,17 +5000,20 @@ function actualizarZona() {
 
 /* Menú del inventario: inventario o baúl de la base ________________________ */
 function inicializarMenuInventario() {
-    const ventanas = { inventario: "modalInventario", objetosClave: "modalObjetosClave", baul: "modalBaul", botin: "modalBotin" };
+    const ventanas = { inventario: "modalInventario", objetosClave: "modalObjetosClave", baul: "modalBaul", botin: "modalBotin", trueque: "modalTrueque" };
+    const trueque = { clave: "trueque", etiqueta: "Trueque", icono: "trueque" };
     crearMenuSao({
         boton: document.getElementById("btnInventario"),
         menu: document.getElementById("menuInventario"),
         // Los NPC solo tienen inventario (sin límite)
-        opciones: () => personaje.esNpc ? [{ clave: "inventario", etiqueta: "Inventario", icono: "inventario" }] : [
+        // (y el trueque, si el máster se lo ha permitido)
+        opciones: () => personaje.esNpc ? [{ clave: "inventario", etiqueta: "Inventario", icono: "inventario" }, ...(personaje.permitirTrueque ? [trueque] : [])] : [
             { clave: "inventario", etiqueta: "Inventario", icono: "inventario" },
             { clave: "objetosClave", etiqueta: `Objetos clave (${personaje.objetosClave.length})`, icono: "llave" },
             { clave: "baul", etiqueta: "Baúl de la base", icono: "baul" },
             // Solo mientras haya botín de un NPC por recoger
-            ...(personaje.botin?.length ? [{ clave: "botin", etiqueta: `Botín (${personaje.botin.length})`, icono: "cor" }] : [])
+            ...(personaje.botin?.length ? [{ clave: "botin", etiqueta: `Botín (${personaje.botin.length})`, icono: "cor" }] : []),
+            trueque
         ],
         alElegir: (clave, menu) => {
             // Al elegir solo suena el click: ni el cierre del menú ni la apertura de la ventana
@@ -7584,6 +7890,7 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarValoresNpc();
     inicializarPartesNpc();
     inicializarMuerteNpc();
+    inicializarMuerte();
     inicializarBotin();
     inicializarTurno();
     inicializarEstados();
@@ -7608,6 +7915,20 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarBotonesModales();
     inicializarVentanas();
     inicializarDebug();
+    // Trueque (interfazTrueque.js): antes del primer actualizarTodo, que devuelve lo apartado de un trueque a medias
+    inicializarTrueque({
+        personaje: () => personaje,
+        enLectura: () => Boolean(lectura),
+        actualizarTodo: () => actualizarTodo(),
+        aviso: (titulo, lineas) => mostrarPopupInfo(escaparHtml(titulo), lineas.map(escaparHtml)),
+        iconoObjeto,
+        detalleObjeto: (objeto) => `${TIPOS_OBJETO[objeto.tipo]?.etiqueta ?? ""} · ${detalleObjeto(objeto)}`,
+        // Personaje propio del trueque (en modo máster, puede ser uno suyo que no está en la ficha)
+        leerPersonaje: leerPersonajeDeInstancia,
+        conPersonaje: conPersonajeDeInstancia,
+        // Lo recibido va al botín: se abre si es el personaje de la ficha (cuando se cierre la ventana del trueque)
+        abrirBotin: abrirBotinDe
+    });
     actualizarTodo();
     // Compendio de objetos comunes (interfazCompendioObjetos.js): todos añaden; el máster además lo edita
     {
@@ -7662,7 +7983,9 @@ document.addEventListener("DOMContentLoaded", () => {
             abrirLectura: abrirFichaLectura,
             lectura: () => lectura,
             // Un NPC suyo que no está en la ficha ha llegado a 0 PV
-            alMorirNpc: (id) => abrirMuerteNpc(id, null)
+            alMorirNpc: (id) => abrirMuerteNpc(id, null),
+            // Un personaje suyo que no está en la ficha empieza turno a 0 PV o menos
+            alMorir: (id) => mostrarMuerte(`m-${id}`)
         });
     }
     // La ficha de la última visita (en máster, su último personaje); si no hay, la vacía de inicio

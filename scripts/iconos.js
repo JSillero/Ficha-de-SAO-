@@ -303,6 +303,10 @@ const GLIFOS = {
         <path class="p" d="M30 38H70L78 80C79 84 76 86 72 86H28C24 86 21 84 22 80Z"/>
         <path class="t" d="M40 38V30C40 20 60 20 60 30V38"/>
         <rect class="s" x="26" y="34" width="48" height="9" rx="3"/>`,
+    /* Trueque: dos flechas, cada una hacia el lado contrario */
+    trueque: `
+        <path class="p" d="M18 32H62V20L82 38L62 56V44H18Z"/>
+        <path class="s" d="M82 62H38V50L18 68L38 86V74H82Z"/>`,
     baul: `
         <rect class="p" x="16" y="42" width="68" height="38" rx="4"/>
         <path class="s" d="M16 42V36C16 26 24 20 34 20H66C76 20 84 26 84 36V42Z"/>

@@ -44,7 +44,7 @@ export function reliquiasEquipadas(pj) {
 /* Acciones que gasta usar una habilidad:
    - en una mano, la de esa mano (las dos si es a dos manos);
    - en un accesorio, la de un brazo (el primero con acción, o el derecho para que la interfaz pregunte). */
-function partesParaUsar(pj, ranura) {
+export function partesParaUsar(pj, ranura) {
     if (esRanuraAccesorio(ranura)) {
         // Un NPC sin brazos usa cualquier parte con acción
         const candidatas = pj.esNpc ? [...["derecha", "izquierda"].filter(p => partesAccion(pj).includes(p)), ...partesAccion(pj)] : ["derecha", "izquierda"];

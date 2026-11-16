@@ -72,7 +72,8 @@ export function resumenDe(pj) {
         nivel: pj.nivel,
         iniciativa: Number(pj.iniciativa) || 0,
         estados: Object.keys(ESTADOS_INFO).filter(clave => estaActivo(pj, clave)),
-        npc: Boolean(pj.esNpc)
+        npc: Boolean(pj.esNpc),
+        trueque: Boolean(pj.esNpc && pj.permitirTrueque) // NPC que acepta trueques (va al registro de la sala)
     };
 }
 

@@ -159,7 +159,7 @@ export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
             const armadura = opciones.ignorarArmadura ? 0 : Math.max(0, Number(pj.armadura) || 0);
             const recibido = Math.max(0, cantidad - armadura);
             const antes = pj.vida;
-            pj.vida = Math.max(0, pj.vida - recibido);
+            pj.vida -= recibido; // puede quedar en negativo (muerte al empezar turno)
             resumen.push(armadura > 0
                 ? `Impacto ${cantidad} − armadura ${armadura} = ${recibido} de daño`
                 : `${recibido} de daño${opciones.ignorarArmadura ? " (ignora armadura)" : ""}`);
@@ -203,7 +203,7 @@ export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
             // Lo que no encuentra Atletismo que restar daña PV una sola vez (en este momento)
             if (sobrante > 0) {
                 const antes = pj.vida;
-                pj.vida = Math.max(0, pj.vida - sobrante);
+                pj.vida -= sobrante;
                 resumen.push(`Sin ${nombreValor} que restar: ${sobrante} de daño (PV: ${antes} → ${pj.vida})`);
             }
             if (atletismo <= 0) {
@@ -257,7 +257,7 @@ export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
             const antes = pj.vida;
             // La luz en un NPC, además de bajar los PV máximos, quita esos PV
             if (pj.esNpc && tipo === "luz") pj.vida -= cantidad;
-            pj.vida = Math.max(0, Math.min(pj.vida, pj.vidaMax));
+            pj.vida = Math.min(pj.vida, pj.vidaMax);
             resumen.push(`PV máximos −${cantidad}: ahora ${pj.vidaMax}`);
             if (pj.vida !== antes) resumen.push(`PV: ${antes} → ${pj.vida}`);
             // Ya ha quitado PV: la debilidad no los vuelve a quitar
@@ -282,7 +282,7 @@ export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
     // Debilidad: además del efecto del elemento, el daño multiplicado resta PV
     if (dannoDebilidad > 0) {
         const antes = pj.vida;
-        pj.vida = Math.max(0, pj.vida - dannoDebilidad);
+        pj.vida -= dannoDebilidad;
         resumen.push(`Debilidad: −${dannoDebilidad} PV (PV: ${antes} → ${pj.vida})`);
     }
 

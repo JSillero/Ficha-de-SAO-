@@ -345,10 +345,12 @@ export function gastarEgo(pj, cantidad) {
     return exito(`−${n} puntos de ego`, `Total: ${pj.puntosEgo}`);
 }
 
-/** Mano vacía para usar algo (prefiere una con la acción disponible). null si las dos están ocupadas. */
+/** Mano para usar algo del inventario (prefiere una con la acción disponible). null si las dos están ocupadas.
+ *  Con un arma a dos manos, cualquiera de las dos sirve: se suelta un momento el arma (gasta la acción de esa mano). */
 export function manoParaUsar(pj) {
-    const vacias = MANOS.filter(mano => manoVacia(pj, mano));
-    return vacias.find(mano => puedeGastar(pj, parteDeMano(mano))) ?? vacias[0] ?? null;
+    const conDosManos = MANOS.some(mano => TIPOS_DOS_MANOS.includes(pj[mano]?.tipo));
+    const libres = MANOS.filter(mano => manoVacia(pj, mano) || conDosManos);
+    return libres.find(mano => puedeGastar(pj, parteDeMano(mano))) ?? libres[0] ?? null;
 }
 
 /* Comida: un solo efecto activo; se pierde con el descanso corto.
@@ -457,7 +459,8 @@ function aplicarEfectoPocion(pj, pocion) {
     const pv = Number(pocion.pv) || 0;
     if (pv !== 0) {
         const antes = pj.vida;
-        pj.vida = pv > 0 ? Math.min(pj.vidaMax, pj.vida + pv) : Math.max(0, pj.vida + pv);
+        // Una poción que hace daño puede dejar los PV en negativo
+        pj.vida = pv > 0 ? Math.max(pj.vida, Math.min(pj.vidaMax, pj.vida + pv)) : pj.vida + pv;
         resumen.push(`PV: ${antes} → ${pj.vida}`);
     }
     const pa = Number(pocion.pa) || 0;
@@ -484,7 +487,7 @@ export function aplicarEfectoEnObjetivo(pj, efecto) {
     const pv = Math.trunc(Number(efecto.pv) || 0);
     if (pv !== 0) {
         const antes = pj.vida;
-        pj.vida = pv > 0 ? Math.min(pj.vidaMax, pj.vida + pv) : Math.max(0, pj.vida + pv);
+        pj.vida = pv > 0 ? Math.max(pj.vida, Math.min(pj.vidaMax, pj.vida + pv)) : pj.vida + pv;
         resumen.push(`${pv > 0 ? `Cura ${pv}` : `${-pv} de daño`} (PV: ${antes} → ${pj.vida})`);
     }
     // Estados de la poción o arrojadiza (estadosObjeto; los clientes antiguos mandan uno solo en `estado`)

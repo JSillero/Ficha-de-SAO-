@@ -58,6 +58,8 @@ export function setGolpesPropiosAplicables(fn) {
     golpesPropiosAplicables = fn;
 }
 const instanciaPropia = () => origen.instancia() || getInstancia();
+/** Instancia con la que emite esta pestaña ahora (en modo máster, la del personaje de la ficha, "m-<id>") */
+export const instanciaEmisora = () => instanciaPropia();
 const esInstanciaPropia = (instancia) => Boolean(instancia) && (instancia === getInstancia() || origen.esPropia(instancia));
 /** ¿Esa instancia es de esta pestaña? (en modo máster, cualquiera de sus personajes) */
 export const esDeEstaPestana = esInstanciaPropia;
@@ -121,19 +123,34 @@ export function setBloqueoEmision(fn) {
     emisionBloqueada = fn;
 }
 
-export function emitirEvento(tipo, datos) {
-    if (emisionBloqueada()) return null;
-    const evento = crearEvento(tipo, datos);
+/* como: { instancia, personaje } para emitirlo en nombre de otro personaje de esta pestaña (modo máster) */
+export function emitirEvento(tipo, datos, como = {}) {
+    return emitir(tipo, datos, como).evento;
+}
+
+/** Como emitirEvento, pero espera a que se haya enviado (p. ej. antes de salir de la sala). Devuelve el evento. */
+export async function emitirEventoYEsperar(tipo, datos, como = {}) {
+    const { evento, envio } = emitir(tipo, datos, como);
+    await envio;
+    return evento;
+}
+
+/* En modo lectura solo se emite en nombre de un personaje propio (como.instancia), no del de la ficha que se mira,
+   o lo que el máster reparte (como.forzar: p. ej. la recompensa de una muerte) */
+function emitir(tipo, datos, como) {
+    if (emisionBloqueada() && !como.instancia && !como.forzar) return { evento: null, envio: Promise.resolve() };
+    const evento = crearEvento(tipo, datos, como);
     // Quién lo ha emitido de esta pestaña (solo aquí, no viaja): para no recibir tu propio golpe en modo máster
     pintarEvento(evento, true, origen.idPersonaje());
+    let envio = Promise.resolve();
     if (publicador) {
         try {
-            Promise.resolve(publicador(evento)).catch(error => console.warn("No se pudo enviar el evento", error));
+            envio = Promise.resolve(publicador(evento)).catch(error => console.warn("No se pudo enviar el evento", error));
         } catch (error) {
             console.warn("No se pudo enviar el evento", error);
         }
     }
-    return evento;
+    return { evento, envio };
 }
 
 /** Evento que llega de la sala. Los de esta misma pestaña ya se pintaron al emitirlos;
@@ -277,8 +294,9 @@ function pintarLista({ titulo = "", subtitulo = "", lineas = [] }) {
    "consumido": un jugador ha consumido la comida o poción que le ofrecieron.
    "borracho": una acción ha fallado por la embriaguez y el personaje ha hecho algo absurdo. */
 /* "derrota": un NPC del máster ha muerto (suena datos.sonido = "muerte" en toda la sala; quien recibe EXP o
-   recompensa lo aplica con registrarAlRecibir) */
-["arte", "pasiva", "objeto", "reliquia", "recibido", "consumido", "borracho", "derrota"].forEach(tipo => registrarPintor(tipo, pintarLista));
+   recompensa lo aplica con registrarAlRecibir).
+   "muertePersonaje": un personaje ha muerto al empezar turno a 0 PV o menos (también suena "muerte") */
+["arte", "pasiva", "objeto", "reliquia", "recibido", "consumido", "borracho", "derrota", "muertePersonaje"].forEach(tipo => registrarPintor(tipo, pintarLista));
 
 /* Ofrecer comida o pociones ___________________________________________________
  * "oferta": { titulo, subtitulo, lineas, para (instancia del personaje destinatario), objeto }. Todos ven quién

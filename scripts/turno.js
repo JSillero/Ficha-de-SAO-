@@ -301,7 +301,6 @@ export function iniciarTurno(pj) {
         pj.vida = Math.min(pj.vidaMax, pj.vida + regeneracion);
         if (pj.vida > antes) resumen.push(`Regeneración: +${pj.vida - antes} PV`);
     }
-    pj.vida = Math.max(0, pj.vida);
     if (pj.vida !== vidaInicial) resumen.push(`PV: ${vidaInicial} → ${pj.vida}`);
 
     if (valor("paralisis") > 0) resumen.push("Paralizado: no puede actuar");

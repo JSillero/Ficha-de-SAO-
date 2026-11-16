@@ -939,6 +939,17 @@ export async function crearGrupo() {
     }
 }
 
+/** Muerte de un personaje: sale de su grupo sin preguntar (instancia: en modo máster, la del suyo, "m-<id>") y,
+ *  si salirDeSala, también de la sala (un jugador; la ficha se queda en pantalla y puede volver a entrar) */
+export async function salirPorMuerte(instancia, { salirDeSala = true } = {}) {
+    try {
+        if (servicio.getGrupo(instancia)) await servicio.salirDeGrupo(instancia ? { instancia } : {});
+    } catch (error) {
+        console.warn("No se pudo salir del grupo", error);
+    }
+    if (salirDeSala && servicio.getEstado().sala) servicio.salirSala();
+}
+
 export async function salirGrupo() {
     if (!confirm("¿Salir del grupo?")) return;
     try {
@@ -1139,6 +1150,8 @@ export function rellenarFilaHud(fila, m) {
     // Mismos umbrales de color que tu barra (actualizarInformacion en interfaz.js)
     vida.classList.toggle("hp-orange", m.vida < 0.4 && m.vida >= 0.15);
     vida.classList.toggle("hp-red", m.vida < 0.15);
+    // A 0 PV o menos la fila entera en rojo (muerte de personajes)
+    fila.classList.toggle("muerto", Number(m.vida) <= 0);
     fila.querySelector(".sao-arte-fill").style.width = `${Math.round(m.pa * 100)}%`;
     fila.querySelector(".hud-grupo-nivel").textContent = `LV ${m.nivel}`;
     const estados = fila.querySelector(".hud-grupo-estados");
@@ -1300,7 +1313,8 @@ export function avisarEstadoGrupo(datos) {
     }, RETARDO_ESTADO_GRUPO_MS);
 }
 
-export const getGrupoSala = () => servicio.getGrupo();
+/** Grupo de esa instancia (por defecto, el del personaje de la ficha) */
+export const getGrupoSala = (instancia) => servicio.getGrupo(instancia);
 
 /** Tu turno (hora en ms en la que pulsaste Play, o 0): se publica al momento en el grupo y para el máster */
 export function avisarTurno(turno, id) {

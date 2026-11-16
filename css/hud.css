@@ -647,3 +647,13 @@
 .hud-grupo-fila.oculta {
     opacity: 0.6;
 }
+
+/* Personaje a 0 PV o menos (muerte de personajes): su fila de la cabecera (rellenarFilaHud en interfazOnline.js) y
+   tu HUD (actualizarInformacion en interfaz.js) en rojo */
+.hud-grupo-fila.muerto,
+.hud-grupo-fila.muerto:hover,
+.hud-grupo-fila.muerto:focus-visible,
+.hud-grupo-fila.muerto.activo,
+.sao-bar-wrapper.muerto .sao-bar-main {
+    background: #c0392b;
+}

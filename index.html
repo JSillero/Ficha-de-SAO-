@@ -760,6 +760,53 @@
         </div>
     </div>
 
+    <!-- Trueque con otro personaje de la sala (interfazTrueque.js): elegir la oferta o esperar la respuesta -->
+    <div class="modal fade modal-sao" id="modalTrueque" tabindex="-1" aria-labelledby="modalTruequeLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTruequeLabel">Trueque</h5>
+                </div>
+                <div class="modal-body">
+                    <p id="avisoTrueque" class="aviso-zona" hidden></p>
+                    <form id="formTrueque" class="form-objeto form-sao" novalidate>
+                        <!-- Esperando respuesta / te propone / responde (pintar en interfazTrueque.js) -->
+                        <p id="textoEstadoTrueque" class="texto-esperando-trueque" hidden></p>
+                        <div id="bloqueSuyaTrueque" class="campo-sao" hidden>
+                            <h6 class="titulo-ranuras" id="tituloSuyaTrueque">Lo que ofrece</h6>
+                            <div id="ofertaSuyaTrueque" class="lista-objetos"></div>
+                        </div>
+                        <div id="vistaElegirTrueque">
+                            <div class="ranura" id="ranuraDestinoTrueque">
+                                <span class="ranura-icono" data-icono="personaje"></span>
+                                <span class="ranura-etiqueta">Con</span>
+                                <select id="selectDestinoTrueque" aria-label="Con quién hacer el trueque"></select>
+                            </div>
+                            <div class="ranura">
+                                <span class="ranura-icono" data-icono="cor"></span>
+                                <label class="ranura-etiqueta" for="inputCorTrueque" id="etiquetaCorTrueque">Cor</label>
+                                <input type="number" id="inputCorTrueque" min="0" value="0">
+                            </div>
+                            <h6 class="titulo-ranuras">Objetos que ofreces</h6>
+                            <div id="listaTrueque" class="lista-objetos"></div>
+                        </div>
+                        <div id="bloqueMiaTrueque" class="campo-sao" hidden>
+                            <h6 class="titulo-ranuras">Tu oferta</h6>
+                            <div id="ofertaMiaTrueque" class="lista-objetos"></div>
+                        </div>
+                        <div id="botonesDecidirTrueque" class="botones-ranura" hidden>
+                            <button type="button" class="btn-pastilla-sao" id="btnContraofertaTrueque">Contraoferta</button>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                    <button type="button" class="btn-modal-sao aceptar" id="btnEnviarTrueque" title="Enviar oferta" aria-label="Enviar oferta"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade modal-sao" id="modalBaul" tabindex="-1" aria-labelledby="modalBaulLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
             <div class="modal-content">
@@ -923,7 +970,7 @@
                         <div id="campoExpMuerteNpc" class="campo-sao">
                             <div class="ranura">
                                 <span class="ranura-icono" data-icono="personaje"></span>
-                                <span class="ranura-etiqueta">EXP para</span>
+                                <span class="ranura-etiqueta" id="etiquetaExpMuerteNpc">EXP para</span>
                                 <select id="selectExpMuerteNpc" aria-label="Quién recibe la EXP"></select>
                             </div>
                             <p id="mitadMuerteNpc" class="aviso-objeto-info"></p>
@@ -938,7 +985,7 @@
                     </form>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Todavía no (queda a 0 PV)" aria-label="Todavía no (queda a 0 PV)"></button>
+                    <button type="button" class="btn-modal-sao cancelar" id="btnCancelarMuerteNpc" data-bs-dismiss="modal" title="Todavía no (queda a 0 PV)" aria-label="Todavía no (queda a 0 PV)"></button>
                     <button type="button" class="btn-modal-sao aceptar" id="btnAceptarMuerteNpc" title="Derrotar" aria-label="Derrotar"></button>
                 </div>
             </div>
@@ -995,6 +1042,11 @@
                                 <label class="ranura-etiqueta" for="perfilMasterProtagonista">Protagonista</label>
                                 <input type="checkbox" id="perfilMasterProtagonista">
                             </div>
+                            <div class="ranura solo-npc" title="Los jugadores pueden proponerle trueques (Inventario → Trueque)">
+                                <span class="ranura-icono" data-icono="trueque"></span>
+                                <label class="ranura-etiqueta" for="perfilMasterTrueque">Permitir trueque</label>
+                                <input type="checkbox" id="perfilMasterTrueque">
+                            </div>
                         </div>
                         <!-- Habilidades del Underworld (solo personajes Underworld; ctx.htmlHabilidadesUnderworld) -->
                         <div id="perfilMasterHabUnderworld" class="solo-personaje"></div>
@@ -1007,7 +1059,7 @@
                             <div class="ranura">
                                 <span class="ranura-icono" data-icono="regeneracion"></span>
                                 <label class="ranura-etiqueta" for="perfilMasterVida">PV <span class="ranura-maximo">/ <span id="perfilMasterVidaMax"></span></span></label>
-                                <input type="number" id="perfilMasterVida" min="0">
+                                <input type="number" id="perfilMasterVida">
                             </div>
                             <div class="ranura">
                                 <span class="ranura-icono" data-icono="artes"></span>
@@ -1886,6 +1938,16 @@
 
     <!-- Contenedor de Notificaciones/Popups de Tiradas SAO -->
     <div id="contenedor-popups-dados"></div>
+
+    <!-- Muerte de un personaje al empezar turno a 0 PV o menos (interfaz.js, bloque "Muerte de personajes"):
+         al pulsar la imagen sale de la sala y de su grupo -->
+    <div id="pantallaMuerte" class="pantalla-muerte" hidden>
+        <button type="button" id="btnMuerte" class="btn-muerte" title="Pulsa para continuar: sales de la sala y de tu grupo"
+            aria-label="Has muerto. Pulsa para salir de la sala y de tu grupo">
+            <img src="./imgs/You_are_dead.svg" alt="You are dead">
+        </button>
+        <p id="nombreMuerte" class="nombre-muerte"></p>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js"
         integrity="sha384-I7E8VVD/ismYTF4hNIPjVp/Zjvgyol6VFvRkX/vR+Vc4jQkC+hVqc2pM8ODewa9r"

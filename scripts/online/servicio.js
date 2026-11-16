@@ -438,8 +438,11 @@ function cambiosMaster(f, uid, lista, datos) {
     const presencia = datos?.personajes?.[uid] ?? {};
     const ids = new Set(lista.map(p => p.id));
     for (const p of lista) {
-        if (registro[p.id]?.nombre !== p.nombre || Boolean(registro[p.id]?.npc) !== Boolean(p.npc)) {
-            cambios[`registro.${uid}.${p.id}`] = p.npc ? { nombre: p.nombre, npc: true } : { nombre: p.nombre };
+        // NPC: marcados (pueden repetir nombre) y, si aceptan trueques, con trueque: true
+        const trueque = Boolean(p.npc && p.trueque);
+        if (registro[p.id]?.nombre !== p.nombre || Boolean(registro[p.id]?.npc) !== Boolean(p.npc)
+            || Boolean(registro[p.id]?.trueque) !== trueque) {
+            cambios[`registro.${uid}.${p.id}`] = p.npc ? { nombre: p.nombre, npc: true, ...(trueque ? { trueque } : {}) } : { nombre: p.nombre };
         }
         const entrada = presencia[`m-${p.id}`];
         const idGrupo = grupos.get(`m-${p.id}`)?.id ?? null;
@@ -826,7 +829,12 @@ function leerPersonajes(datos) {
             .filter(([, p]) => msDe(p?.visto) >= limite)
             .map(([instancia, p]) => {
                 const nombre = String(p?.nombre ?? "").trim();
-                return { jugador, instancia, nombre, oculto: ocultos.includes(claveOculto(jugador, nombre)), grupo: p?.grupo ?? null, id: p?.id ?? null };
+                // Del registro: si es un NPC del máster y si acepta trueques
+                const registro = p?.id ? datos.registro?.[jugador]?.[p.id] : null;
+                return {
+                    jugador, instancia, nombre, oculto: ocultos.includes(claveOculto(jugador, nombre)), grupo: p?.grupo ?? null,
+                    id: p?.id ?? null, npc: Boolean(registro?.npc), trueque: Boolean(registro?.npc && registro?.trueque)
+                };
             }))
         .sort((x, y) => x.nombre.localeCompare(y.nombre));
 }

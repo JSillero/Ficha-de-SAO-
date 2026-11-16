@@ -303,9 +303,8 @@ export function validarFicha(pj) {
         avisos.push("No se pueden llevar dos estoques.");
     }
 
-    // vidaMax ya descuenta la oscuridad
+    // vidaMax ya descuenta la oscuridad (los PV sí pueden ser negativos: a 0 o menos se muere al empezar turno)
     if (pj.vida > pj.vidaMax) avisos.push(`PV actuales (${pj.vida}) por encima del máximo (${pj.vidaMax}).`);
-    if (pj.vida < 0) avisos.push(`PV actuales negativos (${pj.vida}).`);
 
     if (pj.puntosArte > pj.puntosArteMax) {
         avisos.push(`PA actuales (${pj.puntosArte}) por encima del máximo (${pj.puntosArteMax}).`);
@@ -341,7 +340,6 @@ export function validarFicha(pj) {
 function validarNpc(pj) {
     const avisos = [];
     if (pj.vida > pj.vidaMax) avisos.push(`PV actuales (${pj.vida}) por encima del máximo (${pj.vidaMax}).`);
-    if (pj.vida < 0) avisos.push(`PV actuales negativos (${pj.vida}).`);
     if (pj.puntosArte > pj.puntosArteMax) avisos.push(`PA actuales (${pj.puntosArte}) por encima del máximo (${pj.puntosArteMax}).`);
     if (pj.esUnderworld || pj.protagonista) avisos.push("Un NPC no puede ser Underworld ni protagonista.");
     const huecosLibres = pj.inventario.filter(hueco => !hueco).length;

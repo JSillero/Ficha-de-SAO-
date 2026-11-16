@@ -758,7 +758,8 @@
 
 /* Sin acciones disponibles: se puede pulsar igualmente (pide confirmación) */
 .btn-usar-equipo.sin-accion,
-.btn-lanzar-equipo.sin-accion {
+.btn-lanzar-equipo.sin-accion,
+.btn-usar-icono.sin-accion {
     opacity: 0.45;
 }
 
@@ -3515,10 +3516,11 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
 }
 
 /* En modo lectura no se ven los botones que cambian algo (las acciones ya están bloqueadas en interfaz.js) */
-/* (salvo lo marcado .permitido-lectura y el botón de añadir al compendio de objetos del máster) */
-body.modo-lectura .objeto-acciones > :not(.permitido-lectura):not(.btn-al-compendio),
-body.modo-lectura .objeto-eleccion,
-body.modo-lectura .btn-crear-objeto,
+/* (salvo lo marcado .permitido-lectura, el botón de añadir al compendio de objetos del máster y el botín de uno de
+   sus personajes, .botin-otro en #modalBotin) */
+body.modo-lectura .objeto-acciones > :not(.permitido-lectura):not(.btn-al-compendio):not(.botin-otro *),
+body.modo-lectura .objeto-eleccion:not(.botin-otro *),
+body.modo-lectura .btn-crear-objeto:not(.botin-otro *),
 body.modo-lectura .botones-cabecera-modal:not(.permitido-lectura),
 body.modo-lectura .btn-h2:not(.hud-master-anadir):not(#btnSoloModsPropios),
 body.modo-lectura .btn-hab-mas,
@@ -5591,4 +5593,75 @@ body.modo-lectura #divEquipamiento .btn-extras-equipo {
 
 #modalBotin .aviso-underworld-muerte {
     margin: 0 0 10px;
+}
+
+/* Trueque (#modalTrueque, pintarElegir/pintarEsperando en interfazTrueque.js): filas del inventario con la cantidad
+   a ofrecer a la derecha; las elegidas, con borde dorado */
+.modal-sao .fila-trueque.elegida {
+    box-shadow: 0 0 0 2px #EBA601, 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.fila-trueque .objeto-acciones {
+    flex: none;
+}
+
+.texto-esperando-trueque {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 6px;
+    background: #f4f4f4;
+    color: #5a5a5a;
+    text-align: center;
+}
+
+/* Pantalla de muerte (#pantallaMuerte, mostrarMuerte en interfaz.js): por encima de todo, la imagen You_are_dead
+   se pulsa para continuar y debajo el nombre del personaje */
+.pantalla-muerte {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.8);
+    animation: aparecer-muerte 0.6s ease-out;
+}
+
+.pantalla-muerte[hidden] {
+    display: none;
+}
+
+.btn-muerte {
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.btn-muerte:hover,
+.btn-muerte:focus-visible {
+    transform: scale(1.03);
+    outline: none;
+}
+
+.btn-muerte img {
+    display: block;
+    width: min(90vw, 700px);
+    height: auto;
+}
+
+.nombre-muerte {
+    margin: 0;
+    color: #FBFBFB;
+    font-size: 24px;
+    text-align: center;
+}
+
+@keyframes aparecer-muerte {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
