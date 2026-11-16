@@ -29,6 +29,8 @@
                                     <div class="sao-track-fill" id="hp-bar-fill"></div>
                                     <div class="sao-track-glass"></div>
                                 </div>
+                                <!-- Jefe en la ficha (modo máster): una barra por fase en vez de la de vida -->
+                                <div class="barras-fases" id="hpBarrasJefe" hidden></div>
                                 <div class="sao-arte-track">
                                     <div class="sao-arte-fill" id="arte-bar-fill"></div>
                                     <div class="sao-track-glass"></div>
@@ -66,6 +68,9 @@
                 </div>
             </div>
 
+            <!-- A la derecha de tu HUD: grupo, personajes del máster y jefes en una fila que nunca crece hacia abajo;
+                 si no caben, scroll horizontal (.header-derecha en hud.css) -->
+            <div class="header-derecha" id="hudDerecha">
             <!-- Barras del grupo (interfazOnline.js, actualizarHudGrupo): a la derecha del HUD si caben;
                  si no (.plegado), una pestaña que las despliega encima del contenido -->
             <div id="hudGrupo" class="hud-grupo" hidden>
@@ -82,6 +87,16 @@
                     Personajes (<span class="hud-grupo-numero">0</span>) <span class="hud-grupo-flecha" aria-hidden="true">▾</span>
                 </button>
                 <div id="hudMasterLista" class="hud-grupo-lista"></div>
+            </div>
+
+            <!-- Jefes visibles de la sala (interfazOnline.js, actualizarHudJefes): a la derecha de la cabecera, una
+                 barra por fase. Si no caben, .plegado como el grupo -->
+            <div id="hudJefes" class="hud-grupo hud-jefes" hidden>
+                <button type="button" class="hud-grupo-pestana" aria-expanded="false" aria-controls="hudJefesLista">
+                    Jefes (<span class="hud-grupo-numero">0</span>) <span class="hud-grupo-flecha" aria-hidden="true">▾</span>
+                </button>
+                <div id="hudJefesLista" class="hud-grupo-lista"></div>
+            </div>
             </div>
 
             <!-- Cargar, guardar y silencio están en el menú de opciones (engranaje de la silueta) -->
@@ -909,12 +924,13 @@
     <div class="modal fade modal-sao" id="modalCompendio" tabindex="-1" aria-labelledby="modalCompendioLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
             <div class="modal-content">
-                <div class="modal-header">
+                <div class="modal-header cabecera-apilada">
                     <h5 class="modal-title" id="modalCompendioLabel">Compendio de NPC</h5>
                     <div class="botones-cabecera-modal">
                         <button type="button" class="btn-cabecera" id="btnImportarCompendio">Importar</button>
                         <button type="button" class="btn-cabecera" id="btnExportarCompendio">Exportar</button>
                         <button type="button" class="btn-cabecera" id="btnCrearNpcCompendio">+ Crear NPC</button>
+                        <button type="button" class="btn-cabecera" id="btnCrearJefeCompendio">+ Crear jefe</button>
                     </div>
                     <input type="file" id="fileCompendio" accept=".json" hidden>
                 </div>
@@ -922,6 +938,11 @@
                     <p id="estadoCompendio" class="aviso-zona" role="status"></p>
                     <div class="fila-campos filtros-compendio">
                         <label>Piso <select id="filtroPisoCompendio"></select></label>
+                        <label>Tipo <select id="filtroTipoCompendio">
+                            <option value="">Todos</option>
+                            <option value="npc">NPC</option>
+                            <option value="jefe">Jefes</option>
+                        </select></label>
                         <label class="buscar-compendio">Buscar <input type="search" id="buscarCompendio" maxlength="60"></label>
                     </div>
                     <div id="listaCompendio" class="lista-compendio"></div>
@@ -1018,7 +1039,11 @@
                         <div class="perfil-master-tipo" id="perfilMasterTipo" role="radiogroup" aria-label="Tipo">
                             <button type="button" class="btn-eleccion" data-tipo="personaje" aria-pressed="true">Personaje</button>
                             <button type="button" class="btn-eleccion" data-tipo="npc" aria-pressed="false">NPC</button>
+                            <button type="button" class="btn-eleccion" data-tipo="jefe" aria-pressed="false">Jefe</button>
                         </div>
+                        <!-- Jefe (.modo-jefe): pestañas de las fases, siempre arriba, y las opciones de la fase (pintarFasesPerfil
+                             en interfazMaster.js). Lo que se ve debajo (valores, acciones, equipo, artes...) es de la fase elegida -->
+                        <div class="pestanas-fases solo-jefe" id="perfilMasterFases"></div>
                         <div class="ranura">
                             <span class="ranura-icono" data-icono="editar"></span>
                             <label class="ranura-etiqueta" for="perfilMasterNombre">Nombre</label>
@@ -1071,7 +1096,7 @@
                         <div class="ranuras-dobles">
                             <div class="ranura">
                                 <span class="ranura-icono" data-icono="regeneracion"></span>
-                                <label class="ranura-etiqueta" for="perfilMasterVida">PV <span class="ranura-maximo">/ <span id="perfilMasterVidaMax"></span></span></label>
+                                <label class="ranura-etiqueta" for="perfilMasterVida">PV<span id="perfilMasterVidaFase"></span> <span class="ranura-maximo">/ <span id="perfilMasterVidaMax"></span></span></label>
                                 <input type="number" id="perfilMasterVida">
                             </div>
                             <div class="ranura">
@@ -1970,6 +1995,15 @@
             <img src="./imgs/You_are_dead.svg" alt="You are dead">
         </button>
         <p id="nombreMuerte" class="nombre-muerte"></p>
+    </div>
+
+    <!-- Un jefe aparece en la sala (interfazOnline.js, mostrarWarning): Warning.svg con su nombre; un clic la cierra.
+         No lo ve el máster -->
+    <div id="pantallaWarning" class="pantalla-warning" hidden>
+        <button type="button" id="btnWarning" class="btn-warning" title="Cerrar" aria-label="Aviso de jefe. Pulsa para cerrar">
+            <img src="./imgs/Warning.svg" alt="Warning">
+        </button>
+        <p id="nombreWarning" class="nombre-warning"></p>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js"

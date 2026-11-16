@@ -10,6 +10,9 @@
  *       expulsados: { uid: true },                                 echados por el máster (pueden volver a entrar)
  *       registro: { uid: { idPersonaje: { nombre } } } }           personajes que han estado en la sala (no se
  *                                                                  borran al desconectarse; los quita el máster)
+ *       (NPC del máster en el registro: npc: true, trueque: true si acepta trueques y, si es un jefe,
+ *        jefe: { b: [fracción de vida de cada fase], n: nivel, e: [estados], neu: neutral, t: hora de su turno }.
+ *        Un jefe entra oculto)
  *       (cada entrada de personaje lleva también grupo: id del grupo en el que está, o null, e id: su idPersonaje.
  *        En modo máster, cada personaje de su sesión tiene una entrada "m-<idPersonaje>")
  * - salas/{codigo}/estados/{idPersonaje}: { jugador, master, nombre, vida, pa, nivel, iniciativa, estados, turno, stats, uw }
@@ -61,8 +64,10 @@ const estado = { usuario: null, sala: null };
 let dejarDeEscuchar = [];
 const oyentes = {
     estado: new Set(), evento: new Set(), artesSala: new Set(), personajes: new Set(), salida: new Set(),
-    grupo: new Set(), salidaGrupo: new Set(), estadosSala: new Set()
+    grupo: new Set(), salidaGrupo: new Set(), estadosSala: new Set(), jefes: new Set()
 };
+/* Jefes visibles de la sala (del registro del máster, no ocultos): [{ id, nombre, nivel, barras, estados, neutral }] */
+let jefesSala = [];
 /* Último documento de sala leído (registro y entradas propias, para escribir solo lo que cambia) */
 let datosSala = null;
 /* Modo máster: estados de los personajes de los jugadores { idPersonaje: { jugador, nombre, vida, ... } } */
@@ -161,6 +166,9 @@ export function alCambiarGrupo(cb) { oyentes.grupo.add(cb); return () => oyentes
 export function alSalirGrupo(cb) { oyentes.salidaGrupo.add(cb); return () => oyentes.salidaGrupo.delete(cb); }
 /** Modo máster: estados de los personajes de los jugadores de su sala */
 export function alCambiarEstadosSala(cb) { oyentes.estadosSala.add(cb); return () => oyentes.estadosSala.delete(cb); }
+/** cb(lista) con los jefes visibles de la sala (getJefesSala), cada vez que cambia el documento de la sala */
+export function alCambiarJefes(cb) { oyentes.jefes.add(cb); return () => oyentes.jefes.delete(cb); }
+export function getJefesSala() { return jefesSala.map(j => ({ ...j, barras: [...j.barras], estados: [...j.estados] })); }
 
 export function getEstado() { return copiaEstado(); }
 export function getPersonajesSala() { return personajesSala.map(p => ({ ...p })); }
@@ -216,6 +224,8 @@ export function configurarMaster(proveedor) {
 
 /* ¿Esta pestaña lleva la sala como máster (modo máster y dueño de la sala)? */
 const masterEnSala = () => Boolean(proveedorMaster) && soyMasterSala();
+/** ¿Esta pestaña es el máster de la sala en modo máster (?master)? Una pestaña normal del mismo usuario, no */
+export const esMasterEnSala = () => masterEnSala();
 
 const normalizarNombre = (nombre) => String(nombre ?? "").trim().toLocaleLowerCase();
 
@@ -429,6 +439,14 @@ function cambiosRegistroPropio(f, uid, registro) {
     return cambios;
 }
 
+/* Datos de jefe del registro iguales (campo a campo: Firestore puede devolver las claves en otro orden) */
+function mismoJefe(a, b) {
+    if (!a || !b) return !a && !b;
+    const lista = (v) => JSON.stringify(Array.isArray(v) ? v : []);
+    return lista(a.b) === lista(b.b) && Number(a.n) === Number(b.n) && lista(a.e) === lista(b.e) && Boolean(a.neu) === Boolean(b.neu)
+        && (Number(a.t) || 0) === (Number(b.t) || 0);
+}
+
 /* Modo máster: lo que hay que escribir en la sala para que sus personajes de la sesión (lista [{ id, nombre }])
    estén en el registro y conectados ("m-<id>"), y nada más suyo. Solo lo que cambia. */
 const HORAS_REFRESCAR_VISTO_MS = () => HORAS_REFRESCAR_VISTO * HORA_MS;
@@ -437,12 +455,19 @@ function cambiosMaster(f, uid, lista, datos) {
     const registro = datos?.registro?.[uid] ?? {};
     const presencia = datos?.personajes?.[uid] ?? {};
     const ids = new Set(lista.map(p => p.id));
+    const ocultar = [];
     for (const p of lista) {
-        // NPC: marcados (pueden repetir nombre) y, si aceptan trueques, con trueque: true
+        // NPC: marcados (pueden repetir nombre) y, si aceptan trueques, con trueque: true. Jefe: con sus barras,
+        // nivel, estados y franja (lo ven todos los jugadores a la derecha de la cabecera)
         const trueque = Boolean(p.npc && p.trueque);
+        const jefe = p.npc && p.jefe ? p.jefe : null;
         if (registro[p.id]?.nombre !== p.nombre || Boolean(registro[p.id]?.npc) !== Boolean(p.npc)
-            || Boolean(registro[p.id]?.trueque) !== trueque) {
-            cambios[`registro.${uid}.${p.id}`] = p.npc ? { nombre: p.nombre, npc: true, ...(trueque ? { trueque } : {}) } : { nombre: p.nombre };
+            || Boolean(registro[p.id]?.trueque) !== trueque || !mismoJefe(registro[p.id]?.jefe, jefe)) {
+            cambios[`registro.${uid}.${p.id}`] = p.npc
+                ? { nombre: p.nombre, npc: true, ...(trueque ? { trueque } : {}), ...(jefe ? { jefe } : {}) }
+                : { nombre: p.nombre };
+            // Un jefe entra en la sala oculto (en la misma escritura): al mostrarlo, los jugadores ven el aviso
+            if (jefe && !registro[p.id]) ocultar.push(claveOculto(uid, p.nombre));
         }
         const entrada = presencia[`m-${p.id}`];
         const idGrupo = grupos.get(`m-${p.id}`)?.id ?? null;
@@ -451,6 +476,7 @@ function cambiosMaster(f, uid, lista, datos) {
             cambios[`personajes.${uid}.m-${p.id}`] = { nombre: p.nombre, visto: f.serverTimestamp(), grupo: idGrupo, id: p.id };
         }
     }
+    if (ocultar.length) cambios.ocultos = f.arrayUnion(...ocultar);
     Object.keys(registro).filter(id => !ids.has(id)).forEach(id => { cambios[`registro.${uid}.${id}`] = f.deleteField(); });
     // Sin la entrada de la pestaña: en modo máster la sala ve a sus personajes, no a la pestaña
     Object.keys(presencia).filter(inst => !inst.startsWith("m-") || !ids.has(inst.slice(2)))
@@ -793,9 +819,31 @@ function dejarSala() {
     personajesSala = [];
     datosSala = null;
     estadosSala = {};
+    jefesSala = [];
     avisar("artesSala", []);
     avisar("personajes", []);
     avisar("estadosSala", {});
+    avisar("jefes", []);
+}
+
+/* Jefes visibles: los del registro del máster de la sala con datos de jefe y no ocultos. Lo escribe el máster,
+   pero se valida igual (texto plano, números acotados) */
+const MAX_BARRAS_JEFE = 10;
+function leerJefes(datos) {
+    const ocultos = datos.ocultos ?? [];
+    const delMaster = datos.registro?.[datos.master] ?? {};
+    return Object.entries(delMaster).flatMap(([id, r]) => {
+        const nombre = String(r?.nombre ?? "").trim().slice(0, 60);
+        const j = r?.npc && r?.jefe && typeof r.jefe === "object" ? r.jefe : null;
+        if (!j || !nombre || ocultos.includes(claveOculto(datos.master, nombre))) return [];
+        const barras = (Array.isArray(j.b) ? j.b : []).slice(0, MAX_BARRAS_JEFE)
+            .map(v => Math.max(0, Math.min(1, Number(v) || 0)));
+        if (!barras.length) return [];
+        const nivel = Math.max(0, Math.min(999, Math.trunc(Number(j.n) || 0)));
+        const estados = (Array.isArray(j.e) ? j.e : []).slice(0, 20).map(e => String(e).slice(0, 30));
+        const turno = Math.max(0, Math.trunc(Number(j.t) || 0)); // hora de su último Play (0 = sin turno)
+        return [{ id: String(id).slice(0, 80), nombre, nivel, barras, estados, neutral: j.neu === true, turno }];
+    }).sort((a, b) => a.nombre.localeCompare(b.nombre));
 }
 
 /** Nombres de usuario (usuarios/{uid}), con caché: solo se leen los que faltan. Para la gestión de sala. */
@@ -861,6 +909,8 @@ function escucharSala(codigo) {
         datosSala = datos;
         personajesSala = leerPersonajes(datos);
         avisar("personajes", getPersonajesSala());
+        jefesSala = leerJefes(datos);
+        avisar("jefes", getJefesSala());
     }, error => console.warn("Error escuchando la sala:", error)));
 
     // Modo máster en su sala: vida, PA, nivel, iniciativa y estados de los personajes de los jugadores

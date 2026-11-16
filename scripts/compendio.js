@@ -5,6 +5,7 @@
  * La nube la gestiona la interfaz (interfazMaster.js) con leerCompendio / guardarPaginasCompendio de servicio.js. */
 import PJ, { nuevoIdPersonaje, ESTADOS_LISTA } from "./PJ.js";
 import { crearAlmacenPaginado } from "./almacenPaginado.js";
+import { reiniciarJefe } from "./jefes.js";
 
 export const VERSION_EXPORTAR = 1;
 export const TIPO_EXPORTAR = "compendioNpcSAO";
@@ -32,10 +33,12 @@ const almacen = crearAlmacenPaginado({
     claveListaAntigua: "plantillas"
 });
 
-/* NPC listo para guardar como plantilla: sin estados, con las acciones, PV y PA llenos y sin plantilla propia */
+/* NPC listo para guardar como plantilla: sin estados, con las acciones, PV y PA llenos y sin plantilla propia
+   (un jefe, en su fase 1) */
 function jsonDePlantilla(pj) {
     const copia = new PJ();
     copia.cargarJSON(JSON.parse(pj.toJSONString()));
+    reiniciarJefe(copia); // un jefe empieza en la fase 1
     ESTADOS_LISTA.forEach(clave => { copia.estados[clave] = { valor: 0, turnos: 0 }; });
     ["izquierda", "derecha", "cabeza", "pies"].forEach(parte => { copia[parte] = true; });
     copia.npc.partes.forEach(parte => { parte.disponible = true; });
@@ -65,7 +68,10 @@ export const jsonDe = (id) => almacen.porId(id)?.json ?? null;
 function resumenDe(id) {
     try {
         const datos = JSON.parse(almacen.porId(id).json);
-        return { nivel: datos.nivel, vidaMax: datos.npc?.vidaMax, exp: datos.npc?.expRecompensa ?? 0 };
+        // Jefe: número de fases y la suma de sus PV
+        const fases = datos.esJefe && Array.isArray(datos.npc?.fases) ? datos.npc.fases : [];
+        const vidaMax = fases.length ? fases.reduce((suma, fase) => suma + (Number(fase?.valores?.vidaMax) || 0), 0) : datos.npc?.vidaMax;
+        return { nivel: datos.nivel, vidaMax, exp: datos.npc?.expRecompensa ?? 0, jefe: fases.length > 0, fases: fases.length };
     } catch {
         return {};
     }
@@ -114,6 +120,7 @@ export function copiaDePlantilla(id) {
     pj.cargarJSON(JSON.parse(plantilla.json));
     pj.idPersonaje = nuevoIdPersonaje();
     pj.idPlantilla = plantilla.id;
+    reiniciarJefe(pj);
     pj.calcularCaracteristicas();
     pj.vida = pj.vidaMax;
     pj.puntosArte = pj.puntosArteMax;

@@ -467,7 +467,8 @@ function aplicarEfectoPocion(pj, pocion) {
     if (pa > 0) {
         const antes = pj.puntosArte;
         pj.puntosArte = Math.min(pj.puntosArteMax, pj.puntosArte + pa);
-        resumen.push(`PA: ${antes} → ${pj.puntosArte}`);
+        // Se comparte en la sala: de un NPC (o jefe) no se dicen sus PA, solo lo que recupera
+        resumen.push(pj.esNpc ? `+${pj.puntosArte - antes} PA` : `PA: ${antes} → ${pj.puntosArte}`);
     }
     (pocion.estados ?? []).forEach(estado => resumen.push(...aplicarEstadoObjeto(pj, estado)));
     pj.calcularCaracteristicas();

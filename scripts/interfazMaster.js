@@ -29,6 +29,10 @@ import {
     anadirParte, anadirBrazo, quitarParte, motivoNoQuitarParte, parteQueOcupa
 } from "./npc.js";
 import * as compendio from "./compendio.js";
+import {
+    esJefe, faseActual, numeroFases, aplicarFase, copiarFase, borrarFase, convertirEnJefe, reiniciarJefe, pasarFaseSiToca,
+    OPCIONES_FASE, MAX_FASES_JEFE
+} from "./jefes.js";
 
 /**
  * @typedef {Object} ContextoMaster
@@ -54,6 +58,7 @@ import * as compendio from "./compendio.js";
  * @property {(id: string, turno: number) => void} fijarTurno
  * @property {(id: string, datos: object) => void} publicarEstadoDe  estado de uno suyo en su grupo (vida, PA, turno...)
  * @property {(id: string) => void} alMorirNpc  un NPC suyo que no está en la ficha ha llegado a 0 PV
+ * @property {(pj: PJ, pasadas: number[]) => void} alCambiarFase  un jefe suyo fuera de la ficha ha pasado de fase
  * @property {(id: string) => void} alMorir  un personaje suyo (no NPC) fuera de la ficha empieza turno a 0 PV o menos
  */
 /** @type {ContextoMaster} */
@@ -165,15 +170,18 @@ export function marcarSubido(id, idNube, json) {
 /* Nombres de sus personajes que no pueden estar en la sala (los tiene otro jugador): se avisa una vez */
 const avisadosNombre = new Set();
 
-/* Sus personajes de la sesión que van a la sala: [{ id, nombre, npc }], sin los de nombre ocupado por otro
+/* Sus personajes de la sesión que van a la sala: [{ id, nombre, npc, trueque, jefe }], sin los de nombre ocupado por otro
    jugador. Los NPC pueden repetir nombre: no se comprueban (y en el registro van marcados para no ocupar el suyo). */
 function listaSala(registro) {
     const pj = ctx.personaje();
     const indice = Object.fromEntries(master.todos().map(p => [p.id, p]));
     return master.idsEnSesion()
         .map(id => id === pj.idPersonaje
-            ? { id, nombre: String(pj.nombre ?? "").trim(), npc: Boolean(pj.esNpc), trueque: Boolean(pj.esNpc && pj.permitirTrueque) }
-            : { id, nombre: indice[id]?.resumen?.nombre ?? "", npc: Boolean(indice[id]?.resumen?.npc), trueque: Boolean(indice[id]?.resumen?.trueque) })
+            ? { id, nombre: String(pj.nombre ?? "").trim(), npc: Boolean(pj.esNpc), trueque: Boolean(pj.esNpc && pj.permitirTrueque), jefe: master.resumenDe(pj).jefe }
+            : { id, nombre: indice[id]?.resumen?.nombre ?? "", npc: Boolean(indice[id]?.resumen?.npc), trueque: Boolean(indice[id]?.resumen?.trueque),
+                jefe: indice[id]?.resumen?.jefe ?? null })
+        // Jefe: con la hora de su turno (t), para que parpadee en la cabecera de los jugadores
+        .map(p => (p.jefe ? { ...p, jefe: { ...p.jefe, t: ctx.turnoDe(p.id) || 0 } } : p))
         .filter(p => {
             if (p.npc) return true;
             const motivo = motivoNombreSala(p.nombre, registro);
@@ -306,11 +314,15 @@ export function actualizarHudMaster() {
         fila.classList.toggle("oculta", Boolean(f.oculto));
         if (f.oculto) fila.title += " · oculto";
         const ocultar = item.querySelector(".btn-hud-ocultar");
-        if (ocultar && ocultar.dataset.oculto !== String(Boolean(f.oculto))) {
-            ocultar.dataset.oculto = String(Boolean(f.oculto));
+        // Un jefe entra oculto: al mostrarlo, los jugadores lo ven en su cabecera con el aviso WARNING
+        const firmaOcultar = `${Boolean(f.oculto)}|${Boolean(f.jefe)}`;
+        if (ocultar && ocultar.dataset.oculto !== firmaOcultar) {
+            ocultar.dataset.oculto = firmaOcultar;
             ocultar.innerHTML = iconoSao(f.oculto ? "cegado" : "percepcion");
             ocultar.classList.toggle("activo", Boolean(f.oculto));
-            ocultar.title = f.oculto ? "Mostrar (vuelve a contar para objetos, amistad, grupo y turnos)"
+            ocultar.title = f.jefe
+                ? (f.oculto ? "Mostrar el jefe (los jugadores lo ven en su cabecera con un aviso)" : "Ocultar el jefe a los jugadores")
+                : f.oculto ? "Mostrar (vuelve a contar para objetos, amistad, grupo y turnos)"
                 : "Ocultar (no sale para dar objetos, amistad ni grupo, ni empieza turno a la vez)";
             ocultar.setAttribute("aria-label", ocultar.title);
         }
@@ -396,6 +408,9 @@ export function conPersonaje(id, fn) {
     if (!pj) return null;
     const vidaAntes = pj.vida;
     const resultado = fn(pj);
+    // Un jefe pasa de fase con lo que sobra (jefes.js); solo muere en la última
+    const pasadas = pasarFaseSiToca(pj);
+    if (pasadas.length) ctx.alCambiarFase?.(pj, pasadas);
     // Un NPC que muere fuera de la ficha (p. ej. veneno al empezar turno a la vez): se pregunta al máster
     if (pj.esNpc && vidaAntes > 0 && pj.vida <= 0) setTimeout(() => ctx.alMorirNpc?.(id), 0);
     pj.calcularCaracteristicas();
@@ -625,21 +640,31 @@ let creando = false;
 let plantillaEditada = null; // id de la plantilla del compendio que se edita (modo plantilla), o null
 let volverAlCompendio = false; // al cerrar el perfil se vuelve a abrir el compendio
 let tipoFijo = false; // al crear desde el compendio es un NPC: no se puede cambiar a personaje
+let faseEnJuego = 0; // jefe: fase en la que está en la ficha (las pestañas solo cambian la que se edita)
 
 /**
- * Abre el perfil: { crear: true } para un personaje nuevo (npc: true lo empieza como NPC);
+ * Abre el perfil: { crear: true } para un personaje nuevo (npc: true lo empieza como NPC; jefe: true, como jefe;
+ * jefeDe: id de una plantilla de NPC, jefe nuevo con ese NPC como fase 1);
  * { plantilla: id } para editar una plantilla del compendio; si no, el de la ficha.
  */
-export function abrirPerfilMaster({ crear = false, npc = false, plantilla = null } = {}) {
+export function abrirPerfilMaster({ crear = false, npc = false, jefe = false, jefeDe = null, plantilla = null } = {}) {
     creando = crear;
     plantillaEditada = !crear && plantilla && compendio.existe(plantilla) ? plantilla : null;
     borrador = new PJ();
     if (plantillaEditada) borrador.cargarJSON(JSON.parse(compendio.jsonDe(plantillaEditada)));
     else if (!crear) borrador.cargarJSON(JSON.parse(ctx.personaje().toJSONString()));
-    else borrador.nombre = "";
+    else if (jefeDe && compendio.existe(jefeDe)) {
+        // Jefe a partir de un NPC del compendio: personaje nuevo (otro id, sin plantilla) con el NPC como fase 1
+        const id = borrador.idPersonaje;
+        borrador.cargarJSON(JSON.parse(compendio.jsonDe(jefeDe)));
+        borrador.idPersonaje = id;
+        borrador.idPlantilla = null;
+        convertirEnJefe(borrador);
+    } else borrador.nombre = "";
     tipoFijo = false;
-    if (crear && npc) cambiarTipoBorrador(true);
-    tipoFijo = crear && npc;
+    if (crear && (jefe || npc) && !borrador.esJefe) cambiarTipoBorrador(jefe ? "jefe" : "npc");
+    tipoFijo = crear && (npc || jefe || Boolean(jefeDe));
+    faseEnJuego = faseActual(borrador);
     // Personaje o NPC solo se elige al crear (y no desde el compendio, que siempre crea NPC)
     el("perfilMasterTipo").hidden = !crear || tipoFijo;
     ponerTituloPerfil();
@@ -654,15 +679,32 @@ export function abrirPerfilMaster({ crear = false, npc = false, plantilla = null
 
 function ponerTituloPerfil() {
     el("modalPerfilMasterLabel").textContent = creando
-        ? (borrador.esNpc ? "Nuevo NPC" : "Nuevo personaje")
+        ? (borrador.esJefe ? "Nuevo jefe" : borrador.esNpc ? "Nuevo NPC" : "Nuevo personaje")
         : plantillaEditada ? `Plantilla: ${borrador.nombre || "Sin nombre"}`
         : `Perfil de ${ctx.personaje().nombre || "Sin nombre"}`;
 }
 
-/* Al crear: personaje o NPC. El NPC empieza con sus valores por defecto y la vida y los PA llenos */
-function cambiarTipoBorrador(npc) {
-    if (!creando || tipoFijo || borrador.esNpc === npc) return;
+/* Tipo del borrador: personaje, npc o jefe */
+const tipoDe = (pj) => (pj.esJefe ? "jefe" : pj.esNpc ? "npc" : "personaje");
+
+/* Al crear: personaje, NPC o jefe. El NPC empieza con sus valores por defecto y la vida y los PA llenos; entre
+   NPC y jefe se conserva lo que haya (el NPC pasa a ser la fase 1, o el jefe se queda con la fase que se ve) */
+function cambiarTipoBorrador(tipo) {
+    if (!creando || tipoFijo || tipoDe(borrador) === tipo) return;
+    if (borrador.esNpc && tipo !== "personaje") {
+        if (tipo === "jefe") convertirEnJefe(borrador);
+        else {
+            borrador.esJefe = false;
+            borrador.npc.fases = [];
+            borrador.npc.faseActual = 0;
+        }
+        faseEnJuego = 0;
+        ponerTituloPerfil();
+        return;
+    }
+    const npc = tipo !== "personaje";
     borrador.esNpc = npc;
+    borrador.esJefe = false;
     borrador.npc = crearNpc();
     if (npc) {
         borrador.setUnderworld(false);
@@ -673,7 +715,52 @@ function cambiarTipoBorrador(npc) {
     borrador.vida = borrador.vidaMax;
     borrador.puntosArte = borrador.puntosArteMax;
     ajustarInventario(borrador);
+    if (tipo === "jefe") convertirEnJefe(borrador);
+    faseEnJuego = 0;
     ponerTituloPerfil();
+}
+
+/* Jefe: PV máximos de la fase en juego (la vida del perfil es la de esa fase, aunque se edite otra pestaña) */
+function vidaMaxEnJuego() {
+    const pj = borrador;
+    if (!esJefe(pj) || faseActual(pj) === faseEnJuego) return pj.vidaMax;
+    return Math.max(1, Number(pj.npc.fases[faseEnJuego]?.valores?.vidaMax) || 1);
+}
+
+/* Jefe: pestañas de las fases (+ copia la que se ve; la papelera quita la que se ve) y sus opciones */
+function pintarFasesPerfil() {
+    const pj = borrador;
+    const cont = el("perfilMasterFases");
+    if (!esJefe(pj)) {
+        cont.innerHTML = "";
+        cont.dataset.html = "";
+        return;
+    }
+    const actual = faseActual(pj);
+    const total = numeroFases(pj);
+    const enJuego = (i) => i === faseEnJuego && !creando && !plantillaEditada;
+    const pestanas = pj.npc.fases.map((fase, i) => `
+        <button type="button" class="btn-eleccion" data-fase="${i}" role="tab" aria-selected="${i === actual}" aria-pressed="${i === actual}"
+            title="${escaparHtml(fase.valores.vidaMax)} PV${enJuego(i) ? " (fase en juego)" : ""}">Fase ${i + 1}${enJuego(i) ? " *" : ""}</button>`).join("");
+    const html = `
+        <div class="pestanas-fases-fila" role="tablist" aria-label="Fases">
+            ${pestanas}
+            <button type="button" class="btn-anadir-ranura" data-crear="fase" title="Añadir fase (copia de la fase ${actual + 1})"
+                aria-label="Añadir fase"${total >= MAX_FASES_JEFE ? " disabled" : ""}>+</button>
+            ${botonObjeto("borrarFase", "descartar", `Quitar la fase ${actual + 1}`, total <= 1 ? "Un jefe necesita al menos una fase" : "")}
+        </div>
+        <p class="nota-fases">El nombre, el nivel, los PA, la EXP y la recompensa son comunes. Lo demás es de la fase ${actual + 1}.${creando || plantillaEditada ? "" : " * = fase en juego."}</p>
+        <div class="opciones-fase">
+            ${OPCIONES_FASE.map(({ clave, etiqueta }) => `
+                <label class="casilla-tipo"${actual === 0 ? ` title="La fase 1 no empieza en combate"` : ""}>
+                    <input type="checkbox" data-opcion-fase="${clave}"${pj.npc.fases[actual][clave] ? " checked" : ""}${actual === 0 ? " disabled" : ""}>
+                    <span>${escaparHtml(etiqueta)}</span>
+                </label>`).join("")}
+        </div>`;
+    if (cont.dataset.html !== html) {
+        cont.innerHTML = html;
+        cont.dataset.html = html;
+    }
 }
 
 /* Panel de protagonistas (#panelProtagonistas, a la derecha del perfil del máster) ______________________
@@ -806,9 +893,11 @@ function pintarPerfil() {
     const pj = borrador;
     pj.calcularCaracteristicas();
     el("formPerfilMaster").classList.toggle("modo-npc", pj.esNpc);
+    el("formPerfilMaster").classList.toggle("modo-jefe", esJefe(pj));
     el("perfilMasterTipo").querySelectorAll("[data-tipo]").forEach(boton => {
-        boton.setAttribute("aria-pressed", String((boton.dataset.tipo === "npc") === pj.esNpc));
+        boton.setAttribute("aria-pressed", String(boton.dataset.tipo === tipoDe(pj)));
     });
+    pintarFasesPerfil();
     el("perfilMasterNombre").value = pj.nombre;
     el("perfilMasterNombreReal").value = pj.nombreReal;
     // Pasar los cambios de una copia en juego a su plantilla (no al crear ni al editar una plantilla)
@@ -846,8 +935,9 @@ function pintarPerfil() {
     el("perfilMasterPuntosHab").textContent =
         `(Puntos: ${pj.getPuntosHabilidadDisponibles()} / ${pj.getPuntosHabilidadTotales()}; máximo ${maxHab} cada una)`;
     el("perfilMasterVida").value = pj.vida;
-    el("perfilMasterVida").max = pj.vidaMax;
-    el("perfilMasterVidaMax").textContent = pj.vidaMax;
+    el("perfilMasterVida").max = vidaMaxEnJuego();
+    el("perfilMasterVidaMax").textContent = vidaMaxEnJuego();
+    el("perfilMasterVidaFase").textContent = esJefe(pj) && !creando && !plantillaEditada ? ` (fase ${faseEnJuego + 1})` : "";
     el("perfilMasterPA").value = pj.puntosArte;
     el("perfilMasterPA").max = pj.puntosArteMax;
     el("perfilMasterPAMax").textContent = pj.puntosArteMax;
@@ -1029,6 +1119,9 @@ function pintarNpcPerfil() {
         const clave = input.dataset.npc;
         input.value = clave === "recompensaCor" ? npc.recompensa.cor : (npc[clave] ?? "");
     });
+    // Jefe: los PV máximos son de la fase que se edita (los PA son comunes)
+    const etiquetaVida = el("perfilMasterValoresNpc").querySelector('[data-npc="vidaMax"]')?.closest("label")?.firstChild;
+    if (etiquetaVida) etiquetaVida.textContent = esJefe(borrador) ? `PV máximos de la fase ${faseActual(borrador) + 1} ` : "PV máximos ";
     const comportamiento = el("perfilMasterComportamiento");
     if (document.activeElement !== comportamiento) comportamiento.value = borrador.comportamientoCombate;
     // Las filas solo se rehacen si cambia el número de tiradas (así no se pierde el campo con el foco)
@@ -1281,11 +1374,11 @@ const limitar = (valor, min, max) => Math.max(min, Math.min(max, valor));
 function recalcularConservandoMaximos(cambio) {
     const pj = borrador;
     pj.calcularCaracteristicas();
-    const vidaLlena = pj.vida >= pj.vidaMax;
+    const vidaLlena = pj.vida >= vidaMaxEnJuego();
     const paLleno = pj.puntosArte >= pj.puntosArteMax;
     cambio();
     pj.calcularCaracteristicas();
-    pj.vida = vidaLlena ? pj.vidaMax : Math.min(pj.vida, pj.vidaMax);
+    pj.vida = vidaLlena ? vidaMaxEnJuego() : Math.min(pj.vida, vidaMaxEnJuego());
     pj.puntosArte = paLleno ? pj.puntosArteMax : Math.min(pj.puntosArte, pj.puntosArteMax);
 }
 
@@ -1324,7 +1417,7 @@ function aplicarCampo(input) {
         const maximo = Math.min(Math.max(anterior, pj.getMaxHabilidad() - extra), anterior + pj.getPuntosHabilidadDisponibles());
         recalcularConservandoMaximos(() => { pj[clave] = limitar(entero(input.value, anterior + extra) - extra, 0, Math.max(0, maximo)); });
     } else if (input.id === "perfilMasterVida") {
-        pj.vida = Math.min(entero(input.value, pj.vida), pj.vidaMax); // puede ser negativa
+        pj.vida = Math.min(entero(input.value, pj.vida), vidaMaxEnJuego()); // puede ser negativa
     } else if (input.id === "perfilMasterPA") {
         pj.puntosArte = limitar(entero(input.value, pj.puntosArte), 0, pj.puntosArteMax);
     } else if (input.id === "perfilMasterCor") {
@@ -1351,6 +1444,9 @@ function aplicarCampo(input) {
             const valor = VALORES_NPC.find(v => v.clave === clave);
             if (valor) recalcularConservandoMaximos(() => { pj.npc[clave] = Math.max(valor.min, entero(input.value, pj.npc[clave])); });
         }
+    } else if (input.dataset.opcionFase && esJefe(pj)) {
+        const fase = pj.npc.fases[faseActual(pj)];
+        if (fase && faseActual(pj) > 0) fase[input.dataset.opcionFase] = input.checked;
     } else if (input.dataset.tirada && pj.esNpc) {
         const tirada = pj.npc.tiradas[Number(input.closest("[data-index]")?.dataset.index)];
         if (!tirada) return;
@@ -1376,6 +1472,14 @@ function aceptarPerfil() {
         return;
     }
     reproducir("click");
+    // Jefe: al crear (o en una plantilla) empieza en la fase 1 con la vida llena; al editar vuelve a la fase en juego
+    if (esJefe(pj)) {
+        if (creando || plantillaEditada) reiniciarJefe(pj);
+        else {
+            aplicarFase(pj, faseEnJuego);
+            pj.vida = Math.min(pj.vida, pj.vidaMax);
+        }
+    }
     if (plantillaEditada) {
         // Plantilla del compendio: no toca la ficha; se vuelve al compendio
         compendio.guardarPlantilla(plantillaEditada, pj);
@@ -1420,7 +1524,7 @@ function inicializarPerfilMaster() {
         const boton = e.target.closest("[data-tipo]");
         if (!boton || !borrador) return;
         reproducir("click");
-        cambiarTipoBorrador(boton.dataset.tipo === "npc");
+        cambiarTipoBorrador(boton.dataset.tipo);
         pintarPerfil();
     });
     const form = el("formPerfilMaster");
@@ -1438,6 +1542,12 @@ function inicializarPerfilMaster() {
             reproducir("click");
             const origen = el("modalPerfilMaster");
             const tipo = crear.dataset.crear;
+            if (tipo === "fase") {
+                if (copiarFase(borrador) < 0) return;
+                aplicarFase(borrador, numeroFases(borrador) - 1);
+                pintarPerfil();
+                return;
+            }
             if (tipo === "tirada") {
                 if (borrador.npc.tiradas.length >= MAX_TIRADAS_NPC) return;
                 borrador.npc.tiradas.push({ nombre: "Tirada", valor: 0 });
@@ -1470,6 +1580,28 @@ function inicializarPerfilMaster() {
         if (botonCompendio && !botonCompendio.disabled) {
             reproducir("click");
             guardarBorradorEnCompendio(botonCompendio.dataset.compendio === "sobrescribir");
+            return;
+        }
+        const pestana = e.target.closest("button[data-fase]");
+        if (pestana && esJefe(borrador)) {
+            // Antes, lo escrito en el campo con el foco (se aplica al salir de él)
+            el("formPerfilMaster").querySelectorAll("input, select, textarea").forEach(aplicarCampo);
+            reproducir("click");
+            aplicarFase(borrador, Number(pestana.dataset.fase));
+            pintarPerfil();
+            return;
+        }
+        const quitarFase = e.target.closest("button[data-accion='borrarFase']");
+        if (quitarFase && !quitarFase.disabled && esJefe(borrador)) {
+            reproducir("click");
+            const i = faseActual(borrador);
+            const pj = borrador;
+            ctx.confirmar({ titulo: "Quitar fase", texto: `¿Quitar la fase ${i + 1} con su equipo, artes y valores?` }).then(ok => {
+                if (!ok || pj !== borrador) return;
+                borrarFase(pj, i);
+                if (faseEnJuego > i || faseEnJuego >= numeroFases(pj)) faseEnJuego = Math.max(0, faseEnJuego - 1);
+                pintarPerfil();
+            });
             return;
         }
         const quitar = e.target.closest("button[data-accion='quitarTirada']");
@@ -1558,7 +1690,9 @@ function pintarCompendio() {
         .map(piso => `<option value="${piso ?? "sin"}">${etiquetaPiso(piso)}</option>`).join("");
     filtro.value = [...filtro.options].some(o => o.value === elegido) ? elegido : "";
     const buscado = normalizarBusqueda(el("buscarCompendio").value);
+    const tipo = el("filtroTipoCompendio").value; // "", "npc" o "jefe"
     const visibles = todas.filter(p => (!filtro.value || String(p.piso ?? "sin") === filtro.value)
+        && (!tipo || (tipo === "jefe") === Boolean(p.resumen.jefe))
         && (!buscado || normalizarBusqueda(p.nombre).includes(buscado)));
     if (!visibles.length) {
         el("listaCompendio").innerHTML = `<p class="lista-vacia">${todas.length ? "Ningún NPC coincide." : "El compendio está vacío. Crea uno con \"+ Crear NPC\"."}</p>`;
@@ -1577,11 +1711,12 @@ function pintarCompendio() {
             <div class="fila-objeto" data-id="${escaparHtml(p.id)}">
                 <span class="objeto-icono">${iconoSao("personaje")}</span>
                 <div class="objeto-info">
-                    <div class="objeto-cabecera"><span class="objeto-nombre">${escaparHtml(p.nombre || "Sin nombre")}</span></div>
-                    <div class="objeto-detalle">LV ${escaparHtml(r.nivel ?? "?")} · ${escaparHtml(r.vidaMax ?? "?")} PV · ${escaparHtml(r.exp ?? 0)} EXP</div>
+                    <div class="objeto-cabecera"><span class="objeto-nombre">${escaparHtml(p.nombre || "Sin nombre")}</span>${r.jefe ? `<span class="marca-jefe">Jefe</span>` : ""}</div>
+                    <div class="objeto-detalle">LV ${escaparHtml(r.nivel ?? "?")} · ${r.jefe ? `${escaparHtml(r.fases)} fase${r.fases === 1 ? "" : "s"} · ` : ""}${escaparHtml(r.vidaMax ?? "?")} PV · ${escaparHtml(r.exp ?? 0)} EXP</div>
                 </div>
                 <div class="objeto-acciones">
                     ${botonObjeto("usar", "anadirAmigo", "Añadir una copia a la sesión")}
+                    ${r.jefe ? "" : botonObjeto("crearJefe", "jefe", "Crear un jefe a partir de este NPC")}
                     ${botonObjeto("editar", "editar", "Editar plantilla")}
                     ${botonObjeto("duplicar", "duplicar", "Duplicar plantilla")}
                     ${botonObjeto("descartar", "descartar", "Borrar del compendio")}
@@ -1698,6 +1833,11 @@ async function accionCompendio(id, accion) {
         dejarCompendio(() => abrirPerfilMaster({ plantilla: id }));
         return;
     }
+    if (accion === "crearJefe") {
+        volverAlCompendio = true; // si se cancela, se vuelve aquí; al aceptar se guarda como plantilla nueva
+        dejarCompendio(() => abrirPerfilMaster({ crear: true, jefeDe: id }));
+        return;
+    }
     if (accion === "duplicar") compendio.duplicarPlantilla(id);
     if (accion === "descartar") {
         const ok = await ctx.confirmar({
@@ -1750,6 +1890,12 @@ function inicializarCompendio() {
         accionCompendio(id, boton.dataset.accion);
     });
     el("filtroPisoCompendio").addEventListener("change", pintarCompendio);
+    el("filtroTipoCompendio").addEventListener("change", pintarCompendio);
+    el("btnCrearJefeCompendio").addEventListener("click", () => {
+        reproducir("click");
+        volverAlCompendio = true;
+        dejarCompendio(() => abrirPerfilMaster({ crear: true, jefe: true }));
+    });
     el("buscarCompendio").addEventListener("input", pintarCompendio);
     el("btnCrearNpcCompendio").addEventListener("click", () => {
         reproducir("click");

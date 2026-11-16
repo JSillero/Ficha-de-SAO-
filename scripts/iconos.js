@@ -549,6 +549,18 @@ const lanzando = (arma) => `<g transform="translate(63 37) scale(0.74) translate
 const recogiendo = (arma) => `<g transform="translate(42 44) scale(0.8) translate(-50 -50)">${arma}</g>
     <path class="t" style="stroke-width:7" d="M84 58A20 20 0 0 1 60 84"/>
     <polygon class="p" points="52,84 64,74 66,92"/>`;
+/* Jefe (compendio de NPC, crear un jefe): calavera con cuernos */
+GLIFOS.jefe = `
+        <path class="p" d="M30 40C22 34 18 24 20 14C25 24 31 28 38 30Z"/>
+        <path class="p" d="M70 40C78 34 82 24 80 14C75 24 69 28 62 30Z"/>
+        <path class="p" d="M50 26C66 26 76 37 76 52C76 61 71 66 66 68V78H34V68C29 66 24 61 24 52C24 37 34 26 50 26Z"/>
+        <path class="s" d="M50 26C66 26 76 37 76 52C76 61 71 66 66 68V78H50Z"/>
+        <polygon class="f" points="33,48 46,50 44,60 35,59"/>
+        <polygon class="f" points="67,48 54,50 56,60 65,59"/>
+        <polygon class="f" points="50,61 54,68 46,68"/>
+        <rect class="f" x="41" y="72" width="3" height="6"/>
+        <rect class="f" x="48.5" y="72" width="3" height="6"/>
+        <rect class="f" x="56" y="72" width="3" height="6"/>`;
 // La habilidad Atletismo usa la misma silueta que usar una habilidad (imgs/atletismo.svg)
 GLIFOS.atletismo = GLIFOS.usarHabilidad;
 GLIFOS.lanzarCuchillo = lanzando(GLIFOS.cuchillo);

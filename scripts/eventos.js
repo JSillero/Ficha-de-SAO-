@@ -8,8 +8,8 @@
  *   personajes en pestañas distintas: se descartan solo los de la misma pestaña.
  * - personaje: nombre del personaje; es lo único que se muestra (el nombre de usuario solo sale en la gestión de sala).
  * - oculto: el máster ha ocultado este personaje (no se le puede ofrecer nada).
- * - Detalle de tiradas y daño: solo lo ven completo el máster y los integrantes del grupo de quien lo emite;
- *   el resto ve el resultado sin el cálculo (resumirEvento).
+ * - Detalle de tiradas y daño: solo lo ven completo el máster y los integrantes del grupo de quien lo emite (si no
+ *   es un NPC o jefe); el resto ve el resultado sin el cálculo ni la vida que le queda o su máximo (resumirEvento).
  * - Eventos privados (solicitudes de amistad, invitaciones de grupo y sus respuestas): emitirPrivado los envía
  *   sin pintarlos y solo los atiende el destinatario (datos.para = su instancia) con su manejador.
  * - datos: solo texto plano y números; el pintor lo escapa todo, porque puede venir de otro jugador.
@@ -47,7 +47,7 @@ export function registrarAlRecibir(tipo, alRecibir) {
    esPropia(instancia): si es de esta pestaña (no se pinta lo propio y se atienden los privados dirigidos a ella;
    en modo máster, cualquiera de sus personajes). */
 const origen = {
-    jugador: null, personaje: "", oculto: false, esMaster: false, enMiGrupo: () => false,
+    jugador: null, personaje: "", oculto: false, esMaster: false, enMiGrupo: () => false, esNpc: () => false,
     instancia: () => getInstancia(), esPropia: (instancia) => instancia === getInstancia(),
     idPersonaje: () => null
 };
@@ -80,7 +80,8 @@ export function registrarManejador(tipo, manejar) {
     manejadores[tipo] = manejar;
 }
 
-export function configurarOrigen({ jugador, personaje, oculto, esMaster, enMiGrupo, instancia, esPropia, idPersonaje } = {}) {
+export function configurarOrigen({ jugador, personaje, oculto, esMaster, enMiGrupo, esNpc, instancia, esPropia, idPersonaje } = {}) {
+    if (esNpc !== undefined) origen.esNpc = esNpc;
     if (idPersonaje !== undefined) origen.idPersonaje = idPersonaje;
     if (instancia !== undefined) origen.instancia = instancia;
     if (esPropia !== undefined) origen.esPropia = esPropia;
@@ -165,8 +166,10 @@ export function recibirEvento(evento) {
         }
         return;
     }
-    // Fuera de tu grupo ves el resultado, pero no cómo se ha calculado (el máster lo ve todo)
-    const completo = valor(origen.esMaster) || Boolean(origen.enMiGrupo?.(evento.instancia));
+    // Fuera de tu grupo ves el resultado, pero no cómo se ha calculado ni la vida que le queda (el máster lo ve
+    // todo). De un NPC o jefe tampoco, aunque esté en tu grupo
+    const completo = valor(origen.esMaster)
+        || (Boolean(origen.enMiGrupo?.(evento.instancia)) && !origen.esNpc?.(evento.instancia));
     if (!completo) evento = resumirEvento(evento);
     pintarEvento(evento, false);
     if (alRecibirPublico[evento.tipo]) {
@@ -174,10 +177,26 @@ export function recibirEvento(evento) {
     }
 }
 
-/* Copia del evento sin el cálculo: sin dados ni sumandos en las tiradas y sin desglose en el daño.
+/* Quita de un texto la vida que queda y la máxima ("PV: 20 → 14", "(PV: 20 → 14)", "Cura 5 PV: 9 → 14",
+   "PV máximos −3: ahora 21"); se queda el daño o la curación. "" si la línea solo decía eso */
+const CAMBIO_PV = String.raw`-?\d+ → -?\d+`;
+export function ocultarVida(texto) {
+    return String(texto ?? "")
+        .replace(new RegExp(String.raw`\s*\(PV: ${CAMBIO_PV}\)`, "g"), "")
+        .replace(new RegExp(String.raw`^PV: ${CAMBIO_PV}$`), "")
+        .replace(new RegExp(String.raw`(Cura \d+ PV): ${CAMBIO_PV}`), "$1")
+        .replace(/(PV máximos −\d+): ahora -?\d+/, "$1")
+        .trim();
+}
+
+/* Copia del evento sin el cálculo: sin dados ni sumandos en las tiradas, sin desglose en el daño y sin la vida
+   que le queda o su máximo (ocultarVida en las líneas, el título y el subtítulo).
    Se conservan los totales, el daño elemental y el efecto, que hacen falta para recibir el golpe. */
 export function resumirEvento(evento) {
     const datos = structuredClone(evento.datos ?? {});
+    if (Array.isArray(datos.lineas)) datos.lineas = datos.lineas.map(ocultarVida).filter(Boolean);
+    if (typeof datos.titulo === "string") datos.titulo = ocultarVida(datos.titulo);
+    if (typeof datos.subtitulo === "string") datos.subtitulo = ocultarVida(datos.subtitulo);
     const sinDesglose = (danno) => danno && typeof danno === "object" ? { ...danno, desglose: [] } : danno;
     if (evento.tipo === "tirada") {
         delete datos.dados;

@@ -552,7 +552,8 @@ export function usarArte(pj, arte, gastar = gastarEstricto(pj)) {
 
     pj.puntosArte = Math.max(0, (Number(pj.puntosArte) || 0) - arte.costePA);
     const resumen = [arte.descripcion.trim() || "(El arte no tiene descripción)"];
-    if (arte.costePA > 0) resumen.push(`−${arte.costePA} PA (quedan ${pj.puntosArte})`);
+    // Se comparte en la sala: de un NPC (o jefe) no se dice cuántos PA le quedan
+    if (arte.costePA > 0) resumen.push(pj.esNpc ? `−${arte.costePA} PA` : `−${arte.costePA} PA (quedan ${pj.puntosArte})`);
     if (arte.combo) resumen.push("Combo: no gasta acción");
     return { ok: true, resumen, danno, arte };
 }

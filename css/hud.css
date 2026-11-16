@@ -295,6 +295,25 @@
     align-items: center;
     gap: 3px;
 }
+/* Derecha de la cabecera (#hudDerecha en index.html): grupo, personajes del máster y jefes en una sola fila que no
+   crece hacia abajo; si no caben, scroll horizontal. Tu HUD queda fuera, siempre a la vista. Las pestañas plegadas
+   (.plegado, absolutas respecto a .header) no se recortan porque este contenedor no está posicionado. */
+.header-derecha {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    gap: 15px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 6px; /* sitio para las sombras y la barra de scroll */
+}
+
+.header-derecha > .hud-grupo:not(.plegado) {
+    flex-shrink: 0;
+}
+
 /* Barras del grupo (interfazOnline.js, actualizarHudGrupo) ___________________
    A la derecha del HUD, una fila por compañero como tu barra en pequeño: nombre, vida (verde/naranja/roja)
    con PA debajo, nivel y estados, sin números. Si no caben, .plegado: una pestaña colgando bajo la
@@ -308,6 +327,11 @@
 /* Con más de 3 compañeros, dos columnas para no hacer la cabecera más alta */
 .hud-grupo.dos-columnas {
     flex-basis: 760px;
+}
+
+/* Sin plegar, las dos columnas no se aprietan por debajo de su sitio (comprobarPlegadoHud ya lo ha reservado) */
+.hud-grupo.dos-columnas:not(.plegado) {
+    min-width: 520px;
 }
 
 .hud-grupo.dos-columnas:not(.plegado) .hud-grupo-lista {
@@ -331,6 +355,20 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+}
+
+/* Las listas de la cabecera (grupo, personajes del máster, jefes) no la hacen más alta que esto: con muchas filas
+   tienen su propio scroll vertical y tu HUD sigue a la vista */
+.hud-grupo:not(.plegado) .hud-grupo-lista {
+    max-height: 40vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.hud-grupo.plegado .hud-grupo-lista {
+    max-height: 60vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .hud-grupo-fila {
@@ -638,13 +676,15 @@
 }
 
 .sao-bar-wrapper.en-turno .sao-bar-main,
-.hud-grupo-fila.en-turno {
+.hud-grupo-fila.en-turno,
+.bloque-jefe.en-turno {
     animation: parpadeo-turno 1.2s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
     .sao-bar-wrapper.en-turno .sao-bar-main,
-    .hud-grupo-fila.en-turno {
+    .hud-grupo-fila.en-turno,
+    .bloque-jefe.en-turno {
         animation: none;
         background: #888;
     }
@@ -686,3 +726,112 @@
 .sao-bar-wrapper[class*="franja-"] .sao-bar-main {
     box-shadow: inset 6px 0 0 var(--franja);
 }
+
+/* Jefes de la sala (interfazOnline.js, actualizarHudJefes) _____________________
+   A la derecha de la cabecera, un bloque por jefe: nombre, nivel, estados y una barra por fase (la primera arriba),
+   sin cifras ni PA. Solo la barra de la última fase se pone naranja y roja (rellenarBarrasFases). Franja roja o
+   amarilla (neutral) en el borde inclinado. Si no caben, .plegado como el grupo: la pestaña cuelga en el centro. */
+.hud-jefes {
+    margin-left: auto;
+    flex: 0 0 340px;
+}
+
+.hud-jefes .hud-grupo-lista {
+    gap: 6px;
+}
+
+.bloque-jefe {
+    position: relative;
+    padding: 5px 10px 7px 22px;
+    background: #4a4a4a;
+    color: #FBFBFB;
+    clip-path: polygon(4% 0, 100% 0, 100% 100%, 0 100%);
+    filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.3));
+}
+
+.bloque-jefe[class*="franja-"]::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--franja);
+    clip-path: polygon(4% 0, calc(4% + 6px) 0, 6px 100%, 0 100%);
+    transition: background 0.3s;
+}
+
+.jefe-cabecera {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    margin-bottom: 4px;
+}
+
+.jefe-nombre {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 16px;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px black;
+}
+
+.jefe-nivel {
+    flex: none;
+    font-size: 12px;
+    color: #d9d9d9;
+}
+
+.jefe-estados {
+    margin-left: auto;
+}
+
+.barras-fases {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.barras-fases .sao-track-container {
+    display: block;
+    height: 10px;
+    border-width: 1.5px;
+    cursor: default;
+}
+
+.barras-fases .sao-track-fill,
+.barras-fases .sao-track-glass {
+    display: block;
+}
+
+.barras-fases .sao-track-fill {
+    transition: width 0.3s ease-out, background 0.3s ease;
+}
+
+/* Tu HUD con un jefe en la ficha (modo máster; actualizarInformacion en interfaz.js): las barras apiladas en vez de
+   la de vida; la de la fase actual se puede arrastrar como la normal */
+.sao-tracks-col .barras-fases .sao-track-container {
+    height: 12px;
+    border-width: 2px;
+}
+
+.sao-tracks-col .barras-fases .barra-fase.actual {
+    cursor: pointer;
+}
+
+.hud-jefes.plegado {
+    right: auto;
+    left: 50%;
+    width: min(340px, 100%);
+    transform: translateX(-50%);
+}
+
+.hud-jefes.plegado .hud-grupo-pestana {
+    margin-right: auto;
+}
+
+.hud-jefes.plegado .hud-grupo-lista {
+    background: rgba(251, 251, 251, 0.97);
+}
+
+

@@ -8,6 +8,7 @@ import Modificador, { TURNOS_PERMANENTE } from "./modificador.js";
 import { cargarObjeto, crearInventarioVacio, capacidadInventario } from "./objetos.js";
 import { cargarEfectos } from "./efectosEquipo.js";
 import { cargarArte, artesEquipadas, ranurasUsadas, motivoRequisitos, desbloqueosDisponibles } from "./artes.js";
+import { convertirEnJefe, copiarFase, aplicarFase, esJefe, faseActual, numeroFases } from "./jefes.js";
 
 /* Ids de la interfaz que no coinciden con el nombre del campo en PJ */
 const ALIAS_INTERFAZ = { arte: "puntosArte" };
@@ -337,8 +338,30 @@ export function validarFicha(pj) {
 }
 
 /* NPC: no tiene características, habilidades ni límites de nivel; solo PV y PA dentro de sus máximos */
+/* Jefe de prueba: el NPC de prueba como fase 1 y una fase 2 con otros PV, Defensa, opciones y sin la cola */
+export function crearJefePrueba() {
+    const pj = crearNpcPrueba();
+    pj.nombre = "jefe de prueba";
+    convertirEnJefe(pj);
+    const segunda = copiarFase(pj);
+    aplicarFase(pj, segunda);
+    Object.assign(pj.npc, { vidaMax: 50, defensa: 20 });
+    pj.npc.partes = pj.npc.partes.filter(parte => parte.id !== "cola");
+    Object.assign(pj.npc.fases[segunda], { rellenarPA: true, curarNegativos: false, restablecerAcciones: true });
+    pj.calcularCaracteristicas();
+    pj.vida = 30;
+    return pj;
+}
+
 function validarNpc(pj) {
     const avisos = [];
+    if (pj.esJefe && !esJefe(pj)) avisos.push("Jefe sin fases (debería tener al menos una).");
+    if (esJefe(pj) && (pj.npc.faseActual < 0 || pj.npc.faseActual >= numeroFases(pj))) {
+        avisos.push(`Fase actual ${pj.npc.faseActual + 1} fuera de rango (1–${numeroFases(pj)}).`);
+    }
+    if (esJefe(pj) && pj.npc.fases[faseActual(pj)]?.valores?.vidaMax !== pj.npc.vidaMax) {
+        avisos.push("Los PV máximos del jefe no coinciden con los de su fase actual guardada.");
+    }
     if (pj.vida > pj.vidaMax) avisos.push(`PV actuales (${pj.vida}) por encima del máximo (${pj.vidaMax}).`);
     if (pj.puntosArte > pj.puntosArteMax) avisos.push(`PA actuales (${pj.puntosArte}) por encima del máximo (${pj.puntosArteMax}).`);
     if (pj.esUnderworld || pj.protagonista) avisos.push("Un NPC no puede ser Underworld ni protagonista.");
@@ -354,10 +377,11 @@ export function ejecutarDebug(personaje, documento = document) {
     const actual = verificarIdaVuelta(personaje);
     const prueba = verificarIdaVuelta(crearPersonajePrueba());
     const npc = verificarIdaVuelta(crearNpcPrueba());
+    const jefe = verificarIdaVuelta(crearJefePrueba());
     return {
         idaVueltaActual: actual.diferencias,
-        idaVueltaPrueba: [...prueba.diferencias, ...npc.diferencias.map(d => `NPC: ${d}`)],
-        camposSinGuardar: [...new Set([...actual.sinGuardar, ...prueba.sinGuardar, ...npc.sinGuardar])],
+        idaVueltaPrueba: [...prueba.diferencias, ...npc.diferencias.map(d => `NPC: ${d}`), ...jefe.diferencias.map(d => `Jefe: ${d}`)],
+        camposSinGuardar: [...new Set([...actual.sinGuardar, ...prueba.sinGuardar, ...npc.sinGuardar, ...jefe.sinGuardar])],
         interfaz: verificarInterfaz(personaje, documento),
         avisos: validarFicha(personaje)
     };

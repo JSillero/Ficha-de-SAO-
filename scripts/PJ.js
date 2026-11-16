@@ -7,6 +7,7 @@ import { modificadorEfectosEquipo } from "./efectosEquipo.js";
 import { cargarDiario } from "./diario.js";
 import { cargarTrueque } from "./trueque.js";
 import { crearNpc, cargarNpc, equiposDePartes, DEFENSA_MINIMA_NPC, defensaParalisisNpc } from "./npc.js";
+import { guardarFaseActiva, convertirEnJefe } from "./jefes.js";
 
 export { TAMANO_INVENTARIO };
 
@@ -61,7 +62,7 @@ const CAMPOS_SIMPLES = [
     'numeroAcciones', 'izquierda', 'derecha', 'cabeza', 'pies', 'reaccionGuardada',
     'enSigilo', 'valorSigilo',
     'comidaActiva', 'tipoProfesion', 'esUnderworld', 'protagonista', 'zona', 'cor', 'puntosEgo', 'nombreReal',
-    'esNpc', 'permitirTrueque', 'neutral', 'notoriedad', 'alertaSistema', 'idPlantilla', 'underworldHabilitado', 'habilidadesUnderworld', 'alertaSistemaBotin',
+    'esNpc', 'esJefe', 'permitirTrueque', 'neutral', 'notoriedad', 'alertaSistema', 'idPlantilla', 'underworldHabilitado', 'habilidadesUnderworld', 'alertaSistemaBotin',
     'desbloqueosArteExtra', 'desbloqueosArteGastados',
     'notas', 'listadoArtes', 'notasBaul', 'listaDeAmigos', 'recetasProfesion', 'comportamientoCombate'
 ];
@@ -110,6 +111,7 @@ export default class PJ {
         /* NPC del máster (npc.js): sin características ni habilidades; valores de combate a mano en npc.
            Se decide al crearlo y no cambia. idPlantilla: plantilla del compendio de la que salió (o null). */
         this.esNpc = false;
+        this.esJefe = false; // NPC con fases (jefes.js)
         this.idPlantilla = null;
         this.npc = crearNpc();
 
@@ -636,6 +638,11 @@ export default class PJ {
         // No se pierde nada: lo que no cabe queda como sobrante.
         ajustarInventario(this);
 
+        // Jefe (jefes.js): solo los NPC. Uno sin fases (fichas a medias) pasa a tener una, su estado actual
+        this.esJefe = this.esNpc && this.esJefe === true;
+        if (this.esJefe && !this.npc.fases.length) convertirEnJefe(this);
+        if (!this.esJefe) { this.npc.fases = []; this.npc.faseActual = 0; }
+
         // Los valores derivados (vidaMax, defensa, aguante...) no se leen: se recalculan
         this.calcularCaracteristicas();
     }
@@ -644,6 +651,8 @@ export default class PJ {
         this.calcularCaracteristicas();
         // El inventario del NPC no tiene huecos fijos: se guarda ya ajustado (un hueco libre)
         if (this.esNpc) ajustarInventario(this);
+        // Jefe: la fase activa se copia a npc.fases antes de guardar
+        if (this.esJefe) guardarFaseActiva(this);
         const datos = {};
         for (const campo of CAMPOS_SIMPLES) {
             datos[campo] = this[campo];

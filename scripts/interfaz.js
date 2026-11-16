@@ -8,6 +8,7 @@ import {
     VALORES_NPC, MAX_TIRADAS_NPC, MAX_PARTES_NPC, cargarTiradaNpc, parteNpc, tieneParte, partesExtra, parteQueOcupa,
     partesDeEquipoNpc, motivoNoQuitarParte, quitarParte, anadirParte, anadirBrazo, esCuerpoPorDefecto, PARTE_DE_MANO
 } from "./npc.js";
+import { pasarFaseSiToca, numeroFases, esJefe, barrasJefe, faseActual } from "./jefes.js";
 import { tirarFalloEmbriaguez } from "./embriaguez.js";
 import { sanearHtmlDiario, paginaLlena, anadirPagina, borrarPagina, motivoNoAnadirPagina, MAX_CARACTERES_PAGINA, ETIQUETA_TITULO_DIARIO } from "./diario.js";
 import { ejecutarTirada, combinarModos, esCritico, mostrarPopupDanno } from "./dados.js";
@@ -39,7 +40,7 @@ import { inicializarVentanas, abrirCapa, cerrarCapa } from "./ventanas.js";
 import {
     inicializarOnline, getEstadoOnline, getPersonajesSala, getTodosPersonajesSala, getSalaMaster, avisarNombrePersonaje, setIdPersonajeNube, motivoNombreNoDisponible,
     abrirAmigos, abrirAnadirAmigo, abrirGrupo, crearGrupo, salirGrupo, getGrupoSala, avisarEstadoGrupo, avisarTurno, verTurnoSala, abrirCuenta, abrirSala, abrirPersonajesNube,
-    guardarEnNube, compartirArte, quitarArteDeSala, publicarEstadoDe, estaOcultoEnSala, salirPorMuerte, ponerFranja, colorFranja
+    guardarEnNube, compartirArte, quitarArteDeSala, publicarEstadoDe, estaOcultoEnSala, salirPorMuerte, ponerFranja, colorFranja, rellenarBarrasFases
 } from "./interfazOnline.js";
 import {
     ZONAS, MOTIVOS_ZONA, cambiarZona, esZonaSegura, baulAccesible, puedeRepartirHabilidades, puedeRecibirDanno,
@@ -282,10 +283,12 @@ document.querySelectorAll('.btn-hab-menos').forEach(boton => {
 });
 
 const track = document.getElementById('sao-hp-track');
+const barrasJefeHud = document.getElementById('hpBarrasJefe');
 let isDraggingHealth = false;
+let barraArrastrada = track; // la de vida o, con un jefe, la de su fase actual
 
 function updateHealthFromMouse(e) {
-    const rect = track.getBoundingClientRect();
+    const rect = barraArrastrada.getBoundingClientRect();
     let x = e.clientX - rect.left;
     let percentage = x / rect.width;
     
@@ -298,6 +301,15 @@ function updateHealthFromMouse(e) {
 
 track.addEventListener('mousedown', (e) => {
     isDraggingHealth = true;
+    barraArrastrada = track;
+    updateHealthFromMouse(e);
+});
+// Jefe: solo se arrastra la barra de la fase actual (las pasadas no vuelven)
+barrasJefeHud.addEventListener('mousedown', (e) => {
+    const barra = e.target.closest('.barra-fase.actual');
+    if (!barra) return;
+    isDraggingHealth = true;
+    barraArrastrada = barra;
     updateHealthFromMouse(e);
 });
 
@@ -374,6 +386,8 @@ function aplicarModoNpc() {
 }
 
 function actualizarTodo() {
+    // Jefe: si la vida de su fase ha bajado de 0, pasa a la siguiente antes de pintar (cambia equipo, artes...)
+    if (!lectura) comprobarFaseJefe();
     aplicarModoNpc();
     ajustarInventario(personaje); // la capacidad cambia con el equipo, la comida o los modificadores
     comprobarTruequeColgado(); // trueque que se quedó a medias (pestaña cerrada): devuelve lo apartado
@@ -470,6 +484,21 @@ let muerteNpcAbierta = null; // { id, atacante } de la ventana abierta
    con la ventana abierta esperan en colaMuertes ({ tipo: "npc", id, atacante } | { tipo: "personaje", datos }). */
 let muertePjAbierta = null;
 const colaMuertes = [];
+
+/* Jefe en la ficha: pasa de fase con lo que sobra del daño y avisa al máster (jefes.js). Solo muere en la última */
+function comprobarFaseJefe() {
+    const pasadas = pasarFaseSiToca(personaje);
+    if (!pasadas.length) return;
+    vidaNpcVista = { id: personaje.idPersonaje, vida: personaje.vida }; // no es una muerte
+    avisarCambioFase(personaje, pasadas);
+}
+
+function avisarCambioFase(pj, pasadas) {
+    const ultima = pasadas[pasadas.length - 1];
+    mostrarPopupInfo(escaparHtml(pj.nombre || "Jefe"), [
+        escaparHtml(`Pasa a la fase ${ultima + 1} de ${numeroFases(pj)} (${Math.max(0, pj.vida)}/${pj.vidaMax} PV).`)
+    ]);
+}
 
 function comprobarMuerteNpc() {
     const atacante = atacanteGolpe;
@@ -1189,6 +1218,7 @@ function actualizarBrilloTurno() {
 function marcarTurno(turno) {
     turnos.set(personaje.idPersonaje, turno);
     avisarTurno(turno, personaje.idPersonaje);
+    verTurnoSala(turno); // tu turno apaga el de los jefes de la cabecera (el tuyo no te llega como evento)
     actualizarBrilloTurno();
 }
 
@@ -1254,7 +1284,9 @@ const PERMITIDOS_LECTURA = [
     // Trueque y botín de uno de los personajes del máster que no es la ficha que mira (interfazTrueque.js, pintarBotin)
     "#modalTrueque", "#modalBotin.botin-otro",
     // Muerte de uno de sus personajes (interfaz.js, bloque "Muerte de personajes")
-    "#pantallaMuerte"
+    "#pantallaMuerte",
+    // Pestaña de los jefes de la sala en la cabecera (interfazOnline.js, actualizarHudJefes)
+    "#hudJefes .hud-grupo-pestana"
 ].join(", ");
 /* Opciones de los menús de la silueta que cambian algo (las demás solo abren ventanas para mirar) */
 const OPCIONES_BLOQUEADAS_LECTURA = new Set([
@@ -1285,7 +1317,7 @@ document.addEventListener("click", bloquearEnLectura, true);
 // Arrastrar (vida, ordenar listas) también cambia la ficha
 for (const tipo of ["pointerdown", "mousedown", "touchstart", "dblclick"]) {
     document.addEventListener(tipo, (e) => {
-        if (lectura && e.target instanceof Element && e.target.closest("#sao-hp-track, #sao-exp-track, .lista-objetos")) {
+        if (lectura && e.target instanceof Element && e.target.closest("#sao-hp-track, #hpBarrasJefe, #sao-exp-track, .lista-objetos")) {
             e.stopPropagation();
             e.stopImmediatePropagation();
         }
@@ -1479,6 +1511,23 @@ function actualizarInformacion() {
     /* Franja de color: notoriedad (personajes) o neutral (NPC), como en las filas de la cabecera */
     if (hud) ponerFranja(hud, { npc: personaje.esNpc, neutral: personaje.neutral, notoriedad: personaje.notoriedad });
     document.getElementById("npcNeutral").checked = Boolean(personaje.neutral);
+
+    /* Jefe: una barra por fase (como la ven los jugadores) en vez de la de vida */
+    const jefe = esJefe(personaje);
+    track.hidden = jefe;
+    barrasJefeHud.hidden = !jefe;
+    if (jefe) {
+        rellenarBarrasFases(barrasJefeHud, barrasJefe(personaje));
+        const actual = faseActual(personaje);
+        [...barrasJefeHud.children].forEach((barra, i) => {
+            barra.classList.toggle("actual", i === actual);
+            barra.title = i === actual ? `Fase ${i + 1}: ${personaje.vida}/${personaje.vidaMax} PV` : `Fase ${i + 1}`;
+        });
+        const ultima = actual === numeroFases(personaje) - 1;
+        if (ultima && personaje.vida / Math.max(1, personaje.vidaMax) < 0.15) iniciarBucle("vidaBaja");
+        else pararBucle("vidaBaja");
+        return;
+    }
 
     /* Actualizar la barra de vida visual */
     let hpFill = document.getElementById('hp-bar-fill');
@@ -8080,6 +8129,7 @@ document.addEventListener("DOMContentLoaded", () => {
             lectura: () => lectura,
             // Un NPC suyo que no está en la ficha ha llegado a 0 PV
             alMorirNpc: (id) => abrirMuerteNpc(id, null),
+            alCambiarFase: avisarCambioFase,
             // Un personaje suyo que no está en la ficha empieza turno a 0 PV o menos
             alMorir: (id) => mostrarMuerte(`m-${id}`)
         });

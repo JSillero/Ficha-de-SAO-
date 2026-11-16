@@ -105,6 +105,7 @@ export function usarEfectoEquipo(pj, ranura, indice, gastar) {
 
     pj.puntosArte = Math.max(0, (Number(pj.puntosArte) || 0) - efecto.costePA);
     const resumen = [efecto.descripcion.trim() || "(El efecto no tiene descripción)"];
-    if (efecto.costePA > 0) resumen.push(`−${efecto.costePA} PA (quedan ${pj.puntosArte})`);
+    // Se comparte en la sala: de un NPC (o jefe) no se dice cuántos PA le quedan
+    if (efecto.costePA > 0) resumen.push(pj.esNpc ? `−${efecto.costePA} PA` : `−${efecto.costePA} PA (quedan ${pj.puntosArte})`);
     return { ok: true, resumen, danno, arte: efecto, equipo };
 }

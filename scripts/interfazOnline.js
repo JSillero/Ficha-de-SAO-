@@ -212,7 +212,10 @@ export async function inicializarOnline(contexto) {
     servicio.alCambiarEstado(estado => {
         // Los pop-ups que se emitan llevan el nombre del personaje (no el del usuario); con sala, se envían
         configurarOrigen({ jugador: estado.usuario?.uid ?? null, oculto: servicio.personajeLocalOculto,
-            esMaster: servicio.soyMasterSala, enMiGrupo: (otra) => servicio.enMiGrupo(otra),
+            // Lo ve todo solo la pestaña del máster en modo máster: una de jugador con la misma cuenta, como un jugador
+            esMaster: servicio.esMasterEnSala, enMiGrupo: (otra) => servicio.enMiGrupo(otra),
+            // NPC y jefes del máster (registro de la sala): sus pop-ups siempre resumidos para los jugadores
+            esNpc: (otra) => servicio.getPersonajesSala().some(p => p.instancia === otra && p.npc),
             instancia: servicio.instanciaActual, esPropia: servicio.esInstanciaPropia });
         setPublicador(estado.sala ? servicio.publicarEvento : null);
         if (!estado.usuario && idPersonajeNube) cambiarIdNube(null);
@@ -960,6 +963,7 @@ function inicializarSocial() {
     });
 
     inicializarGrupo();
+    inicializarJefes();
     inicializarFichaResumen();
 }
 
@@ -1213,13 +1217,150 @@ export function rellenarFilaHud(fila, m) {
     fila.classList.toggle("muerto", Number(m.vida) <= 0);
     fila.querySelector(".sao-arte-fill").style.width = `${Math.round(m.pa * 100)}%`;
     fila.querySelector(".hud-grupo-nivel").textContent = `LV ${m.nivel}`;
-    const estados = fila.querySelector(".hud-grupo-estados");
-    const activos = (m.estados ?? []).filter(clave => ESTADOS_INFO[clave]);
-    if (estados.dataset.claves !== activos.join(",")) {
-        estados.dataset.claves = activos.join(",");
-        estados.innerHTML = activos.map(clave => `
+    pintarEstadosHud(fila.querySelector(".hud-grupo-estados"), m.estados);
+}
+
+/* Iconos de los estados activos de una fila o bloque de la cabecera (solo se rehacen si cambian) */
+function pintarEstadosHud(contenedor, claves) {
+    const activos = (claves ?? []).filter(clave => ESTADOS_INFO[clave]);
+    if (contenedor.dataset.claves === activos.join(",")) return;
+    contenedor.dataset.claves = activos.join(",");
+    contenedor.innerHTML = activos.map(clave => `
                 <span class="hud-grupo-estado icono-activo" style="${estiloColor(ESTADOS_INFO[clave])}" title="${escaparHtml(ESTADOS_INFO[clave].etiqueta)}">${iconoSao(ESTADOS_INFO[clave].icono)}</span>`).join("");
+}
+
+/* Jefes _________________________________________________________________________
+ * Los jefes visibles de la sala (los pone el máster en el registro, servicio.js) salen a la derecha de la cabecera:
+ * nombre, nivel, estados y una barra por fase (la primera fase arriba), sin cifras ni PA. Solo la barra de la última
+ * fase se pone naranja y roja. Cuando aparece uno nuevo (el máster lo muestra), los jugadores ven #pantallaWarning. */
+
+/**
+ * Barras de vida de las fases de un jefe en un contenedor (fracciones 0-1). Las barras se crean si cambia su número;
+ * si no, solo cambian el ancho y el color (así se ve la transición). También para tu HUD con un jefe en la ficha.
+ */
+export function rellenarBarrasFases(contenedor, barras) {
+    if (contenedor.children.length !== barras.length) {
+        contenedor.innerHTML = barras.map((_, i) => `
+            <span class="sao-track-container barra-fase" data-fase="${i}"><span class="sao-track-fill"></span><span class="sao-track-glass"></span></span>`).join("");
     }
+    const ultima = barras.length - 1;
+    barras.forEach((valor, i) => {
+        const barra = contenedor.children[i];
+        const relleno = barra.firstElementChild;
+        relleno.style.width = `${Math.round(Math.max(0, Math.min(1, valor)) * 1000) / 10}%`;
+        // Mismos umbrales que tu barra, pero solo en la última fase
+        relleno.classList.toggle("hp-orange", i === ultima && valor < 0.4 && valor >= 0.15);
+        relleno.classList.toggle("hp-red", i === ultima && valor < 0.15);
+        barra.classList.toggle("gastada", valor <= 0);
+    });
+}
+
+const htmlBloqueJefe = () => `
+            <div class="bloque-jefe">
+                <div class="jefe-cabecera">
+                    <span class="jefe-nombre"></span>
+                    <span class="jefe-nivel"></span>
+                    <span class="hud-grupo-estados jefe-estados"></span>
+                </div>
+                <div class="barras-fases"></div>
+            </div>`;
+
+function actualizarHudJefes(lista = servicio.getJefesSala()) {
+    const hud = el("hudJefes");
+    hud.hidden = !lista.length;
+    if (!lista.length) {
+        hud.classList.remove("abierto");
+        return;
+    }
+    hud.querySelector(".hud-grupo-numero").textContent = String(lista.length);
+    const cont = el("hudJefesLista");
+    if (cont.children.length !== lista.length) cont.innerHTML = lista.map(htmlBloqueJefe).join("");
+    // Turno: parpadea si su Play es el más reciente que se ha visto (como las filas del grupo)
+    ultimoTurnoGrupo = Math.max(ultimoTurnoGrupo, ...lista.map(jefe => jefe.turno || 0));
+    lista.forEach((jefe, i) => {
+        const bloque = cont.children[i];
+        bloque.classList.toggle("en-turno", jefe.turno > 0 && jefe.turno >= ultimoTurnoGrupo);
+        ponerFranja(bloque, { npc: true, neutral: jefe.neutral });
+        bloque.querySelector(".jefe-nombre").textContent = jefe.nombre;
+        bloque.querySelector(".jefe-nivel").textContent = `LV ${jefe.nivel}`;
+        bloque.title = jefe.nombre;
+        pintarEstadosHud(bloque.querySelector(".jefe-estados"), jefe.estados);
+        rellenarBarrasFases(bloque.querySelector(".barras-fases"), jefe.barras);
+    });
+    comprobarPlegadoJefes();
+}
+
+/* Van junto al grupo o los personajes del máster en .header-derecha, que hace scroll horizontal si no caben todos.
+   Solo se pliegan en una pestaña si junto a tu HUD no queda sitio ni para una lista (móvil), como el grupo */
+function comprobarPlegadoJefes() {
+    const hud = el("hudJefes");
+    if (hud.hidden) return;
+    const cabecera = el("datosPrincipalesDiv");
+    const barra = cabecera.querySelector(".sao-bar-wrapper");
+    const libre = cabecera.clientWidth - (barra?.offsetWidth ?? 0) - 30;
+    const plegado = libre < ANCHO_MINIMO_GRUPO;
+    hud.classList.toggle("plegado", plegado);
+    if (!plegado) hud.classList.remove("abierto");
+    hud.querySelector(".hud-grupo-pestana").setAttribute("aria-expanded", String(hud.classList.contains("abierto")));
+}
+
+/* WARNING: un jefe que no se veía y ahora sí (el máster lo muestra o lo añade sin ocultar). No al entrar en la sala
+   (los que ya se veían) ni en modo máster. Varios a la vez, en cola */
+let jefesVistos = null; // ids de los jefes visibles en la última lectura de la sala, o null (fuera de una sala)
+const colaWarning = [];
+
+function alCambiarJefesSala(lista) {
+    actualizarHudJefes(lista);
+    if (!servicio.getEstado().sala) {
+        jefesVistos = null;
+        return;
+    }
+    if (jefesVistos && !ctx.modoMaster) {
+        lista.filter(jefe => !jefesVistos.has(jefe.id)).forEach(jefe => mostrarWarning(jefe.nombre));
+    }
+    jefesVistos = new Set(lista.map(jefe => jefe.id));
+}
+
+function mostrarWarning(nombre) {
+    colaWarning.push(nombre);
+    if (colaWarning.length === 1) pintarWarning();
+}
+
+function pintarWarning() {
+    const pantalla = el("pantallaWarning");
+    if (!colaWarning.length) {
+        pantalla.hidden = true;
+        return;
+    }
+    el("nombreWarning").textContent = colaWarning[0];
+    // Se vuelve a poner para que la animación empiece otra vez con cada jefe
+    pantalla.hidden = true;
+    void pantalla.offsetWidth;
+    pantalla.hidden = false;
+    reproducir("notificacion");
+    el("btnWarning").focus({ preventScroll: true });
+}
+
+function inicializarJefes() {
+    const hud = el("hudJefes");
+    hud.addEventListener("click", (e) => {
+        if (!e.target.closest(".hud-grupo-pestana")) return;
+        reproducir("click");
+        hud.classList.toggle("abierto");
+        comprobarPlegadoJefes();
+    });
+    document.addEventListener("click", (e) => {
+        if (hud.classList.contains("abierto") && !hud.contains(e.target)) {
+            hud.classList.remove("abierto");
+            comprobarPlegadoJefes();
+        }
+    });
+    new ResizeObserver(() => comprobarPlegadoJefes()).observe(el("datosPrincipalesDiv"));
+    el("btnWarning").addEventListener("click", () => {
+        colaWarning.shift();
+        pintarWarning();
+    });
+    servicio.alCambiarJefes(alCambiarJefesSala);
 }
 
 let ultimoTurnoGrupo = 0;
@@ -1227,7 +1368,9 @@ let ultimoTurnoGrupo = 0;
 /** Alguien de la sala (de tu grupo o no) ha empezado su turno a esa hora: los turnos anteriores dejan de parpadear */
 export function verTurnoSala(hora) {
     ultimoTurnoGrupo = Math.max(ultimoTurnoGrupo, Number(hora) || 0);
-    if (ctx) actualizarHudGrupo();
+    if (!ctx) return;
+    actualizarHudGrupo();
+    actualizarHudJefes(); // un turno nuevo apaga el de los jefes
 }
 
 /* Barras del grupo en la cabecera (compañeros, sin ti). Las filas solo se regeneran si cambia el número.
@@ -1239,6 +1382,7 @@ function actualizarHudGrupo() {
     hud.hidden = !companeros.length;
     if (!companeros.length) {
         hud.classList.remove("abierto");
+        comprobarPlegadoJefes();
         return;
     }
     hud.querySelector(".hud-grupo-numero").textContent = String(companeros.length + 1);
@@ -1280,6 +1424,7 @@ export function comprobarPlegadoHud(hud) {
     hud.classList.toggle("plegado", plegado);
     if (!plegado) hud.classList.remove("abierto");
     hud.querySelector(".hud-grupo-pestana").setAttribute("aria-expanded", String(hud.classList.contains("abierto")));
+    comprobarPlegadoJefes(); // los jefes caben o no según lo que ocupe esta lista
 }
 const comprobarPlegadoGrupo = () => comprobarPlegadoHud(el("hudGrupo"));
 

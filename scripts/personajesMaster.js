@@ -10,6 +10,7 @@
  * Echar un personaje de la sesión no lo borra: sigue guardado y se puede volver a añadir. */
 import PJ from "./PJ.js";
 import { ESTADOS_INFO, estaActivo } from "./estados.js";
+import { esJefe, barrasJefe } from "./jefes.js";
 
 const CLAVE = "fichaSAO.master";
 const clavePj = (id) => `${CLAVE}.pj.${id}`;
@@ -77,7 +78,14 @@ export function resumenDe(pj) {
         // Franja de la cabecera: notoriedad (personajes) o neutral (NPC); alerta para la ventana de la sala
         notoriedad: Number(pj.notoriedad) || 0,
         neutral: Boolean(pj.esNpc && pj.neutral),
-        alerta: Number(pj.alertaSistema) || 0
+        alerta: Number(pj.alertaSistema) || 0,
+        // Jefe: lo que ven los jugadores en la cabecera (va al registro de la sala, servicio.js). Sin PA
+        jefe: esJefe(pj) ? {
+            b: barrasJefe(pj).map(v => Math.round(v * 100) / 100),
+            n: Number(pj.nivel) || 0,
+            e: Object.keys(ESTADOS_INFO).filter(clave => estaActivo(pj, clave)),
+            neu: Boolean(pj.neutral)
+        } : null
     };
 }
 

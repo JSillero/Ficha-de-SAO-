@@ -72,7 +72,8 @@ header {
     position: relative; /* para la pestaña plegada del grupo (hud.css) */
     display: flex;
     justify-content: flex-start;
-    align-items: center;
+    /* Arriba: tu HUD no baja aunque las listas de la derecha (grupo, máster, jefes) sean altas */
+    align-items: flex-start;
     flex-wrap: wrap;
     gap: 15px;
     padding-bottom: 12px;

@@ -88,7 +88,8 @@ service cloud.firestore {
     function expulsadosDe(datos) {
       return datos.get('expulsados', {});
     }
-    // Personajes que han estado en la sala: registro.<uid>.<idPersonaje> = { nombre }
+    // Personajes que han estado en la sala: registro.<uid>.<idPersonaje> = { nombre } (los NPC del máster, también
+    // npc, trueque y, si son jefes, jefe = { b, n, e, neu }: lo escribe el máster sin validar, los clientes lo validan)
     function registroDe(datos) {
       return datos.get('registro', {});
     }

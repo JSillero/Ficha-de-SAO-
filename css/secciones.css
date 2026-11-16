@@ -3445,8 +3445,64 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
 
 .perfil-master-tipo[hidden],
 .perfil-master.modo-npc .solo-personaje,
-.perfil-master:not(.modo-npc) .solo-npc {
+.perfil-master:not(.modo-npc) .solo-npc,
+.perfil-master:not(.modo-jefe) .solo-jefe {
     display: none;
+}
+
+/* Jefe: pestañas de las fases en el perfil del máster (pintarFasesPerfil en interfazMaster.js). Se quedan arriba
+   al bajar por el formulario; la elegida en azul, las demás en gris (como el tipo) */
+.pestanas-fases {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 10px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.pestanas-fases-fila {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.modal-sao .pestanas-fases .btn-eleccion[aria-pressed="false"] {
+    background: #c9c9c9;
+    color: #5a5a5a;
+}
+
+.pestanas-fases .btn-anadir-ranura {
+    margin: 0;
+}
+
+.nota-fases {
+    margin: 0;
+    text-align: center;
+    font-size: 12px;
+    color: #888;
+}
+
+.opciones-fase {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+}
+
+/* Compendio de NPC: marca de jefe en la fila (pintarCompendio) */
+.marca-jefe {
+    font-size: 11px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: #c0392b;
+    color: #FBFBFB;
 }
 
 .modal-sao .perfil-master-tipo .btn-eleccion[aria-pressed="false"] {
@@ -5705,4 +5761,66 @@ body.modo-lectura #divEquipamiento .btn-extras-equipo {
 /* NPC neutral en la ficha (#fichaNeutralNpc, bajo Comportamiento en combate; personaje.neutral) */
 .ficha-neutral-npc {
     margin-bottom: 8px;
+}
+
+/* Aviso de jefe (#pantallaWarning, mostrarWarning en interfazOnline.js): Warning.svg con el nombre del jefe que
+   aparece; un clic la cierra. Encima de todo, como la pantalla de muerte */
+.pantalla-warning {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.pantalla-warning[hidden] {
+    display: none;
+}
+
+.btn-warning {
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+}
+
+.btn-warning:focus-visible {
+    outline: none;
+}
+
+.btn-warning img {
+    display: block;
+    width: min(90vw, 600px);
+    height: auto;
+    animation: entrar-warning 0.5s ease-out, parpadeo-warning 1s ease-in-out 0.5s 3;
+}
+
+.nombre-warning {
+    margin: 0;
+    color: #FBFBFB;
+    font-size: clamp(22px, 6vw, 40px);
+    font-weight: bold;
+    letter-spacing: 0.06em;
+    text-align: center;
+    text-shadow: 0 0 8px #c0392b, 2px 2px 3px black;
+}
+
+@keyframes entrar-warning {
+    from { transform: scaleX(0.2); opacity: 0; }
+    to { transform: none; opacity: 1; }
+}
+
+@keyframes parpadeo-warning {
+    50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .btn-warning img {
+        animation: none;
+    }
 }
