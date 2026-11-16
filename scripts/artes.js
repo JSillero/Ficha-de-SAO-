@@ -141,7 +141,9 @@ export function cargarArte(datos = {}) {
             // Estados que provoca cada golpe al acertar, con su probabilidad (estadosAlAcertar.js)
             estadosAlAcertar: cargarEstadosAlAcertar(datos.estadosAlAcertar),
 
-            haceDanno: datos.haceDanno !== false
+            haceDanno: datos.haceDanno !== false,
+            // El daño físico de sus golpes no lo reduce la armadura de quien lo recibe (recibirGolpe)
+            atraviesaArmadura: datos.haceDanno !== false && Boolean(datos.atraviesaArmadura)
         });
     }
     return arte;
@@ -529,6 +531,10 @@ export function calcularDannoArte(pj, arte, mano = manoDeArte(pj, arte)) {
     });
 
     if (golpes.every(golpe => golpe.total <= 0 && golpe.elemental.length === 0 && !golpe.efecto)) return null;
+    if (arte.atraviesaArmadura) golpes.forEach(golpe => {
+        golpe.atraviesaArmadura = true;
+        if (golpe.total > 0) golpe.notas = [...(golpe.notas ?? []), "Atraviesa armadura"];
+    });
     return golpes;
 }
 

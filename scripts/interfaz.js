@@ -3726,6 +3726,7 @@ function detalleEfecto(efecto) {
     if (efecto.haceDanno) {
         if (efecto.danno > 0) partes.push(`Daño +${efecto.danno}`);
         if (efecto.golpes > 1) partes.push(`${efecto.golpes} golpes`);
+        if (efecto.atraviesaArmadura) partes.push("Atraviesa armadura");
     }
     // El daño elemental y los efectos al acertar cuentan aunque no haga daño físico
     const elemental = textoElemental(efecto.dannoElemental, "+");
@@ -4864,7 +4865,8 @@ function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null }) {
     const vidaAntes = personaje.vida;
     const conCabeceras = dannos.length + (efecto ? 1 : 0) > 1;
     const lineas = dannos.flatMap(({ tipo, cantidad: valor }) => {
-        const resumen = aplicarDanno(personaje, valor, tipo);
+        // Arte o efecto que atraviesa armadura: solo el daño físico se la salta (las resistencias elementales cuentan)
+        const resumen = aplicarDanno(personaje, valor, tipo, { ignorarArmadura: tipo === "fisico" && golpe.atraviesaArmadura === true });
         return conCabeceras ? [`${TIPOS_DANNO[tipo].etiqueta} ${valor}:`, ...resumen] : resumen;
     });
     if (efecto) {
@@ -5586,6 +5588,7 @@ function detalleArte(arte) {
         if (arte.uso.tipo === "arma") partes.push(`Daño: arma + CaC${extra}`);
         else if (arte.danno > 0) partes.push(`Daño ${arte.danno}`);
         if (arte.golpes > 1) partes.push(`${arte.golpes} golpes`);
+        if (arte.atraviesaArmadura) partes.push("Atraviesa armadura");
     }
     // El daño elemental y los efectos al acertar cuentan aunque no haga daño físico
     const elemental = textoElemental(arte.dannoElemental, "+");
@@ -6063,6 +6066,7 @@ function inicializarFormularioArte() {
             partesDanno.push(`Daño +${Number(campo("arteDanno").value) || 0}`);
             const golpes = Number(campo("arteGolpes").value) || 1;
             if (golpes > 1) partesDanno.push(`${golpes} golpes`);
+            if (campo("arteAtraviesaArmadura").checked) partesDanno.push("Atraviesa armadura");
         } else partesDanno.push("Sin daño físico");
         if (textoElemental(elemental, "+")) partesDanno.push(textoElemental(elemental, "+"));
         const estadosArte = editorEstados.leer();
@@ -6121,6 +6125,7 @@ function inicializarFormularioArte() {
         // Sin daño físico, daño extra y golpes salen desactivados (el elemental y los efectos al acertar siguen)
         campo("arteDanno").disabled = !haceDanno;
         campo("arteGolpes").disabled = !haceDanno;
+        campo("arteAtraviesaArmadura").disabled = !haceDanno;
         pintarResumenesYVista();
     };
     modalEl.addEventListener("change", actualizarCampos);
@@ -6189,6 +6194,7 @@ function inicializarFormularioArte() {
         campo("arteHaceDanno").checked = !activa || datos.haceDanno;
         campo("arteDanno").value = activa ? datos.danno : 0;
         campo("arteGolpes").value = activa ? datos.golpes : 1;
+        campo("arteAtraviesaArmadura").checked = activa && Boolean(datos.atraviesaArmadura);
         const elemental = activa ? datos.dannoElemental : {};
         ELEMENTOS.forEach(e => { campo(`arteElem_${e}`).value = elemental?.[e] || 0; });
         campo("detallesDannoElementalArte").open = ELEMENTOS.some(e => elemental?.[e] > 0);
@@ -6262,6 +6268,7 @@ function inicializarFormularioArte() {
             haceDanno: campo("arteHaceDanno").checked,
             danno: Math.max(0, numero("arteDanno")),
             golpes: Math.max(1, numero("arteGolpes")),
+            atraviesaArmadura: campo("arteAtraviesaArmadura").checked,
             dannoElemental: Object.fromEntries(ELEMENTOS.map(e => [e, campo(`arteElem_${e}`).value])),
             estadosAlAcertar: editorEstados.leer()
         };
