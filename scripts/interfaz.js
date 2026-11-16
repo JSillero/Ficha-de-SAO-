@@ -304,13 +304,16 @@ function updateHealthFromMouse(e) {
     actualizarTodo();
 }
 
+// Solo el máster puede cambiar la vida tocando la barra
 track.addEventListener('mousedown', (e) => {
+    if (!MODO_MASTER) return;
     isDraggingHealth = true;
     barraArrastrada = track;
     updateHealthFromMouse(e);
 });
 // Jefe: solo se arrastra la barra de la fase actual (las pasadas no vuelven)
 barrasJefeHud.addEventListener('mousedown', (e) => {
+    if (!MODO_MASTER) return;
     const barra = e.target.closest('.barra-fase.actual');
     if (!barra) return;
     isDraggingHealth = true;
