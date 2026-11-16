@@ -54,6 +54,18 @@ const candado = (x = 0, y = 0, escala = 1) => `
             <circle class="f" cx="50" cy="60" r="6"/>
             <rect class="f" x="47" y="62" width="6" height="12" rx="2"/>
         </g>`;
+/* Bala vertical, punta arriba (armas de fuego: recargar y vaciar el cargador) */
+const bala = (x, y) => `<g transform="translate(${x} ${y})">
+        <path class="p" d="M0 14Q0 3 6 0Q12 3 12 14V34H0Z"/><rect class="s" x="0" y="27" width="12" height="7"/></g>`;
+const balasConSigno = (signo) => `${bala(20, 26)}${bala(37, 20)}${bala(54, 26)}${insigniaSigno(signo)}`;
+
+const ARMA_FUEGO = `
+        <rect class="p" x="16" y="30" width="66" height="16" rx="3"/>
+        <rect class="s" x="60" y="30" width="22" height="16" rx="3"/>
+        <path class="p" d="M22 44H46L40 82H18Z"/>
+        <path class="t" style="stroke-width:5" d="M46 47V58H56"/>
+        <rect class="f" x="70" y="35" width="8" height="6" rx="1"/>`;
+
 const candadoConSigno = (signo) => `${candado(-4, -6, 0.82)}${insigniaSigno(signo)}`;
 
 /* Corona (puntos de ego); pequeña y arriba a la izquierda si lleva signo */
@@ -189,6 +201,18 @@ const GLIFOS = {
         <path class="s" d="M50 16H73V58C73 72 63 81 50 86Z"/>
         <circle class="f" cx="50" cy="48" r="9"/>
         <circle class="p" cx="50" cy="48" r="4"/>`,
+    /* Armas de fuego (armasFuego.js): pistola (una mano) y fusil (dos manos); recargar y vaciar el cargador */
+    arma_fuego: ARMA_FUEGO,
+    armaFuego: ARMA_FUEGO,
+    arma_fuego_larga: `
+        <rect class="p" x="40" y="40" width="50" height="7" rx="2"/>
+        <rect class="p" x="34" y="36" width="26" height="16" rx="3"/>
+        <path class="p" d="M10 42L36 38V54L18 64L10 60Z"/>
+        <path class="s" d="M10 52L36 46V54L18 64L10 60Z"/>
+        <path class="p" d="M44 50H54L50 66H42Z"/>
+        <rect class="s" x="42" y="27" width="20" height="7" rx="3"/>`,
+    recargar: balasConSigno("M70 61V79M61 70H79"),
+    vaciarCargador: balasConSigno("M61 70H79"),
     /* Sonido (botón de silencio de la cabecera) */
     sonido: `
         <polygon class="p" points="20,40 34,40 52,24 52,76 34,60 20,60"/>

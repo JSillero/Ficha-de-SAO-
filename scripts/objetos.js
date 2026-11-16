@@ -115,6 +115,9 @@ export function cargarEquipo(datos) {
     equipo.pocionAplicada = cargarObjeto(equipo.pocionAplicada);
     equipo.efectos = cargarEfectos(equipo.efectos);
     equipo.estadosAlAcertar = cargarEstadosAlAcertar(equipo.estadosAlAcertar);
+    // Arma de fuego: cada bala es un material de herrería con cantidad 1 (lo que pase del cargador se pierde)
+    equipo.balas = (Array.isArray(equipo.balas) ? equipo.balas : [])
+        .map(bala => cargarObjeto({ ...bala, tipo: "material", cantidad: 1 })).filter(Boolean).slice(0, equipo.cargador);
     return equipo;
 }
 
@@ -524,11 +527,11 @@ export function beberPocion(pj, indice, gastar = gastarEstricto(pj)) {
     return exito(...resumen);
 }
 
-/** Manos con un arma (no escudo) a la que se puede aplicar una poción */
+/** Manos con un arma (no escudo ni arma de fuego) a la que se puede aplicar una poción */
 export function manosConArma(pj) {
     return MANOS.filter(mano => {
         const arma = ARMAS[pj[mano]?.tipo];
-        return arma && !arma.escudo;
+        return arma && !arma.escudo && !arma.fuego;
     });
 }
 

@@ -2538,6 +2538,62 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
     color: #8a6d2a;
 }
 
+/* Cargador de un arma de fuego en su tarjeta (pintarCargador en interfaz.js): texto, recargar y vaciar a la derecha,
+   una casilla por bala (llena = cargada) y, en modo máster, disparos, cargador y balas infinitas */
+.cargador-arma {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 4px 8px;
+    border-left: 3px solid #d1ab52;
+    border-radius: 4px;
+    background: #f4f4f4;
+}
+
+.cargador-cabecera {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.cargador-texto {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    color: #8a6d2a;
+}
+
+.cargador-botones {
+    display: flex;
+    gap: 6px;
+}
+
+.cargador-botones .btn-objeto:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.campos-cargador {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.campos-cargador .casilla-cargador {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Ventana de recargar (pintarRecargar): el material elegido, con borde dorado */
+.modal-sao .fila-municion {
+    cursor: pointer;
+}
+
+.modal-sao .fila-municion.elegida {
+    box-shadow: 0 0 0 2px #EBA601, 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
 /* Editor de estados al acertar en los formularios de objetos y artes (crearEditorEstadosAlAcertar) */
 .lista-estados-acertar {
     display: flex;

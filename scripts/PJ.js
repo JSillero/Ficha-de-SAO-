@@ -603,7 +603,8 @@ export default class PJ {
         this.ultimoGolpe = golpe?.instancia ? {
             instancia: String(golpe.instancia).slice(0, 120),
             jugador: golpe.jugador ? String(golpe.jugador).slice(0, 128) : null,
-            nombre: String(golpe.nombre ?? "").slice(0, 60)
+            nombre: String(golpe.nombre ?? "").slice(0, 60),
+            armaFuego: golpe.armaFuego === true // con arma de fuego: si muere, nadie recibe nada
         } : null;
 
         /* Lanzas y cuchillos lanzados sin recoger */

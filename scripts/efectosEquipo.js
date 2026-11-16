@@ -63,7 +63,7 @@ export function partesDeEfecto(pj, ranura) {
 /* Ranura cuyo arma suma su daño al efecto (solo armas de ataque, no escudos ni reliquias) */
 function manoDelArma(pj, ranura) {
     const tipo = equipoDeRanura(pj, ranura)?.tipo;
-    return gastaAccion(ranura) && ARMAS[tipo] && !ARMAS[tipo].escudo ? ranura : null;
+    return gastaAccion(ranura) && ARMAS[tipo] && !ARMAS[tipo].escudo && !ARMAS[tipo].fuego ? ranura : null;
 }
 
 export function motivoNoUsarEfecto(pj, ranura, indice) {

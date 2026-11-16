@@ -6,6 +6,7 @@ import Modificador, { cargarModificador } from "./modificador.js";
  * - dado: 0 bajo (desventaja), 1 medio (normal), 2 alto (ventaja).
  * - manos: 2 ocupa las dos manos y gasta las acciones de ambos brazos.
  * - lanzable: se puede lanzar (botón Lanzar de la tarjeta): sale de la mano a pj.armasLanzadas hasta recogerla.
+ * - fuego: arma de fuego (armasFuego.js): dispara balas de su cargador; no la usan las artes ni admite pociones.
  */
 export const ARMAS = {
     cuchillo: { etiqueta: "Cuchillo", manos: 1, caracteristica: "reflejos", dado: 1, lanzable: true },
@@ -19,7 +20,10 @@ export const ARMAS = {
     escudo: { etiqueta: "Escudo", manos: 1, escudo: true },
     gran_escudo: { etiqueta: "Gran escudo", manos: 2, escudo: true },
     // Herramientas: el manual no dice qué característica usan; se toma la más alta
-    otros: { etiqueta: "Otros", manos: 1, caracteristica: "mejor", dado: 1 }
+    otros: { etiqueta: "Otros", manos: 1, caracteristica: "mejor", dado: 1 },
+    // Armas de fuego (armasFuego.js): tirada = dado + Inteligencia + Percepción; daño = arma + bala
+    arma_fuego: { etiqueta: "Arma de fuego", manos: 1, caracteristica: "inteligencia", dado: 1, fuego: true },
+    arma_fuego_larga: { etiqueta: "Arma de fuego larga", manos: 2, caracteristica: "inteligencia", dado: 1, fuego: true }
 };
 
 /* Elementos (claves de TIPOS_DANNO en estados.js): resistencias de la armadura y daño elemental de las armas */
@@ -42,6 +46,16 @@ export function cargarDebilidades(datos) {
 export const TIPOS_DOS_MANOS =Object.keys(ARMAS).filter(tipo => ARMAS[tipo].manos === 2);
 export const TIPOS_ESCUDO = Object.keys(ARMAS).filter(tipo => ARMAS[tipo].escudo);
 export const TIPOS_LANZABLES = Object.keys(ARMAS).filter(tipo => ARMAS[tipo].lanzable);
+export const TIPOS_ARMA_FUEGO = Object.keys(ARMAS).filter(tipo => ARMAS[tipo].fuego);
+/* Armas de ataque que pueden usar las artes y los efectos con daño de arma (no escudos ni armas de fuego) */
+export const TIPOS_ARMA_CAC = Object.keys(ARMAS).filter(tipo => !ARMAS[tipo].escudo && !ARMAS[tipo].fuego);
+
+/* Límites de las armas de fuego (para que el personaje quepa en un documento de la nube) */
+export const MAX_DISPAROS = 20;
+export const MAX_CARGADOR = 100;
+
+/** ¿Es un arma de fuego? (equipo o tipo) */
+export const esArmaFuego = (equipo) => Boolean(ARMAS[typeof equipo === "string" ? equipo : equipo?.tipo]?.fuego);
 
 /** Equipo puesto (con tipo) */
 export const equipoActivo = (equipo) => Boolean(equipo?.tipo);
@@ -81,6 +95,13 @@ export default class Equipamiento {
         // Armadura de un NPC: multiplicador del daño de cada elemento (0 = sin debilidad)
         this.debilidades = cargarDebilidades();
         this.parteSecundaria = null;
+        // Armas de fuego (armasFuego.js): disparos por uso, capacidad del cargador y balas cargadas (materiales de
+        // herrería con cantidad 1; se dispara la primera). Solo en NPC: balas infinitas con un daño de bala fijo
+        this.disparos = 1;
+        this.cargador = 1;
+        this.balas = [];
+        this.balasInfinitas = false;
+        this.dannoBala = 0;
     }
 
     esEscudo() {
@@ -104,6 +125,8 @@ export default class Equipamiento {
             "escudo",
             "gran_escudo",
             "otros",
+            "arma_fuego",
+            "arma_fuego_larga",
             // Armaduras
             "pesada",
             "media",
@@ -193,5 +216,11 @@ export function cargarEquipamiento(datos) {
     equipo.acierto = Math.trunc(Number(equipo.acierto) || 0);
     equipo.dado = [0, 1, 2].includes(equipo.dado) ? equipo.dado : null;
     equipo.parteSecundaria = equipo.parteSecundaria ? String(equipo.parteSecundaria).slice(0, 60) : null;
+    // Armas de fuego (las balas se normalizan en cargarEquipo de objetos.js, que sabe cargar objetos)
+    equipo.disparos = Math.max(1, Math.min(MAX_DISPAROS, Math.floor(Number(equipo.disparos) || 1)));
+    equipo.cargador = Math.max(1, Math.min(MAX_CARGADOR, Math.floor(Number(equipo.cargador) || 1)));
+    if (!Array.isArray(equipo.balas)) equipo.balas = [];
+    equipo.balasInfinitas = Boolean(equipo.balasInfinitas);
+    equipo.dannoBala = Math.max(0, Math.floor(Number(equipo.dannoBala) || 0));
     return equipo;
 }

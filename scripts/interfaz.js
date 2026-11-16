@@ -1,4 +1,9 @@
-import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ESCUDO, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, ELEMENTOS, cargarValoresElementales, cargarDebilidades } from "./equipamiento.js";
+import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ESCUDO, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, ELEMENTOS, cargarValoresElementales, cargarDebilidades,
+    esArmaFuego, TIPOS_ARMA_FUEGO, TIPOS_ARMA_CAC, MAX_DISPAROS, MAX_CARGADOR } from "./equipamiento.js";
+import {
+    prepararDisparo, calcularDannoDisparo, sacarBala, disparosPosibles, motivoNoDisparar, partesDeArmaFuego, nombreArmaFuego,
+    tieneBalasInfinitas, motivoNoRecargar, recargarArma, vaciarCargador, municionDisponible, huecosCargador, textoCargador
+} from "./armasFuego.js";
 import { esReliquia, usarHabilidadReliquia, motivoNoUsarHabilidad, cargarHabilidadReliquia, equipoDeRanura, partesParaUsar } from "./reliquias.js";
 import { partesDeEfecto, motivoNoUsarEfecto, usarEfectoEquipo, pasivasDeEquipo, cargarEfectos } from "./efectosEquipo.js";
 import Modificador, { TURNOS_PERMANENTE, numeroModificador, esModificadorDecimal } from "./modificador.js";
@@ -595,10 +600,19 @@ function pintarMuerteNpc() {
     const candidatos = candidatosExp();
     select.innerHTML = `<option value="">Nadie</option>` + candidatos
         .map(p => `<option value="${escaparHtml(p.instancia)}">${escaparHtml(p.nombre || "Sin nombre")}</option>`).join("");
-    const preseleccionado = candidatos.find(p => p.instancia === atacante?.instancia);
+    const preseleccionado = atacante?.armaFuego ? null : candidatos.find(p => p.instancia === atacante?.instancia);
     select.value = preseleccionado?.instancia ?? "";
     sincronizarExpMuerteNpc?.(); // la rejilla que viste el select (formularioSao.js)
-    document.getElementById("campoExpMuerteNpc").hidden = !enSala;
+    // Último golpe con arma de fuego: nadie recibe nada (no se elige a quién)
+    document.getElementById("campoExpMuerteNpc").hidden = !enSala || Boolean(atacante?.armaFuego);
+    if (atacante?.armaFuego) {
+        document.getElementById("avisoMuerteNpc").textContent =
+            `El último golpe es de un arma de fuego${atacante.nombre ? ` (${atacante.nombre})` : ""}: nadie recibe EXP ni recompensa.`;
+        document.getElementById("mitadMuerteNpc").textContent = "";
+        document.getElementById("avisoUnderworldMuerteNpc").hidden = true;
+        document.getElementById("recompensaMuerteNpc").innerHTML = filasRecompensa({ exp: expRecompensa, ...recompensa });
+        return;
+    }
     const avisos = [];
     if (!enSala) avisos.push(`Sin sala: reparte a mano la EXP (${expRecompensa}) y la recompensa.`);
     else {
@@ -637,7 +651,7 @@ function cargarDatosMuerte(datos, autor) {
     return {
         victima: String(datos?.victima ?? ""),
         nombre: String(autor ?? datos?.nombre ?? "").trim().slice(0, 60) || "Sin nombre",
-        ultimoGolpe: golpe?.instancia ? { instancia: String(golpe.instancia), nombre: String(golpe.nombre ?? "").slice(0, 60) } : null,
+        ultimoGolpe: golpe?.instancia ? { instancia: String(golpe.instancia), nombre: String(golpe.nombre ?? "").slice(0, 60), armaFuego: golpe.armaFuego === true } : null,
         restos: {
             cor: cantidadSegura(restos.cor),
             objetos: (Array.isArray(restos.objetos) ? restos.objetos : []).slice(0, 50).map(cargarObjeto).filter(Boolean),
@@ -683,16 +697,19 @@ function pintarMuertePersonaje() {
     const candidatos = candidatosExp();
     select.innerHTML = `<option value="">Nadie</option>` + candidatos
         .map(p => `<option value="${escaparHtml(p.instancia)}">${escaparHtml(p.nombre || "Sin nombre")}</option>`).join("");
-    const preseleccionado = candidatos.find(p => p.instancia === ultimoGolpe?.instancia);
+    const deFuego = Boolean(ultimoGolpe?.armaFuego);
+    const preseleccionado = deFuego ? null : candidatos.find(p => p.instancia === ultimoGolpe?.instancia);
     select.value = preseleccionado?.instancia ?? "";
     sincronizarExpMuerteNpc?.();
-    document.getElementById("campoExpMuerteNpc").hidden = !enSala;
+    // Último golpe con arma de fuego: nadie recibe nada
+    document.getElementById("campoExpMuerteNpc").hidden = !enSala || deFuego;
     document.getElementById("mitadMuerteNpc").textContent = "";
     const avisoUw = document.getElementById("avisoUnderworldMuerteNpc");
     avisoUw.hidden = true;
     avisoUw.textContent = "";
     const avisos = [];
-    if (!enSala) avisos.push("Sin sala: repártelo a mano.");
+    if (deFuego) avisos.push(`El último golpe es de un arma de fuego${ultimoGolpe.nombre ? ` (${ultimoGolpe.nombre})` : ""}: nadie recibe lo que llevaba.`);
+    else if (!enSala) avisos.push("Sin sala: repártelo a mano.");
     else if (!ultimoGolpe) avisos.push("Nadie le dio el último golpe desde un pop-up (fue un estado o daño a mano): elige si alguien lo recibe.");
     else if (!preseleccionado) avisos.push(`El último golpe es de ${ultimoGolpe.nombre || "alguien"}, que no puede recibirlo (un NPC o no está conectado): elige si alguien lo recibe.`);
     document.getElementById("avisoMuerteNpc").textContent = avisos.join(" ");
@@ -703,7 +720,7 @@ function aceptarMuertePersonaje() {
     const datos = muertePjAbierta;
     if (!datos) return;
     reproducir("click");
-    const instancia = document.getElementById("selectExpMuerteNpc").value;
+    const instancia = datos.ultimoGolpe?.armaFuego ? "" : document.getElementById("selectExpMuerteNpc").value;
     const para = candidatosExp().find(p => p.instancia === instancia) ?? null;
     bootstrap.Modal.getOrCreateInstance(document.getElementById("modalMuerteNpc")).hide();
     if (!para) return;
@@ -756,9 +773,19 @@ function pintarMitadMuerteNpc() {
 /* Reparto de la derrota: un evento "derrota" para toda la sala (con el sonido de muerte). Quien mata recibe toda la
    EXP y la recompensa (Cor y objetos clave directos; los objetos, a su botín); sus compañeros de grupo, la mitad de
    la EXP. Lo aplica cada pestaña al recibirlo (alDerrota). Sin sala solo se pinta aquí, para repartirlo a mano. */
-function repartirDerrota({ nombre, exp, cor, objetos, objetosClave, para, companeros, alertaSistema = false, muerte = false }) {
+function repartirDerrota({ nombre, exp, cor, objetos, objetosClave, para, companeros, alertaSistema = false, muerte = false, armaFuego = false }) {
     const mitad = Math.floor(exp / 2);
     const lineas = [];
+    // Último golpe con arma de fuego: nadie recibe nada
+    if (armaFuego) {
+        reproducir("muerte");
+        emitirEvento("derrota", {
+            titulo: `${nombre} ha sido derrotado`, subtitulo: "Derrota",
+            lineas: ["Último golpe con arma de fuego: nadie recibe EXP ni recompensa"],
+            sonido: "muerte", npc: nombre, atacante: null, exp: 0, grupo: [], mitad: 0, botin: null, alertaSistema: false, armaFuego: true
+        }, lectura ? { forzar: true, personaje: "Máster" } : {});
+        return;
+    }
     // muerte: lo que llevaba un personaje muerto (sin EXP; el sonido ya sonó con su muerte)
     if (para && !muerte) lineas.push(`${para.nombre || "Sin nombre"}: +${exp} EXP`);
     if (para && companeros.length) lineas.push(`Su grupo (+${mitad} EXP): ${companeros.map(p => p.nombre || "Sin nombre").join(", ")}`);
@@ -1031,9 +1058,13 @@ function inicializarMuerteNpc() {
         const pj = npcPorId(datos?.id);
         if (!pj) return;
         reproducir("click");
-        const instancia = document.getElementById("selectExpMuerteNpc").value;
+        const deFuego = Boolean(datos.atacante?.armaFuego);
+        const instancia = deFuego ? "" : document.getElementById("selectExpMuerteNpc").value;
         const para = candidatosExp().find(p => p.instancia === instancia) ?? null;
-        const reparto = {
+        const reparto = deFuego ? {
+            // Último golpe con arma de fuego: se anuncia la derrota, pero no se reparte nada
+            nombre: pj.nombre || "Sin nombre", exp: 0, cor: 0, objetos: [], objetosClave: [], para: null, companeros: [], armaFuego: true
+        } : {
             nombre: pj.nombre || "Sin nombre",
             exp: pj.npc.expRecompensa,
             cor: pj.npc.recompensa.cor,
@@ -1101,7 +1132,7 @@ async function morirPersonaje(instanciaMuerte) {
     const instancia = MODO_MASTER ? `m-${idMaster ?? pj.idPersonaje}` : instanciaEmisora();
     const enSala = Boolean(getEstadoOnline().sala);
     const ultimo = pj.ultimoGolpe;
-    const lineas = [ultimo?.nombre ? `Último golpe: ${ultimo.nombre}` : "Último golpe: nadie"];
+    const lineas = [ultimo?.nombre ? `Último golpe: ${ultimo.nombre}${ultimo.armaFuego ? " (arma de fuego: nadie recibe nada)" : ""}` : "Último golpe: nadie"];
     if (enSala) lineas.push(MODO_MASTER ? "Sale de su grupo y de la sesión." : "Sale de su grupo y de la sala.");
     // Se espera a que salga el aviso antes de dejar la sala (si no, podría no llegar)
     await emitirEventoYEsperar("muertePersonaje", {
@@ -2506,6 +2537,171 @@ function actualizarPocionesArmas() {
     });
 }
 
+/* Armas de fuego (armasFuego.js) ____________________________________________
+ * Bloque .cargador-arma de la tarjeta del arma (manos y partes de un NPC): texto del cargador, una casilla por bala
+ * (la potencia en el título), recargar (#modalRecargar) y vaciar. En modo máster, además, disparos, cargador y, en un
+ * NPC, balas infinitas con su daño de bala. Listeners delegados en #divEquipamiento (inicializarArmasFuego). */
+const MAX_SEGMENTOS_CARGADOR = 30; // con más balas solo se ve el texto
+
+function htmlCargador(item, ranura) {
+    const infinitas = tieneBalasInfinitas(personaje, item);
+    const balas = item.balas ?? [];
+    const segmentos = !infinitas && item.cargador <= MAX_SEGMENTOS_CARGADOR
+        ? `<span class="segmentos-estado segmentos-cargador">${Array.from({ length: item.cargador }, (_, i) => {
+            const bala = balas[i];
+            const titulo = bala ? `${bala.nombre} · potencia ${bala.potencia}` : "Vacía";
+            return `<i class="${bala ? "on" : ""}" title="${escaparHtml(titulo)}"></i>`;
+        }).join("")}</span>` : "";
+    const motivoRecargar = motivoNoRecargar(personaje, ranura);
+    const tituloRecargar = motivoRecargar ? `No se puede recargar: ${motivoRecargar}` : "Recargar (gasta la acción de las manos del arma)";
+    const tituloVaciar = balas.length ? "Vaciar el cargador (las balas vuelven al inventario)" : "El cargador está vacío";
+    const botones = infinitas ? "" : `<span class="cargador-botones">
+            <button type="button" class="btn-objeto" data-accion-fuego="recargar" title="${escaparHtml(tituloRecargar)}" aria-label="${escaparHtml(tituloRecargar)}" ${motivoRecargar ? "disabled" : ""}>${iconoSao("recargar")}</button>
+            <button type="button" class="btn-objeto" data-accion-fuego="vaciar" title="${tituloVaciar}" aria-label="${tituloVaciar}" ${balas.length ? "" : "disabled"}>${iconoSao("vaciarCargador")}</button>
+        </span>`;
+    const numero = (campo, etiqueta, valor, min, max = "") => `<div class="campo-numero"><label>${etiqueta}:</label>
+        <input type="number" data-campo-fuego="${campo}" min="${min}" ${max ? `max="${max}"` : ""} value="${valor}"></div>`;
+    const campos = !MODO_MASTER ? "" : `<div class="campos-cargador">
+            ${numero("disparos", "Disparos", item.disparos, 1, MAX_DISPAROS)}
+            ${infinitas ? "" : numero("cargador", "Cargador", item.cargador, 1, MAX_CARGADOR)}
+            ${personaje.esNpc ? `<label class="campo-numero casilla-cargador">Balas infinitas
+                <input type="checkbox" data-campo-fuego="balasInfinitas" ${infinitas ? "checked" : ""}></label>
+                ${infinitas ? numero("dannoBala", "Daño de bala", item.dannoBala, 0) : ""}` : ""}
+        </div>`;
+    return `<div class="cargador-cabecera">
+            <span class="cargador-texto">${escaparHtml(textoCargador(personaje, item))}</span>
+            ${botones}
+        </div>${segmentos}${campos}`;
+}
+
+function pintarCargador(contenedor, item, ranura) {
+    if (!contenedor) return;
+    const visible = esArmaFuego(item);
+    contenedor.hidden = !visible;
+    if (!visible) {
+        if (contenedor.dataset.html) { contenedor.dataset.html = ""; contenedor.innerHTML = ""; }
+        return;
+    }
+    if (contenedor.contains(document.activeElement) && document.activeElement.matches("input")) return; // no pisar lo que se escribe
+    const html = htmlCargador(item, ranura);
+    if (contenedor.dataset.html !== html) {
+        contenedor.dataset.html = html;
+        contenedor.innerHTML = html;
+    }
+}
+
+function inicializarArmasFuego() {
+    const div = document.getElementById("divEquipamiento");
+    div.addEventListener("click", (e) => {
+        const boton = e.target.closest("[data-accion-fuego]");
+        if (!boton || boton.disabled) return;
+        const ranura = ranuraDeTarjeta(boton);
+        reproducir("click");
+        if (boton.dataset.accionFuego === "recargar") {
+            abrirRecargar(ranura);
+            return;
+        }
+        const resultado = vaciarCargador(personaje, ranura);
+        actualizarTodo();
+        mostrarPopupInfo(resultado.ok ? "Cargador vaciado" : "No se puede vaciar", resultado.resumen.map(escaparHtml));
+    });
+    div.addEventListener("change", (e) => {
+        const campo = e.target.closest("[data-campo-fuego]");
+        if (!campo) return;
+        const item = equipoDeRanura(personaje, ranuraDeTarjeta(campo));
+        if (!esArmaFuego(item)) return;
+        const clave = campo.dataset.campoFuego;
+        if (clave === "balasInfinitas") item.balasInfinitas = campo.checked;
+        else if (clave === "disparos") item.disparos = Math.max(1, Math.min(MAX_DISPAROS, Math.floor(Number(campo.value) || 1)));
+        else if (clave === "dannoBala") item.dannoBala = Math.max(0, Math.floor(Number(campo.value) || 0));
+        else if (clave === "cargador") {
+            const pedido = Math.max(1, Math.min(MAX_CARGADOR, Math.floor(Number(campo.value) || 1)));
+            item.cargador = Math.max(pedido, item.balas.length);
+            if (pedido < item.balas.length) mostrarPopupInfo("Cargador", ["Hay más balas cargadas: vacía antes el cargador para hacerlo más pequeño."]);
+        }
+        campo.blur();
+        actualizarTodo();
+    });
+    inicializarRecargar();
+}
+
+/* Ventana de recargar (#modalRecargar): materiales de herrería del inventario, uno elegido, y cuántas balas */
+let recarga = null; // { ranura, indice } mientras la ventana está abierta
+
+function pintarRecargar() {
+    const item = equipoDeRanura(personaje, recarga?.ranura);
+    if (!esArmaFuego(item)) return;
+    const huecos = huecosCargador(item);
+    const municion = municionDisponible(personaje);
+    if (!municion.some(({ indice }) => indice === recarga.indice)) recarga.indice = municion[0]?.indice ?? null;
+    document.getElementById("modalRecargarLabel").textContent = `Recargar ${nombreArmaFuego(item)}`;
+    document.getElementById("textoRecargar").textContent =
+        `Cargador ${item.balas.length}/${item.cargador}: caben ${huecos} bala${huecos === 1 ? "" : "s"}. Cada unidad de un material de herrería es una bala y su potencia es el daño de la bala.`;
+    const lista = document.getElementById("listaMunicion");
+    lista.innerHTML = municion.map(({ indice, objeto }) => `
+        <div class="fila-objeto fila-municion${indice === recarga.indice ? " elegida" : ""}" data-index="${indice}" role="button" tabindex="0"
+            aria-pressed="${indice === recarga.indice}">
+            <span class="objeto-icono">${iconoSao(iconoObjeto(objeto))}</span>
+            <div class="objeto-info">
+                <div class="objeto-cabecera"><span class="objeto-nombre">${escaparHtml(objeto.nombre)}</span><span class="objeto-cantidad">×${objeto.cantidad}</span></div>
+                <div class="objeto-detalle">Potencia ${objeto.potencia} (daño de la bala)</div>
+            </div>
+        </div>`).join("") || `<p class="lista-vacia">No tienes materiales de herrería en el inventario.</p>`;
+    const elegido = personaje.inventario[recarga.indice];
+    const maximo = Math.max(1, Math.min(huecos, elegido?.cantidad ?? 1));
+    const input = document.getElementById("cantidadRecargar");
+    input.max = maximo;
+    input.value = Math.min(Math.max(1, Number(input.value) || maximo), maximo);
+}
+
+function abrirRecargar(ranura) {
+    const motivo = motivoNoRecargar(personaje, ranura);
+    if (motivo) {
+        mostrarPopupInfo("No se puede recargar", [escaparHtml(motivo)]);
+        return;
+    }
+    recarga = { ranura, indice: null };
+    document.getElementById("cantidadRecargar").value = "";
+    pintarRecargar();
+    document.getElementById("avisoRecargar").hidden = true;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById("modalRecargar")).show();
+}
+
+function inicializarRecargar() {
+    const modalEl = document.getElementById("modalRecargar");
+    prepararFormularioSao(document.getElementById("formRecargar"));
+    document.getElementById("formRecargar").addEventListener("submit", (e) => e.preventDefault());
+    const elegir = (fila) => {
+        if (!fila || !recarga) return;
+        reproducir("click");
+        recarga.indice = Number(fila.dataset.index);
+        document.getElementById("cantidadRecargar").value = "";
+        pintarRecargar();
+    };
+    const lista = document.getElementById("listaMunicion");
+    lista.addEventListener("click", (e) => elegir(e.target.closest(".fila-municion")));
+    lista.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); elegir(e.target.closest(".fila-municion")); }
+    });
+    modalEl.addEventListener("hidden.bs.modal", () => { recarga = null; });
+    document.getElementById("btnAceptarRecargar").addEventListener("click", () => {
+        if (!recarga) return;
+        const aviso = document.getElementById("avisoRecargar");
+        if (recarga.indice === null) {
+            aviso.textContent = "Elige un material de herrería.";
+            aviso.hidden = false;
+            return;
+        }
+        reproducir("click");
+        const { ranura, indice } = recarga;
+        const cantidad = Number(document.getElementById("cantidadRecargar").value) || 0;
+        const { resultado, fallo } = conEmbriaguez("ataque", () => recargarArma(personaje, ranura, indice, cantidad, gastarAccionesOConfirmar));
+        bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        actualizarTodo();
+        if (!fallo) mostrarPopupInfo(resultado.ok ? "Recargado" : "No se puede recargar", resultado.resumen.map(escaparHtml));
+    });
+}
+
 function actualizarEquipamiento() {
     actualizarPocionesArmas();
     const manosGrid = document.querySelector(".equipamiento-manos-grid");
@@ -2679,6 +2875,7 @@ function actualizarEquipamiento() {
         selectDado?.closest(".campo-numero")?.toggleAttribute("hidden", !esArmaAtaque);
         if (inputAcierto && document.activeElement !== inputAcierto) inputAcierto.value = item.acierto ?? 0;
         if (selectDado && document.activeElement !== selectDado) selectDado.value = item.dado ?? "";
+        pintarCargador(elemento.querySelector(".cargador-arma"), item, propEquipo);
     });
     if (personaje.esNpc) ajustarManosNpc();
     actualizarBloquesElementales();
@@ -2985,6 +3182,10 @@ function usarEquipo(propEquipo) {
     const item = personaje[propEquipo];
     const arma = ARMAS[item?.tipo];
     if (!arma) return;
+    if (arma.fuego) {
+        dispararArma(propEquipo, `Disparo con ${arma.etiqueta.toLowerCase()} · ${arma.manos === 2 ? "Dos manos" : etiquetaMano(propEquipo)}`);
+        return;
+    }
     usarItemEquipo(item, partesDeManoEquipo(propEquipo),
         `Ataque con ${arma.etiqueta.toLowerCase()} · ${arma.manos === 2 ? "Dos manos" : etiquetaMano(propEquipo)}`,
         () => prepararAtaque(personaje, propEquipo, obtenerConfiguracionTirada().modos));
@@ -2997,6 +3198,10 @@ function usarEquipoParte(id) {
     if (!ARMAS[item?.tipo]) return;
     if (TIPOS_DOS_MANOS.includes(item.tipo) && !item.parteSecundaria) {
         mostrarPopupInfo("No se puede usar", ["Elige la otra parte que ocupa el arma a dos manos."]);
+        return;
+    }
+    if (esArmaFuego(item)) {
+        dispararArma(`parte:${id}`, `Disparo con ${parte.nombre.toLowerCase()}`);
         return;
     }
     usarItemEquipo(item, partesDeEquipoNpc(personaje, id), `Ataque con ${parte.nombre.toLowerCase()}`,
@@ -3045,6 +3250,45 @@ function usarItemEquipo(item, partes, subtitulo, preparar) {
     });
     // La poción aplicada al arma se gasta en este ataque
     item.pocionAplicada = null;
+    actualizarTodo();
+}
+
+/* Disparar un arma de fuego (armasFuego.js) de una mano o de una parte de un NPC ("parte:<id>"): gasta las acciones de
+   las manos del arma y hace hasta `disparos` disparos, uno por bala, cada uno con su tirada y su pop-up. Disparar
+   saca del sigilo, sin bonus. Los golpes llevan armaFuego (no cuentan para la notoriedad ni dan recompensa al matar) */
+function dispararArma(ranura, subtitulo) {
+    const item = equipoDeRanura(personaje, ranura);
+    const motivo = motivoNoDisparar(personaje, ranura);
+    if (motivo) {
+        mostrarPopupInfo("No se puede disparar", [escaparHtml(motivo)]);
+        return;
+    }
+    const nombre = nombreArmaFuego(item);
+    const { modos, criticoFacil } = obtenerConfiguracionTirada();
+    if (!prepararDisparo(personaje, item, modos)) return;
+    const { resultado: disparado } = conEmbriaguez("ataque", () => gastarAccionesOConfirmar(partesDeArmaFuego(personaje, ranura), `Disparar ${nombre}`));
+    if (!disparado) { actualizarTodo(); return; } // borracho: la acción se ha gastado igual, pero no sale ninguna bala
+    if (personaje.enSigilo) salirDeSigilo(personaje);
+    const total = disparosPosibles(personaje, item);
+    for (let i = 0; i < total; i++) {
+        const bala = sacarBala(personaje, item);
+        if (!bala) break;
+        const ataque = prepararDisparo(personaje, item, modos);
+        ejecutarTirada({
+            nombreAccion: ataque.nombre,
+            subtitulo: total > 1 ? `${subtitulo} · disparo ${i + 1}/${total}` : subtitulo,
+            valorHabilidad: ataque.valorHabilidad,
+            etiquetaHabilidad: ataque.etiquetaHabilidad,
+            valorCaracteristica: ataque.valorCaracteristica,
+            etiquetaCaracteristica: ataque.etiquetaCaracteristica,
+            modoTirada: ataque.modo,
+            criticoFacil,
+            bonificador: ataque.bonificador,
+            etiquetaBonificador: ataque.bonificador > 0 ? "Ventaja extra" : "Desventaja extra",
+            etiquetaTotal: "DISPARO",
+            calcularDanno: (resultado) => calcularDannoDisparo(personaje, item, bala, esCritico(resultado))
+        });
+    }
     actualizarTodo();
 }
 
@@ -3192,7 +3436,13 @@ function pintarBotonUsar(boton, item, partes) {
 
     const nombre = item.nombre?.trim() || arma.etiqueta;
     let titulo;
-    if (arma.escudo) {
+    if (arma.fuego) {
+        const disparos = disparosPosibles(personaje, item);
+        const bala = tieneBalasInfinitas(personaje, item) ? Number(item.dannoBala) || 0 : null;
+        titulo = disparos
+            ? `Disparar ${nombre} (${disparos} disparo${disparos === 1 ? "" : "s"}; daño ${Number(item.danno) || 0} + ${bala ?? "la bala"})`
+            : `${nombre}: cargador vacío, recarga el arma`;
+    } else if (arma.escudo) {
         titulo = item.enUso
             ? `${nombre} en uso: +${item.defensa || 0} de defensa hasta tu siguiente turno. Clic para guardarlo.`
             : `Usar ${nombre}: suma ${item.defensa || 0} a tu defensa hasta tu siguiente turno.`;
@@ -3206,6 +3456,8 @@ function pintarBotonUsar(boton, item, partes) {
     }
     boton.title = titulo;
     boton.setAttribute("aria-label", titulo);
+    // Arma de fuego sin balas: desactivado, con el motivo en el título
+    boton.disabled = Boolean(arma.fuego) && !disparosPosibles(personaje, item);
     boton.classList.toggle("en-uso", Boolean(arma.escudo && item.enUso));
     boton.classList.toggle("sin-accion", !(arma.escudo && item.enUso) && !puedeGastarVarias(personaje, partes));
 }
@@ -3576,7 +3828,8 @@ function inicializarEfectosEquipo() {
  * siempre lo es; pueden ser reliquia las armas de ataque y los accesorios; los estados al acertar, solo en armas. */
 const puedeEditarExtras = () => MODO_MASTER || personaje.esNpc;
 const esArmaDeAtaque = (tipo) => Boolean(ARMAS[tipo]) && !ARMAS[tipo].escudo;
-const puedeSerReliquia = (tipo) => tipo === TIPO_RELIQUIA || tipo === TIPO_ACCESORIO || esArmaDeAtaque(tipo);
+// Las armas de fuego no pueden ser reliquia ni llevar efectos
+const puedeSerReliquia = (tipo) => tipo === TIPO_RELIQUIA || tipo === TIPO_ACCESORIO || (esArmaDeAtaque(tipo) && !esArmaFuego(tipo));
 
 function pintarBotonesExtras() {
     document.querySelectorAll("#divEquipamiento .btn-extras-equipo").forEach(boton => {
@@ -3584,7 +3837,7 @@ function pintarBotonesExtras() {
         boton.hidden = !puedeEditarExtras() || !equipo?.tipo;
         if (boton.hidden) return;
         if (!boton.firstElementChild) boton.innerHTML = iconoSao("ajustes");
-        const partes = [puedeSerReliquia(equipo.tipo) ? "reliquia" : "", "efectos", esArmaDeAtaque(equipo.tipo) ? "estados al acertar" : ""].filter(Boolean);
+        const partes = [puedeSerReliquia(equipo.tipo) ? "reliquia" : "", esArmaFuego(equipo.tipo) ? "" : "efectos", esArmaDeAtaque(equipo.tipo) ? "estados al acertar" : ""].filter(Boolean);
         const titulo = `Extras: ${partes.join(", ")}`;
         boton.title = titulo;
         boton.setAttribute("aria-label", titulo);
@@ -3617,6 +3870,7 @@ function inicializarExtrasEquipo() {
         checkReliquia.closest(".ranura").title = checkReliquia.disabled ? "Una reliquia siempre lo es" : "Con habilidades que se usan a mano y tienen enfriamiento";
         campo("extrasHabilidades").hidden = !conReliquia;
         campo("extrasEstados").hidden = !esArmaDeAtaque(tipo);
+        campo("extrasEfectos").hidden = esArmaFuego(tipo);
         listaHabilidades.innerHTML = habilidades.map((_, i) => filaHabilidadReliquia(i, false)).join("");
         rellenarFilasHabilidades(listaHabilidades, habilidades);
         listaEfectos.innerHTML = efectos.map((efecto, i) => `
@@ -3881,6 +4135,7 @@ function htmlTarjetaParte(parte, ocupa) {
             </div>
             ${elemental}
             <p class="equipamiento-estados-acertar" hidden></p>
+            <div class="cargador-arma" hidden></div>
             <div class="reliquia-habilidades" hidden></div>
             <div class="efectos-equipo" hidden></div>
         </div>`;
@@ -3919,6 +4174,7 @@ function pintarTarjetasPartesNpc() {
             const texto = estados ? `Al acertar: ${estados}` : "";
             if (lineaEstados.textContent !== texto) lineaEstados.textContent = texto;
         }
+        pintarCargador(tarjeta.querySelector(".cargador-arma"), equipo, `parte:${parte.id}`);
         const usar = tarjeta.querySelector("[data-accion='usar']");
         if (usar) pintarBotonUsar(usar, equipo, partesDeEquipoNpc(personaje, parte.id));
     });    // Daño elemental con los valores del equipo (las tarjetas pueden haberse regenerado ahora mismo)
@@ -4612,16 +4868,19 @@ function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null }) {
         const resumen = aplicarEfectoEnObjetivo(personaje, efecto);
         lineas.push(...(conCabeceras ? [`${String(efecto.nombre || "Poción")}:`, ...resumen] : resumen));
     }
+    // Arma de fuego (armasFuego.js): el golpe no cuenta para la notoriedad ni quita la neutralidad, y si mata nadie
+    // recibe recompensa
+    const deFuego = golpe.armaFuego === true;
     // NPC neutral: deja de serlo cuando le golpea un personaje
     const deUnPersonaje = golpeDePersonaje(origen);
-    if (personaje.esNpc && personaje.neutral && deUnPersonaje) {
+    if (personaje.esNpc && personaje.neutral && deUnPersonaje && !deFuego) {
         personaje.neutral = false;
         mostrarPopupInfo("Ya no es neutral", [escaparHtml(`${personaje.nombre || "El NPC"} ha sido atacado por ${autor}.`)]);
     }
     // Notoriedad: el golpe de un personaje de fuera de tu grupo que te deja por debajo de la mitad de la vida.
     // Si la víctima ya tiene notoriedad (cursor naranja), herirla no da puntos: solo matarla (alDerrota)
     const mismoGrupo = (getGrupoSala()?.miembros ?? []).some(m => m.instancia === origen?.instancia);
-    if (!personaje.esNpc && deUnPersonaje && !mismoGrupo && !(Number(personaje.notoriedad) > 0) && personaje.vida < vidaAntes
+    if (!personaje.esNpc && deUnPersonaje && !deFuego && !mismoGrupo && !(Number(personaje.notoriedad) > 0) && personaje.vida < vidaAntes
         && personaje.vida < personaje.vidaMax / 2 && getEstadoOnline().sala) {
         // Si el atacante también es de esta pestaña (dos personajes del máster), su propio evento no le llegaría
         if (esDeEstaPestana(origen.instancia)) setTimeout(() => sumarNotoriedad(origen.instancia, personaje.nombre), 0);
@@ -4629,10 +4888,10 @@ function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null }) {
     }
     // Quién ha dado el último golpe (si muere al empezar turno, recibe su recompensa)
     personaje.ultimoGolpe = origen?.instancia
-        ? { instancia: origen.instancia, jugador: origen.jugador ?? null, nombre: String(origen.nombre ?? autor).slice(0, 60) }
+        ? { instancia: origen.instancia, jugador: origen.jugador ?? null, nombre: String(origen.nombre ?? autor).slice(0, 60), armaFuego: deFuego }
         : null;
     // NPC: quién ha dado el golpe, por si lo deja a 0 PV (comprobarMuerteNpc, en actualizarTodo)
-    atacanteGolpe = origen ?? { jugador: null, instancia: null, nombre: autor };
+    atacanteGolpe = { ...(origen ?? { jugador: null, instancia: null, nombre: autor }), armaFuego: deFuego };
     golpeAlNpc = true;
     actualizarTodo();
     const golpeTexto = golpe.etiqueta ? ` (${golpe.etiqueta})` : "";
@@ -5670,7 +5929,7 @@ const ETIQUETAS_TIPO_REQUISITO = {
     armadura: "Armadura", arma: "Arma", escudo: "Escudo"
 };
 /* Tipos que se pueden elegir en cada requisito de equipo */
-const TIPOS_ARMA_ATAQUE = Object.keys(ARMAS).filter(tipo => !ARMAS[tipo].escudo);
+const TIPOS_ARMA_ATAQUE = TIPOS_ARMA_CAC; // las artes no usan armas de fuego
 const OPCIONES_TIPOS_REQUISITO = {
     armadura: Object.entries(ETIQUETAS_TIPO_ARMADURA),
     arma: TIPOS_ARMA_ATAQUE.map(tipo => [tipo, ARMAS[tipo].etiqueta]),
@@ -5756,7 +6015,7 @@ function inicializarFormularioArte() {
     // Desplegables y casillas fijas
     campo("arteUsoParte").innerHTML = Object.entries(PARTES_USO_ARTE)
         .map(([valor, etiqueta]) => `<option value="${valor}">${etiqueta}</option>`).join("");
-    campo("arteUsoArmas").innerHTML = casillasTipos(Object.entries(ARMAS).map(([tipo, arma]) => [tipo, arma.etiqueta]), [], "uso-arma");
+    campo("arteUsoArmas").innerHTML = casillasTipos(Object.entries(ARMAS).filter(([, arma]) => !arma.fuego).map(([tipo, arma]) => [tipo, arma.etiqueta]), [], "uso-arma");
     campo("arteDannoElemental").innerHTML = ELEMENTOS.map(e => campoElemental("dannoElemental", e, `id="arteElem_${e}"`)).join("");
     campo("arteDannoElemental").addEventListener("input", () => marcarElementalesActivos(campo("arteDannoElemental")));
 
@@ -6603,6 +6862,12 @@ function valoresEquipo(equipo) {
     if (ARMAS[equipo.tipo]?.escudo) partes.push(`defensa ${equipo.defensa || 0}`);
     else if (ARMAS[equipo.tipo]) {
         partes.push(`daño ${equipo.danno || 0}`, ARMAS[equipo.tipo].manos === 2 ? "dos manos" : "una mano");
+        // Arma de fuego: cargador y disparos (con balas infinitas, que solo cuentan en un NPC, el daño de la bala)
+        if (ARMAS[equipo.tipo].fuego) {
+            const disparos = Math.max(1, Number(equipo.disparos) || 1);
+            partes.push(equipo.balasInfinitas ? `balas infinitas en NPC (bala ${equipo.dannoBala || 0})` : `cargador ${equipo.balas?.length ?? 0}/${equipo.cargador || 1}`,
+                `${disparos} disparo${disparos === 1 ? "" : "s"}`);
+        }
         const elemental = textoElemental(equipo.dannoElemental, "+");
         if (elemental) partes.push(elemental);
         const estados = describirEstadosAlAcertar(equipo.estadosAlAcertar);
@@ -6648,6 +6913,8 @@ function objetosDeLaFicha() {
  */
 function darObjetoDelCompendio(objeto) {
     if (!objeto) return { ok: false, texto: "Ese objeto ya no está en el compendio." };
+    const motivo = compendioObjetos.motivoNoSacar(objeto, { esMaster: MODO_MASTER, esUnderworld: Boolean(personaje.esUnderworld) });
+    if (motivo) return { ok: false, texto: `${motivo}.` };
     const alBaul = MODO_MASTER || baulAccesible(personaje);
     if (cabenEnInventario(personaje, objeto) < objeto.cantidad && !alBaul) {
         return { ok: false, texto: "No queda espacio en el inventario." };
@@ -7544,7 +7811,7 @@ function inicializarCrearObjeto() {
     /* ¿El equipo elegido lleva habilidades de reliquia? */
     const conHabilidades = () => {
         const tipoEquipo = selectTipoEquipo.value;
-        const puedeSerReliquia = (Boolean(ARMAS[tipoEquipo]) && !ARMAS[tipoEquipo].escudo) || tipoEquipo === TIPO_ACCESORIO;
+        const puedeSerReliquia = (Boolean(ARMAS[tipoEquipo]) && !ARMAS[tipoEquipo].escudo && !ARMAS[tipoEquipo].fuego) || tipoEquipo === TIPO_ACCESORIO;
         return selectTipo.value === "equipo" && (tipoEquipo === TIPO_RELIQUIA || (puedeSerReliquia && checkReliquia.checked));
     };
 
@@ -7556,7 +7823,7 @@ function inicializarCrearObjeto() {
             el.style.display = el.dataset.campos.split(" ").includes(tipo) ? "" : "none";
         });
         const tipoEquipo = selectTipoEquipo.value;
-        const grupoEquipo = ARMAS[tipoEquipo]?.escudo ? "escudo" : ARMAS[tipoEquipo] ? "arma"
+        const grupoEquipo = ARMAS[tipoEquipo]?.escudo ? "escudo" : ARMAS[tipoEquipo]?.fuego ? "fuego" : ARMAS[tipoEquipo] ? "arma"
             : tipoEquipo === TIPO_ACCESORIO ? "accesorio"
             : TIPOS_ARMADURA.includes(tipoEquipo) ? "armadura" : "";
         modalEl.querySelectorAll("[data-equipo]").forEach(el => {
@@ -7565,6 +7832,8 @@ function inicializarCrearObjeto() {
         editorEstadosObjeto.configurar(opcionesEstadosObjeto(tipo));
         campo("labelObjetoDescripcion").textContent = tipo === "cristal" ? "Mensaje al usarlo" : "Descripción";
         campo("campoHabilidadesReliquia").style.display = conHabilidades() ? "" : "none";
+        // Las armas de fuego no llevan efectos de equipo
+        campo("detallesEfectosObjeto").style.display = grupoEquipo === "fuego" ? "none" : "";
         pintarResumenesYVista();
     };
 
@@ -7670,12 +7939,27 @@ function inicializarCrearObjeto() {
         if (!tiposEquipo.includes(selectTipoEquipo.value)) selectTipoEquipo.value = tiposEquipo[0];
     };
 
+    /* Armas de fuego: solo las crean los personajes del Underworld y el máster. Al editar una que ya es arma de fuego
+       se conserva su tipo (permitido) */
+    const limitarArmasFuego = (permitido = null) => {
+        const puede = MODO_MASTER || Boolean(objetivo.pj?.esUnderworld);
+        selectTipoEquipo.querySelectorAll("option").forEach(op => {
+            if (!esArmaFuego(op.value) || puede || op.value === permitido) return;
+            op.hidden = true;
+            op.disabled = true;
+        });
+        if (selectTipoEquipo.selectedOptions[0]?.disabled) {
+            selectTipoEquipo.value = [...selectTipoEquipo.options].find(op => !op.disabled)?.value ?? "";
+        }
+    };
+
     const reiniciar = () => {
         campo("formCrearObjeto").reset();
         form.querySelectorAll("details.ranura-desplegable").forEach(d => { d.open = false; });
         form.querySelectorAll(".rejilla-panel").forEach(panel => { panel.hidden = true; });
         fichasTipo.hidden = false;
         limitarTipos();
+        limitarArmasFuego();
         Object.keys(FORMULARIO_ELEMENTAL).forEach(campoElem => rellenarElementalesFormulario(campoElem, null));
         selectTipo.value = "material";
         campo("objetoCantidad").value = 1;
@@ -7725,6 +8009,10 @@ function inicializarCrearObjeto() {
             campo("objetoEquipoDefensa").value = equipo.defensa || 0;
             campo("objetoEquipoArmadura").value = equipo.armadura || 0;
             campo("objetoEquipoPenalizacion").value = equipo.penalizacionAtletismo || 0;
+            campo("objetoDisparos").value = equipo.disparos || 1;
+            campo("objetoCargador").value = equipo.cargador || 1;
+            campo("objetoBalasInfinitas").checked = Boolean(equipo.balasInfinitas);
+            campo("objetoDannoBala").value = equipo.dannoBala || 0;
             rellenarElementalesFormulario("resistencias", equipo.resistencias);
             rellenarElementalesFormulario("debilidades", equipo.debilidades);
             rellenarElementalesFormulario("dannoElemental", equipo.dannoElemental);
@@ -7787,7 +8075,14 @@ function inicializarCrearObjeto() {
                     ? leerElementalesFormulario("debilidades") : cargarDebilidades(),
                 modificadores,
                 reliquia: conHabilidades() ? { habilidades: habilidades.map(cargarHabilidadReliquia) } : null,
-                efectos,
+                // Las armas de fuego no llevan efectos
+                efectos: esArmaFuego(selectTipoEquipo.value) ? [] : efectos,
+                // Arma de fuego: disparos y cargador (nunca más pequeño que las balas que ya lleva); balas infinitas y
+                // su daño solo en modo máster (solo cuentan en los NPC)
+                disparos: Math.max(1, numero("objetoDisparos")),
+                cargador: Math.max(1, numero("objetoCargador"), original?.balas?.length ?? 0),
+                balasInfinitas: MODO_MASTER && campo("objetoBalasInfinitas").checked,
+                dannoBala: MODO_MASTER ? Math.max(0, numero("objetoDannoBala")) : 0,
                 // Estados al acertar: solo en armas de ataque
                 estadosAlAcertar: tarjetaUsaElemental({ tipo: selectTipoEquipo.value }, "dannoElemental") ? editorEstados.leer() : []
             };
@@ -7891,6 +8186,7 @@ function inicializarCrearObjeto() {
         ponerModo(true);
         rellenar(objeto);
         limitarTipos(opciones.tiposEquipo);
+        limitarArmasFuego(objeto.tipo === "equipo" ? objeto.equipo.tipo : null);
         // Un objeto ya creado no cambia de tipo (comida, poción, equipo…): no se ofrecen los demás y ni se ven los
         // iconos de tipo (el suyo ya sale en la vista previa)
         selectTipo.querySelectorAll("option").forEach(op => {
@@ -7908,6 +8204,7 @@ function inicializarCrearObjeto() {
         if (opciones.tipo) selectTipo.value = opciones.tipo;
         if (opciones.tipoEquipo) selectTipoEquipo.value = opciones.tipoEquipo;
         limitarTipos(opciones.tiposEquipo);
+        limitarArmasFuego();
         actualizarCampos();
         abrirDesde(opciones.origen);
     };
@@ -8027,6 +8324,7 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarEfectosEquipo();
     inicializarExtrasEquipo();
     inicializarArmasLanzadas();
+    inicializarArmasFuego();
     actualizarModificadores();
     parseModificadoresEquipo();
     actualizarTodo();

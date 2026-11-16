@@ -30,7 +30,8 @@ export function caracteristicaArma(pj, tipo) {
 export function prepararAtaque(pj, propMano, modosExtra = [1]) {
     const item = pj[propMano];
     const arma = ARMAS[item?.tipo];
-    if (!arma || arma.escudo) return null;
+    // Las armas de fuego no atacan así: disparan (armasFuego.js, prepararDisparo)
+    if (!arma || arma.escudo || arma.fuego) return null;
     if (pj.esNpc) return prepararAtaqueNpc(pj, item, modosExtra);
 
     const caracteristica = caracteristicaArma(pj, item.tipo);
@@ -65,7 +66,7 @@ export const aciertoNpc = (pj, item) => (Number(item?.acierto) || 0) + (Number(p
 /** Tirada de ataque de un NPC con un equipo cualquiera (de un brazo o de otra parte), o null si no ataca */
 export function prepararAtaqueNpc(pj, item, modosExtra = [1]) {
     const arma = ARMAS[item?.tipo];
-    if (!arma || arma.escudo) return null;
+    if (!arma || arma.escudo || arma.fuego) return null;
     const { modo, bonificador } = combinarModos(dadoArmaNpc(item), ...[].concat(modosExtra));
     return {
         nombre: item.nombre?.trim() || arma.etiqueta,

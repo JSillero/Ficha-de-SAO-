@@ -1,12 +1,12 @@
 /* Compendio de objetos comunes del máster, sin DOM (como el de NPC en compendio.js).
  * - Entrada: { id, piso, nombre, categoria, pagina, json }. json = el objeto normalizado (cargarObjeto) con
- *   cantidad 1 y limpio (sin poción aplicada, escudo sin usar, reliquias sin enfriamiento); piso 1-100 o null.
+ *   cantidad 1 y limpio (sin poción aplicada, escudo sin usar, reliquias sin enfriamiento, armas de fuego sin balas); piso 1-100 o null.
  *   nombre y categoria salen del objeto para listar sin cargarlo.
  * - Páginas, caché ("fichaSAO.compendioObjetos"), cambios para subir y nube: almacenPaginado.js.
  * - Categorías (CATEGORIAS_OBJETO): tipo de equipo (arma, escudo, armadura, accesorio, reliquia), el resto de
  *   tipos de objeto y los materiales por su uso. */
 import { nuevoIdPersonaje } from "./PJ.js";
-import { ARMAS, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA } from "./equipamiento.js";
+import { ARMAS, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, esArmaFuego } from "./equipamiento.js";
 import { cargarObjeto, TIPOS_MATERIAL } from "./objetos.js";
 import { crearAlmacenPaginado } from "./almacenPaginado.js";
 
@@ -48,6 +48,15 @@ export function categoriaObjeto(objeto) {
     return CATEGORIAS_OBJETO[objeto?.tipo] ? objeto.tipo : "material";
 }
 
+/** Por qué no puede sacar este objeto del compendio a su inventario, o null: las armas de fuego solo las sacan los
+    personajes del Underworld y el máster */
+export function motivoNoSacar(objeto, { esMaster = false, esUnderworld = false } = {}) {
+    if (objeto?.tipo === "equipo" && esArmaFuego(objeto.equipo) && !esMaster && !esUnderworld) {
+        return "Solo los personajes del Underworld pueden sacar armas de fuego";
+    }
+    return null;
+}
+
 /** Piso válido (1-100) o null */
 export function normalizarPiso(piso) {
     if (piso === null || piso === undefined || piso === "") return null;
@@ -55,7 +64,8 @@ export function normalizarPiso(piso) {
     return Number.isFinite(n) && n >= 1 ? Math.min(PISO_MAXIMO, n) : null;
 }
 
-/* Objeto listo para el compendio: una unidad, sin poción aplicada, escudo sin usar y reliquia sin enfriamiento */
+/* Objeto listo para el compendio: una unidad, sin poción aplicada, escudo sin usar, reliquia sin enfriamiento y arma de
+   fuego sin balas */
 function limpiarObjeto(datos) {
     const objeto = cargarObjeto(JSON.parse(JSON.stringify(datos)));
     if (!objeto) return null;
@@ -64,6 +74,7 @@ function limpiarObjeto(datos) {
         objeto.equipo.pocionAplicada = null;
         objeto.equipo.enUso = false;
         objeto.equipo.reliquia?.habilidades?.forEach(h => { h.restante = 0; });
+        objeto.equipo.balas = []; // arma de fuego: se da sin balas
     }
     return objeto;
 }

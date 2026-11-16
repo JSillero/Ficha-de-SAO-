@@ -3,7 +3,7 @@
 // Se activan abriendo la página con ?debug en la URL (ver interfaz.js).
 
 import PJ, { ESTADOS_LISTA, HABILIDADES_UNDERWORLD, HABILIDADES_LISTA } from "./PJ.js";
-import Equipamiento from "./equipamiento.js";
+import Equipamiento, { esArmaFuego } from "./equipamiento.js";
 import Modificador, { TURNOS_PERMANENTE } from "./modificador.js";
 import { cargarObjeto, crearInventarioVacio, capacidadInventario } from "./objetos.js";
 import { cargarEfectos } from "./efectosEquipo.js";
@@ -260,9 +260,23 @@ export function verificarInterfaz(personaje, documento = document) {
  * Son avisos: el máster puede hacer excepciones.
  * @returns {string[]}
  */
-export function validarFicha(pj) {
-    if (pj.esNpc) return validarNpc(pj);
+/* Armas de fuego puestas (manos y partes de un NPC): balas dentro del cargador, solo materiales de herrería, y balas
+   infinitas solo en los NPC */
+function avisosArmasFuego(pj) {
     const avisos = [];
+    const equipos = [pj.manoIzquierda, pj.manoDerecha, ...(pj.esNpc ? (pj.npc?.partes ?? []).map(p => p.equipo) : [])];
+    equipos.filter(esArmaFuego).forEach(item => {
+        const nombre = item.nombre?.trim() || "Arma de fuego";
+        if (item.balas.length > item.cargador) avisos.push(`${nombre}: ${item.balas.length} balas en un cargador de ${item.cargador}.`);
+        if (item.balas.some(bala => bala.tipo !== "material" || bala.subtipo !== "herreria")) avisos.push(`${nombre}: tiene balas que no son materiales de herrería.`);
+        if (item.balasInfinitas && !pj.esNpc) avisos.push(`${nombre}: balas infinitas en un personaje (solo cuentan en los NPC).`);
+    });
+    return avisos;
+}
+
+export function validarFicha(pj) {
+    if (pj.esNpc) return [...validarNpc(pj), ...avisosArmasFuego(pj)];
+    const avisos = avisosArmasFuego(pj);
     const caracteristicas = ["fortaleza", "reflejos", "voluntad", "inteligencia"];
 
     const sumaCar = pj.getPuntosCaracteristicasGastados();

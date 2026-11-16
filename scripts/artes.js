@@ -18,7 +18,8 @@ import { partesExtra, partesDeEquipoNpc, PARTE_DE_MANO } from "./npc.js";
 const itemDeRanura = (pj, ranura) => (ranura?.startsWith("parte:")
     ? partesExtra(pj).find(parte => parte.id === ranura.slice(6))?.equipo ?? null
     : pj[ranura]);
-const esArmaDeAtaque = (item) => Boolean(ARMAS[item?.tipo]) && !ARMAS[item.tipo].escudo;
+// Las armas de fuego no sirven para las artes de arma
+const esArmaDeAtaque = (item) => Boolean(ARMAS[item?.tipo]) && !ARMAS[item.tipo].escudo && !ARMAS[item.tipo].fuego;
 
 export const VERSION_FORMATO_ARTES = 1;
 export const URL_CATALOGO_ARTES = "./data/artes.json";
@@ -82,7 +83,7 @@ export function cargarRequisito(datos) {
             return tipos.length ? { tipo: "armadura", tipos, alternativo } : null;
         }
         case "arma": {
-            const tipos = listaDe(datos.tipos, Object.keys(ARMAS));
+            const tipos = listaDe(datos.tipos, Object.keys(ARMAS).filter(tipo => !ARMAS[tipo].fuego));
             return tipos.length ? { tipo: "arma", tipos, ambasManos: Boolean(datos.ambasManos), alternativo } : null;
         }
         case "escudo": {
@@ -97,7 +98,7 @@ export function cargarRequisito(datos) {
 /** Uso de un arte activa; por defecto no gasta acción */
 export function cargarUso(datos) {
     if (datos?.tipo === "arma") {
-        const armas = listaDe(datos.armas, Object.keys(ARMAS));
+        const armas = listaDe(datos.armas, Object.keys(ARMAS).filter(tipo => !ARMAS[tipo].fuego));
         if (armas.length) return { tipo: "arma", armas, ambasManos: Boolean(datos.ambasManos) };
     }
     const parte = PARTES_USO_ARTE[datos?.parte] ? datos.parte : "ninguna";

@@ -106,7 +106,8 @@ function pintarCompendio() {
             ? `<label class="piso-compendio" title="Piso (vacío = sin piso)">Piso
                 <input type="number" min="1" max="${compendio.PISO_MAXIMO}" value="${e.piso ?? ""}" data-piso aria-label="Piso"></label>`
             : `<span class="piso-compendio">${etiquetaPiso(e.piso)}</span>`;
-        const anadir = boton("anadir", "inventario", editor ? `Añadir al inventario de ${pj.nombre || "el personaje de la ficha"}` : "Añadir al inventario", sinFicha);
+        const motivoSacar = sinFicha || compendio.motivoNoSacar(e.objeto, { esMaster: editor, esUnderworld: Boolean(pj.esUnderworld) }) || "";
+        const anadir = boton("anadir", "inventario", editor ? `Añadir al inventario de ${pj.nombre || "el personaje de la ficha"}` : "Añadir al inventario", motivoSacar);
         html += filaObjeto(e.objeto, {
             datos: `data-id="${escaparHtml(e.id)}"`,
             info: piso,

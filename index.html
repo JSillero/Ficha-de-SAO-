@@ -339,6 +339,8 @@
                                         <option value="escudo">Escudo</option>
                                         <option value="gran_escudo">Gran escudo</option>
                                         <option value="otros">Otros</option>
+                                        <option value="arma_fuego">Arma de fuego</option>
+                                        <option value="arma_fuego_larga">Arma de fuego larga</option>
                                         <option value="reliquia">Reliquia</option>
                                     </select>
                                     <!-- Atacar y, en lanzas y cuchillos, lanzar (actualizarBotonLanzar): juntos a la derecha; ocultos con la mano vacía -->
@@ -382,6 +384,8 @@
                                     <p class="equipamiento-pocion" hidden></p>
                                     <!-- Estados que provoca el arma al acertar (actualizarPocionesArmas) -->
                                     <p class="equipamiento-estados-acertar" hidden></p>
+                                    <!-- Arma de fuego: balas del cargador, recargar y vaciar (pintarCargador) -->
+                                    <div class="cargador-arma" hidden></div>
                                     <p class="equipamiento-descripcion"></p>
                                     <div class="equipamiento-mods-header">
                                         <span>Modificadores:</span>
@@ -987,6 +991,34 @@
 
     <!-- Modo máster: un NPC ha llegado a 0 PV (abrirMuerteNpc en interfaz.js). Al aceptar sale de la sesión y se
          borra; se elige quién recibe la EXP (el último atacante, preseleccionado) -->
+    <!-- Recargar un arma de fuego (inicializarRecargar en interfaz.js): elegir un material de herrería del inventario y
+         cuántas balas meter (cada unidad es una bala; su potencia es el daño de la bala) -->
+    <div class="modal fade modal-sao" id="modalRecargar" tabindex="-1" aria-labelledby="modalRecargarLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalRecargarLabel">Recargar</h5>
+                </div>
+                <div class="modal-body">
+                    <form id="formRecargar" class="form-objeto form-sao" novalidate>
+                        <p id="textoRecargar" class="aviso-objeto-info"></p>
+                        <div id="listaMunicion" class="lista-objetos"></div>
+                        <div class="ranura">
+                            <span class="ranura-icono" data-icono="recargar"></span>
+                            <label class="ranura-etiqueta" for="cantidadRecargar">Balas</label>
+                            <input type="number" id="cantidadRecargar" min="1" value="1">
+                        </div>
+                        <p id="avisoRecargar" class="aviso-zona" hidden></p>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cancelar" aria-label="Cancelar"></button>
+                    <button type="button" class="btn-modal-sao aceptar" id="btnAceptarRecargar" title="Recargar" aria-label="Recargar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade modal-sao" id="modalMuerteNpc" tabindex="-1" aria-labelledby="modalMuerteNpcLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
@@ -1306,7 +1338,7 @@
                             <select id="objetoTipoEquipo" aria-label="Tipo de equipo"></select>
                         </div>
                         <div class="ranuras-dobles" data-campos="equipo">
-                            <div class="ranura" data-equipo="arma">
+                            <div class="ranura" data-equipo="arma fuego">
                                 <span class="ranura-icono" data-icono="fisico"></span>
                                 <label class="ranura-etiqueta" for="objetoEquipoDanno">Daño</label>
                                 <input type="number" id="objetoEquipoDanno" min="0" value="0">
@@ -1330,6 +1362,28 @@
                                 <span class="ranura-icono" data-icono="reliquia"></span>
                                 <label class="ranura-etiqueta" for="objetoEsReliquia">Es reliquia</label>
                                 <input type="checkbox" id="objetoEsReliquia">
+                            </div>
+                            <!-- Arma de fuego (armasFuego.js): disparos por uso y balas que caben en el cargador -->
+                            <div class="ranura" data-equipo="fuego" title="Disparos de cada uso (uno por bala, cada uno con su tirada)">
+                                <span class="ranura-icono" data-icono="armaFuego"></span>
+                                <label class="ranura-etiqueta" for="objetoDisparos">Disparos</label>
+                                <input type="number" id="objetoDisparos" min="1" value="1">
+                            </div>
+                            <div class="ranura" data-equipo="fuego" title="Balas que caben en el cargador">
+                                <span class="ranura-icono" data-icono="recargar"></span>
+                                <label class="ranura-etiqueta" for="objetoCargador">Cargador</label>
+                                <input type="number" id="objetoCargador" min="1" value="1">
+                            </div>
+                            <!-- Solo NPC (modo máster): sin cargador ni recarga, cada bala hace el daño de bala -->
+                            <div class="ranura solo-master" data-equipo="fuego" title="Solo cuenta en los NPC: no gasta balas ni hace falta recargar">
+                                <span class="ranura-icono" data-icono="recargar"></span>
+                                <label class="ranura-etiqueta" for="objetoBalasInfinitas">Balas infinitas (NPC)</label>
+                                <input type="checkbox" id="objetoBalasInfinitas">
+                            </div>
+                            <div class="ranura solo-master" data-equipo="fuego" title="Daño de cada bala con balas infinitas">
+                                <span class="ranura-icono" data-icono="fisico"></span>
+                                <label class="ranura-etiqueta" for="objetoDannoBala">Daño de bala (NPC)</label>
+                                <input type="number" id="objetoDannoBala" min="0" value="0">
                             </div>
                         </div>
 
@@ -1391,12 +1445,12 @@
                                 <summary><span class="ranura-icono" data-icono="elemental"></span><span class="ranura-etiqueta">Debilidades (NPC)</span><span class="ranura-resumen"></span></summary>
                                 <div class="ranura-cuerpo"><div id="objetoDebilidades" class="valores-elementales"></div></div>
                             </details>
-                            <details id="detallesDannoElementalObjeto" class="ranura-desplegable" data-equipo="arma">
+                            <details id="detallesDannoElementalObjeto" class="ranura-desplegable" data-equipo="arma fuego">
                                 <summary><span class="ranura-icono" data-icono="elemental"></span><span class="ranura-etiqueta">Daño elemental</span><span class="ranura-resumen"></span></summary>
                                 <div class="ranura-cuerpo"><div id="objetoDannoElemental" class="valores-elementales"></div></div>
                             </details>
                             <!-- Estados que provoca el arma al acertar, cada uno con su probabilidad (crearEditorEstadosAlAcertar) -->
-                            <details id="detallesEstadosObjeto" class="ranura-desplegable" data-equipo="arma">
+                            <details id="detallesEstadosObjeto" class="ranura-desplegable" data-equipo="arma fuego">
                                 <summary><span class="ranura-icono" data-icono="veneno"></span><span class="ranura-etiqueta">Efectos al acertar</span><span class="ranura-resumen"></span></summary>
                                 <div class="ranura-cuerpo editor-estados-acertar"></div>
                             </details>
