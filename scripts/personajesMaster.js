@@ -73,7 +73,11 @@ export function resumenDe(pj) {
         iniciativa: Number(pj.iniciativa) || 0,
         estados: Object.keys(ESTADOS_INFO).filter(clave => estaActivo(pj, clave)),
         npc: Boolean(pj.esNpc),
-        trueque: Boolean(pj.esNpc && pj.permitirTrueque) // NPC que acepta trueques (va al registro de la sala)
+        trueque: Boolean(pj.esNpc && pj.permitirTrueque), // NPC que acepta trueques (va al registro de la sala)
+        // Franja de la cabecera: notoriedad (personajes) o neutral (NPC); alerta para la ventana de la sala
+        notoriedad: Number(pj.notoriedad) || 0,
+        neutral: Boolean(pj.esNpc && pj.neutral),
+        alerta: Number(pj.alertaSistema) || 0
     };
 }
 

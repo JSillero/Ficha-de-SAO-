@@ -267,6 +267,14 @@
                         <div class="seccion-notas-grid">
                             <div>
                                 <h3>Comportamiento en combate</h3>
+                                <!-- Neutral (personaje.neutral): franja amarilla hasta que un jugador lo golpea; después, roja -->
+                                <div class="form-sao ficha-neutral-npc" id="fichaNeutralNpc">
+                                    <div class="ranura" title="Neutral hasta que un jugador lo ataca">
+                                        <span class="ranura-icono" data-icono="personaje"></span>
+                                        <label class="ranura-etiqueta" for="npcNeutral">Neutral</label>
+                                        <input type="checkbox" id="npcNeutral">
+                                    </div>
+                                </div>
                                 <textarea id="comportamientoCombate"></textarea>
                             </div>
                         </div>
@@ -1047,6 +1055,11 @@
                                 <label class="ranura-etiqueta" for="perfilMasterTrueque">Permitir trueque</label>
                                 <input type="checkbox" id="perfilMasterTrueque">
                             </div>
+                            <div class="ranura solo-npc" title="Neutral hasta que un jugador lo ataca (franja amarilla; si no, roja)">
+                                <span class="ranura-icono" data-icono="personaje"></span>
+                                <label class="ranura-etiqueta" for="perfilMasterNeutral">Neutral</label>
+                                <input type="checkbox" id="perfilMasterNeutral">
+                            </div>
                         </div>
                         <!-- Habilidades del Underworld (solo personajes Underworld; ctx.htmlHabilidadesUnderworld) -->
                         <div id="perfilMasterHabUnderworld" class="solo-personaje"></div>
@@ -1075,6 +1088,16 @@
                                 <span class="ranura-icono" data-icono="ego"></span>
                                 <label class="ranura-etiqueta" for="perfilMasterEgo">Ego</label>
                                 <input type="number" id="perfilMasterEgo" min="0">
+                            </div>
+                            <div class="ranura solo-personaje" title="Notoriedad: franja verde con 0, naranja con más">
+                                <span class="ranura-icono" data-icono="personaje"></span>
+                                <label class="ranura-etiqueta" for="perfilMasterNotoriedad">Notoriedad</label>
+                                <input type="number" id="perfilMasterNotoriedad" min="0">
+                            </div>
+                            <div class="ranura solo-personaje" title="Alerta del sistema: contador oculto (matar con las habilidades del Underworld activadas)">
+                                <span class="ranura-icono" data-icono="onirica"></span>
+                                <label class="ranura-etiqueta" for="perfilMasterAlerta">Alerta del sistema</label>
+                                <input type="number" id="perfilMasterAlerta" min="0">
                             </div>
                         </div>
 

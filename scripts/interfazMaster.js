@@ -244,6 +244,7 @@ function filasCabecera() {
                 nombre: estado?.nombre || registro?.nombre || "",
                 vida: estado?.vida ?? 1, pa: estado?.pa ?? 0, nivel: estado?.nivel ?? "?",
                 iniciativa: estado?.iniciativa ?? 0, estados: estado?.estados ?? [], turno: estado?.turno ?? 0,
+                notoriedad: estado?.notoriedad ?? 0, alerta: estado?.alerta ?? 0,
                 oculto: sala.ocultos.has(claveOcultoSala(jugador, estado?.nombre || registro?.nombre || ""))
             };
         }));
@@ -294,6 +295,7 @@ export function actualizarHudMaster() {
             : !lectura && f.id === idActivo;
         const nombre = f.nombre || "Sin nombre";
         fila.classList.toggle("activo", esActivo);
+        item.classList.toggle("activo", esActivo); // la flecha a la izquierda, fuera de la fila (hud.css)
         fila.classList.toggle("desconectado", !f.conectado);
         fila.setAttribute("aria-current", esActivo ? "true" : "false");
         fila.title = esActivo ? `${nombre} (en la ficha${f.jugador ? ", solo lectura: pulsa para actualizarla" : ""})`
@@ -851,6 +853,9 @@ function pintarPerfil() {
     el("perfilMasterPAMax").textContent = pj.puntosArteMax;
     el("perfilMasterCor").value = pj.cor;
     el("perfilMasterEgo").value = pj.puntosEgo;
+    el("perfilMasterNotoriedad").value = pj.notoriedad;
+    el("perfilMasterAlerta").value = pj.alertaSistema;
+    el("perfilMasterNeutral").checked = Boolean(pj.neutral);
     el("ranuraPerfilMasterEgo").hidden = !pj.protagonista; // solo los protagonistas tienen ego (el valor se conserva)
     if (pj.esNpc) pintarNpcPerfil();
     pintarCombatePerfil();
@@ -1324,6 +1329,12 @@ function aplicarCampo(input) {
         pj.puntosArte = limitar(entero(input.value, pj.puntosArte), 0, pj.puntosArteMax);
     } else if (input.id === "perfilMasterCor") {
         pj.cor = Math.max(0, entero(input.value, pj.cor));
+    } else if (input.id === "perfilMasterNotoriedad") {
+        if (!pj.esNpc) pj.notoriedad = Math.max(0, entero(input.value, pj.notoriedad));
+    } else if (input.id === "perfilMasterAlerta") {
+        if (!pj.esNpc) pj.alertaSistema = Math.max(0, entero(input.value, pj.alertaSistema));
+    } else if (input.id === "perfilMasterNeutral") {
+        if (pj.esNpc) pj.neutral = input.checked;
     } else if (input.id === "perfilMasterEgo") {
         pj.puntosEgo = Math.max(0, entero(input.value, pj.puntosEgo));
     } else if (input.dataset.parteNombre && pj.esNpc) {

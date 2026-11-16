@@ -160,8 +160,11 @@ service cloud.firestore {
     function estadoValido() {
       let d = request.resource.data;
       return d.jugador == request.auth.uid
-        && d.keys().hasOnly(['jugador', 'master', 'nombre', 'vida', 'pa', 'nivel', 'iniciativa', 'estados', 'turno', 'stats', 'uw'])
+        && d.keys().hasOnly(['jugador', 'master', 'nombre', 'vida', 'pa', 'nivel', 'iniciativa', 'estados', 'turno', 'stats', 'uw', 'notoriedad', 'alerta'])
         && d.master is string
+        // Notoriedad (franja de color) y alerta del sistema (contador oculto): enteros, el máster los valida al leer
+        && d.get('notoriedad', 0) is int
+        && d.get('alerta', 0) is int
         && d.nombre is string && d.nombre.size() <= 60
         && d.estados is list && d.estados.size() <= 30
         // Estadísticas de protagonista (o null) y habilidades del Underworld habilitadas; el máster las valida al leer

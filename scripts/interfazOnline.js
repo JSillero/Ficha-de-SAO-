@@ -230,7 +230,11 @@ export async function inicializarOnline(contexto) {
         if (el("modalGrupo").classList.contains("show")) pintarGrupo();
         if (el("modalAnadirAmigo").classList.contains("show")) pintarAnadirAmigo();
     });
-    servicio.alCambiarEstadosSala(() => ctx.alCambiarEstadosSala?.());
+    servicio.alCambiarEstadosSala(() => {
+        ctx.alCambiarEstadosSala?.();
+        // El máster ve la notoriedad y la alerta de cada personaje en la ventana de la sala
+        if (el("modalSala").classList.contains("show")) pintarJugadores();
+    });
     servicio.alCambiarGrupo(grupo => {
         actualizarHudGrupo();
         if (el("modalGrupo").classList.contains("show")) pintarGrupo();
@@ -434,11 +438,38 @@ async function pintarJugadores() {
     }
     if (turno !== pintandoJugadores) return; // ha llegado otro cambio mientras tanto
 
+    // Solo el máster: notoriedad y alerta del sistema de cada personaje (no NPC), con − / +. Los suyos, por su ficha;
+    // los de los jugadores, por lo último que han publicado en su estado de la sala
+    const estadosSala = soyMaster ? servicio.getEstadosSala() : {};
+    const valoresDe = (p) => {
+        if (servicio.esInstanciaPropia(p.instancia)) {
+            const pj = ctx.leerPersonaje?.(p.instancia);
+            return { npc: Boolean(pj?.esNpc), notoriedad: Number(pj?.notoriedad) || 0, alerta: Number(pj?.alertaSistema) || 0 };
+        }
+        const estado = estadosSala[p.id] ?? {};
+        return { npc: Boolean(p.npc), notoriedad: Number(estado.notoriedad) || 0, alerta: Number(estado.alerta) || 0 };
+    };
+    const contador = (p, campo, etiqueta, valor) => `
+                <span class="contador-sala" title="${etiqueta}">
+                    <span class="texto-online-secundario">${etiqueta}</span>
+                    <button type="button" class="paso-boton" data-accion="ajuste" data-campo="${campo}" data-cambio="-1"
+                        data-instancia="${escaparHtml(p.instancia)}" ${valor <= 0 ? "disabled" : ""} aria-label="Quitar un punto de ${etiqueta.toLowerCase()}">−</button>
+                    <b>${valor}</b>
+                    <button type="button" class="paso-boton" data-accion="ajuste" data-campo="${campo}" data-cambio="1"
+                        data-instancia="${escaparHtml(p.instancia)}" aria-label="Añadir un punto de ${etiqueta.toLowerCase()}">+</button>
+                </span>`;
+    const contadores = (p) => {
+        if (!soyMaster) return "";
+        const v = valoresDe(p);
+        if (v.npc) return "";
+        return `<span class="contadores-sala">${contador(p, "notoriedad", "Notoriedad", v.notoriedad)}${contador(p, "alerta", "Alerta", v.alerta)}</span>`;
+    };
     const filaPersonaje = (p) => `
         <div class="fila-online personaje-sala${p.oculto ? " oculto" : ""}">
             <span class="nombre-online">${escaparHtml(p.nombre || "Sin nombre")}
                 <span class="texto-online-secundario">${p.instancia === getInstancia() ? "esta pestaña" : ""}${p.oculto ? `${p.instancia === getInstancia() ? " · " : ""}oculto` : ""}</span>
             </span>
+            ${contadores(p)}
             ${soyMaster ? `<button type="button" class="btn-cabecera" data-accion="ocultar" data-jugador="${escaparHtml(p.jugador)}"
                 data-nombre="${escaparHtml(p.nombre)}" data-oculto="${p.oculto ? "1" : ""}">${p.oculto ? "Mostrar" : "Ocultar"}</button>` : ""}
         </div>`;
@@ -517,6 +548,20 @@ function inicializarSala() {
         if (!boton) return;
         reproducir("click");
         const { jugador, nombre } = boton.dataset;
+        if (boton.dataset.accion === "ajuste") {
+            // Notoriedad o alerta: los suyos se cambian aquí; los de un jugador, en su pestaña (evento privado)
+            const { instancia, campo } = boton.dataset;
+            const cambio = Number(boton.dataset.cambio) > 0 ? 1 : -1;
+            if (servicio.esInstanciaPropia(instancia)) {
+                const clave = campo === "alerta" ? "alertaSistema" : "notoriedad";
+                ctx.conPersonaje?.(instancia, pj => { pj[clave] = Math.max(0, (Number(pj[clave]) || 0) + cambio); });
+                pintarJugadores();
+            } else {
+                emitirPrivado("ajusteNotoriedad", { para: instancia, campo, cambio })
+                    .catch(error => { el("avisoSala").textContent = servicio.mensajeError(error); });
+            }
+            return;
+        }
         if (boton.dataset.accion === "ocultar") {
             operar("avisoSala", () => servicio.cambiarOculto(jugador, nombre, !boton.dataset.oculto));
         } else if (boton.dataset.accion === "echar") {
@@ -1142,8 +1187,22 @@ export const htmlFilaHud = () => `
                 <span class="hud-grupo-estados"></span>
             </button>`;
 
-/** Rellena una fila de la cabecera: { nombre, vida, pa (fracciones), nivel, estados } */
+/** Color de la franja de un personaje (cursores de SAO): NPC amarilla si es neutral y roja si no; personajes verde
+ *  con 0 de notoriedad y naranja con 1 o más. Clases franja-* en hud.css */
+export const COLORES_FRANJA = ["verde", "naranja", "amarilla", "roja"];
+export function colorFranja({ npc = false, neutral = false, notoriedad = 0 } = {}) {
+    if (npc) return neutral ? "amarilla" : "roja";
+    return (Number(notoriedad) || 0) > 0 ? "naranja" : "verde";
+}
+/** Pone la clase franja-<color> en un elemento (fila de la cabecera o tu HUD) */
+export function ponerFranja(elemento, datos) {
+    const color = colorFranja(datos);
+    COLORES_FRANJA.forEach(c => elemento.classList.toggle(`franja-${c}`, c === color));
+}
+
+/** Rellena una fila de la cabecera: { nombre, vida, pa (fracciones), nivel, estados, notoriedad, npc, neutral } */
 export function rellenarFilaHud(fila, m) {
+    ponerFranja(fila, m);
     fila.querySelector(".hud-grupo-nombre").textContent = m.nombre || "Sin nombre";
     const vida = fila.querySelector(".sao-track-fill");
     vida.style.width = `${Math.round(m.vida * 100)}%`;

@@ -61,7 +61,7 @@ const CAMPOS_SIMPLES = [
     'numeroAcciones', 'izquierda', 'derecha', 'cabeza', 'pies', 'reaccionGuardada',
     'enSigilo', 'valorSigilo',
     'comidaActiva', 'tipoProfesion', 'esUnderworld', 'protagonista', 'zona', 'cor', 'puntosEgo', 'nombreReal',
-    'esNpc', 'permitirTrueque', 'idPlantilla', 'underworldHabilitado', 'habilidadesUnderworld', 'alertaSistemaBotin',
+    'esNpc', 'permitirTrueque', 'neutral', 'notoriedad', 'alertaSistema', 'idPlantilla', 'underworldHabilitado', 'habilidadesUnderworld', 'alertaSistemaBotin',
     'desbloqueosArteExtra', 'desbloqueosArteGastados',
     'notas', 'listadoArtes', 'notasBaul', 'listaDeAmigos', 'recetasProfesion', 'comportamientoCombate'
 ];
@@ -150,6 +150,9 @@ export default class PJ {
         this.trueque = null; // trueque en curso con lo apartado (trueque.js)
         this.ultimoGolpe = null; // { instancia, jugador, nombre } de quien dio el último golpe (desde un pop-up), o null
         this.permitirTrueque = false; // NPC: puede hacer trueques (los personajes siempre pueden)
+        this.neutral = false; // NPC neutral (franja amarilla) hasta que un jugador lo golpea
+        this.notoriedad = 0; // puntos por dañar o matar a otros jugadores (franja verde con 0, naranja con más)
+        this.alertaSistema = 0; // contador oculto: matar con las habilidades del Underworld activadas (solo lo ve el máster)
         this.alertaSistemaBotin = false; // el botín viene de un NPC matado con las habilidades del Underworld habilitadas
         this.comidaActiva = ""; // nombre de la comida cuyo efecto está activo (sus modificadores llevan origen "comida")
         this.cor = 0; // monedas: no ocupan hueco, sin límite, nunca negativas
@@ -527,6 +530,9 @@ export default class PJ {
         this.idPersonaje = String(this.idPersonaje || porDefecto.idPersonaje).slice(0, 60);
         if (!ZONAS[this.zona]) this.zona = ZONA_POR_DEFECTO;
         this.permitirTrueque = this.permitirTrueque === true;
+        this.neutral = this.neutral === true;
+        this.notoriedad = Math.max(0, Math.trunc(Number(this.notoriedad) || 0));
+        this.alertaSistema = Math.max(0, Math.trunc(Number(this.alertaSistema) || 0));
         // Fichas anteriores a la casilla Underworld: si tenían Sacro, lo eran
         this.esUnderworld = jsonObject.esUnderworld === undefined ? Number(this.sacro) > 0 : Boolean(this.esUnderworld);
         if (!this.esUnderworld) this.sacro = 0;

@@ -492,10 +492,24 @@
    Mismas filas que el grupo, cada una con un icono para sacarla de la sesión, y un + al final.
    El personaje que está en la ficha lleva el borde dorado interactivo. */
 .hud-master-item {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 4px;
     min-width: 0;
+    padding-left: 10px; /* sitio para la flecha del personaje activo */
+}
+
+/* Personaje en la ficha: flecha pequeña a la izquierda, fuera de la fila (la fila tiene clip-path) */
+.hud-master-item.activo::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    border-top: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+    border-left: 7px solid #EBA601;
 }
 
 .hud-master-item .hud-grupo-fila {
@@ -505,7 +519,6 @@
 
 .hud-grupo-fila.activo {
     background: #5c5c5c;
-    box-shadow: inset 4px 0 0 #EBA601;
     cursor: default;
 }
 
@@ -656,4 +669,20 @@
 .hud-grupo-fila.muerto.activo,
 .sao-bar-wrapper.muerto .sao-bar-main {
     background: #c0392b;
+}
+
+/* Franja de color de cada personaje (cursores de SAO; colorFranja / ponerFranja en interfazOnline.js): en las filas
+   de la cabecera (grupo y máster) y en tu HUD. Verde: 0 de notoriedad; naranja: 1 o más; NPC: amarilla si es
+   neutral, roja si no */
+.franja-verde { --franja: #27ae60; }
+.franja-naranja { --franja: #e67e22; }
+.franja-amarilla { --franja: #f1c40f; }
+.franja-roja { --franja: #c0392b; }
+
+.hud-grupo-fila[class*="franja-"] {
+    box-shadow: inset 4px 0 0 var(--franja);
+}
+
+.sao-bar-wrapper[class*="franja-"] .sao-bar-main {
+    box-shadow: inset 6px 0 0 var(--franja);
 }

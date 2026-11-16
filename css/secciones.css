@@ -5665,3 +5665,44 @@ body.modo-lectura #divEquipamiento .btn-extras-equipo {
     from { opacity: 0; }
     to { opacity: 1; }
 }
+
+/* Notoriedad en tu perfil (htmlFichaResumen en interfaz.js): el número y un punto con el color de tu franja */
+.ranura-notoriedad .punto-franja {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    margin-left: auto;
+    border-radius: 50%;
+    background: var(--franja);
+}
+
+/* Notoriedad y alerta del sistema de cada personaje en la ventana de la sala (pintarJugadores en interfazOnline.js,
+   solo el máster): − valor + */
+.contadores-sala {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-left: auto;
+}
+
+.contador-sala {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.contador-sala b {
+    min-width: 18px;
+    text-align: center;
+}
+
+.form-sao .contador-sala .paso-boton:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+/* NPC neutral en la ficha (#fichaNeutralNpc, bajo Comportamiento en combate; personaje.neutral) */
+.ficha-neutral-npc {
+    margin-bottom: 8px;
+}

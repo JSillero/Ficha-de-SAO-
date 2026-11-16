@@ -39,7 +39,7 @@ import { inicializarVentanas, abrirCapa, cerrarCapa } from "./ventanas.js";
 import {
     inicializarOnline, getEstadoOnline, getPersonajesSala, getTodosPersonajesSala, getSalaMaster, avisarNombrePersonaje, setIdPersonajeNube, motivoNombreNoDisponible,
     abrirAmigos, abrirAnadirAmigo, abrirGrupo, crearGrupo, salirGrupo, getGrupoSala, avisarEstadoGrupo, avisarTurno, verTurnoSala, abrirCuenta, abrirSala, abrirPersonajesNube,
-    guardarEnNube, compartirArte, quitarArteDeSala, publicarEstadoDe, estaOcultoEnSala, salirPorMuerte
+    guardarEnNube, compartirArte, quitarArteDeSala, publicarEstadoDe, estaOcultoEnSala, salirPorMuerte, ponerFranja, colorFranja
 } from "./interfazOnline.js";
 import {
     ZONAS, MOTIVOS_ZONA, cambiarZona, esZonaSegura, baulAccesible, puedeRepartirHabilidades, puedeRecibirDanno,
@@ -435,7 +435,10 @@ function actualizarTodo() {
         // Solo para el máster (estado de la sala, no el grupo): estadísticas si es protagonista y si tiene
         // las habilidades del Underworld habilitadas (aviso al matar un NPC)
         stats: personaje.protagonista && !personaje.esNpc ? estadisticasProtagonista(personaje) : null,
-        uw: personaje.tieneUnderworldActivo()
+        uw: personaje.tieneUnderworldActivo(),
+        // Notoriedad: la franja de color (la ven el grupo y el máster); alerta del sistema: solo el máster
+        notoriedad: personaje.notoriedad,
+        alerta: personaje.alertaSistema
     });
 }
 
@@ -675,7 +678,10 @@ function aceptarMuertePersonaje() {
     const para = candidatosExp().find(p => p.instancia === instancia) ?? null;
     bootstrap.Modal.getOrCreateInstance(document.getElementById("modalMuerteNpc")).hide();
     if (!para) return;
-    repartirDerrota({ nombre: datos.nombre, exp: 0, ...structuredClone(datos.restos), para, companeros: [], muerte: true });
+    repartirDerrota({
+        nombre: datos.nombre, exp: 0, ...structuredClone(datos.restos), para, companeros: [], muerte: true,
+        alertaSistema: conUnderworldActivo(para)
+    });
 }
 
 /* El máster recibe la muerte de un personaje de un jugador de su sala */
@@ -771,12 +777,18 @@ function alDerrota(evento) {
             if (cor > 0) anadirCor(p, cor);
             p.objetosClave.push(...claves);
             p.botin.push(...objetos);
+            const alerta = d.alertaSistema === true || Boolean(p.tieneUnderworldActivo?.());
             // Lo ve también en la ventana de botín mientras le quede algo por recoger
-            if (objetos.length && (d.alertaSistema === true || p.tieneUnderworldActivo?.())) p.alertaSistemaBotin = true;
+            if (objetos.length && alerta) p.alertaSistemaBotin = true;
+            // Alerta del sistema (oculta): matar con las habilidades del Underworld activadas
+            if (alerta && !p.esNpc) p.alertaSistema = (Number(p.alertaSistema) || 0) + 1;
+            // Matar a un jugador: +3 de notoriedad
+            if (d.muerte === true && !p.esNpc) p.notoriedad = (Number(p.notoriedad) || 0) + 3;
         });
         if (pj) {
             const despues = leerPersonajeDeInstancia(d.atacante);
             const lineas = exp > 0 ? [`+${exp} EXP`] : [];
+            if (d.muerte === true && !despues?.esNpc) lineas.push(`Notoriedad +3 (ahora ${despues?.notoriedad ?? 3})`);
             if (despues && despues.nivel > nivelAntes) lineas.push(`¡Sube a nivel ${despues.nivel}!`);
             if (cor > 0) lineas.push(`+${cor} Cor`);
             if (claves.length) lineas.push(`Objetos clave: ${claves.map(o => o.nombre).join(", ")}`);
@@ -1086,7 +1098,66 @@ async function morirPersonaje(instanciaMuerte) {
 
 function inicializarMuerte() {
     document.getElementById("btnMuerte").addEventListener("click", alPulsarMuerte);
+    // NPC neutral (ficha, bajo Comportamiento en combate): lo marca el máster; lo quita un golpe de un personaje
+    prepararFormularioSao(document.getElementById("fichaNeutralNpc"));
+    document.getElementById("npcNeutral").addEventListener("change", (e) => {
+        if (!personaje.esNpc) return;
+        personaje.neutral = e.target.checked;
+        actualizarTodo();
+    });
 }
+
+/* Notoriedad y alerta del sistema ____________________________________________
+ * Notoriedad (personaje.notoriedad): +1 por cada golpe que deja a un jugador de fuera de tu grupo por debajo del 50 %
+ * de su vida (lo detecta la víctima al recibirlo y lo avisa con el evento privado "notoriedad"); +3 al matar a un
+ * jugador (a quien elige el máster en la ventana de muerte, alDerrota). Franja verde con 0 y naranja con más.
+ * Alerta del sistema (personaje.alertaSistema, oculta): +1 al matar a un NPC o a un jugador con las habilidades del
+ * Underworld activadas (alDerrota). El máster cambia las dos desde la ventana de la sala (evento "ajusteNotoriedad"). */
+
+/** ¿El golpe viene de un personaje (no de un NPC)? Por el registro de la sala o, en modo máster, por su ficha */
+function golpeDePersonaje(origen) {
+    if (!origen?.instancia) return false;
+    const entrada = getTodosPersonajesSala().find(p => p.instancia === origen.instancia);
+    if (entrada) return !entrada.npc;
+    if (MODO_MASTER && origen.instancia.startsWith("m-")) {
+        const pj = npcPorId(origen.instancia.slice(2));
+        return Boolean(pj) && !pj.esNpc;
+    }
+    return false;
+}
+
+/* +1 de notoriedad al personaje de esta pestaña de esa instancia (atacante) por dejar a la víctima bajo el 50 % */
+function sumarNotoriedad(para, victima) {
+    const pj = leerPersonajeDeInstancia(para);
+    if (!pj || pj.esNpc) return;
+    conPersonajeDeInstancia(para, p => { p.notoriedad = (Number(p.notoriedad) || 0) + 1; });
+    mostrarPopupInfo(escaparHtml(`${pj.nombre || "Tu personaje"}: notoriedad +1`),
+        [escaparHtml(`Has dejado a ${victima || "alguien"} por debajo de la mitad de su vida. Notoriedad: ${(Number(pj.notoriedad) || 0) + 1}.`)]);
+}
+
+registrarManejador("notoriedad", (evento) => {
+    const d = evento.datos ?? {};
+    if (d.puntos !== 1) return; // solo el punto del 50 %: el resto lo da el máster
+    sumarNotoriedad(d.para, String(evento.personaje ?? "").trim());
+});
+
+registrarManejador("ajusteNotoriedad", (evento) => {
+    const sala = getEstadoOnline().sala;
+    if (!sala || evento.jugador !== sala.master) return; // solo el máster de la sala
+    const d = evento.datos ?? {};
+    const campo = d.campo === "alerta" ? "alertaSistema" : d.campo === "notoriedad" ? "notoriedad" : null;
+    const cambio = Math.sign(Number(d.cambio) || 0);
+    if (!campo || !cambio) return;
+    const valor = conPersonajeDeInstancia(d.para, p => {
+        p[campo] = Math.max(0, (Number(p[campo]) || 0) + cambio);
+        return p[campo];
+    });
+    // La alerta es oculta: el jugador no se entera
+    if (campo === "notoriedad" && valor !== undefined) {
+        const pj = leerPersonajeDeInstancia(d.para);
+        mostrarPopupInfo("Notoriedad", [escaparHtml(`El máster ha cambiado la notoriedad de ${pj?.nombre || "tu personaje"}: ahora ${valor}.`)]);
+    }
+});
 
 /* Turno ___________________________________________________________________
    Pulsar Play en zona no segura apunta la hora (turnos: idPersonaje → ms) y se publica al momento (grupo y
@@ -1403,7 +1474,11 @@ function actualizarInformacion() {
     }
 
     /* A 0 PV o menos el HUD entero en rojo (los PV pueden ser negativos) */
-    document.querySelector(".sao-bar-wrapper")?.classList.toggle("muerto", personaje.vida <= 0);
+    const hud = document.querySelector(".sao-bar-wrapper");
+    hud?.classList.toggle("muerto", personaje.vida <= 0);
+    /* Franja de color: notoriedad (personajes) o neutral (NPC), como en las filas de la cabecera */
+    if (hud) ponerFranja(hud, { npc: personaje.esNpc, neutral: personaje.neutral, notoriedad: personaje.notoriedad });
+    document.getElementById("npcNeutral").checked = Boolean(personaje.neutral);
 
     /* Actualizar la barra de vida visual */
     let hpFill = document.getElementById('hp-bar-fill');
@@ -4488,6 +4563,21 @@ function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null }) {
         const resumen = aplicarEfectoEnObjetivo(personaje, efecto);
         lineas.push(...(conCabeceras ? [`${String(efecto.nombre || "Poción")}:`, ...resumen] : resumen));
     }
+    // NPC neutral: deja de serlo cuando le golpea un personaje
+    const deUnPersonaje = golpeDePersonaje(origen);
+    if (personaje.esNpc && personaje.neutral && deUnPersonaje) {
+        personaje.neutral = false;
+        mostrarPopupInfo("Ya no es neutral", [escaparHtml(`${personaje.nombre || "El NPC"} ha sido atacado por ${autor}.`)]);
+    }
+    // Notoriedad: el golpe de un personaje de fuera de tu grupo que te deja por debajo de la mitad de la vida.
+    // Si la víctima ya tiene notoriedad (cursor naranja), herirla no da puntos: solo matarla (alDerrota)
+    const mismoGrupo = (getGrupoSala()?.miembros ?? []).some(m => m.instancia === origen?.instancia);
+    if (!personaje.esNpc && deUnPersonaje && !mismoGrupo && !(Number(personaje.notoriedad) > 0) && personaje.vida < vidaAntes
+        && personaje.vida < personaje.vidaMax / 2 && getEstadoOnline().sala) {
+        // Si el atacante también es de esta pestaña (dos personajes del máster), su propio evento no le llegaría
+        if (esDeEstaPestana(origen.instancia)) setTimeout(() => sumarNotoriedad(origen.instancia, personaje.nombre), 0);
+        else emitirPrivado("notoriedad", { para: origen.instancia, puntos: 1 }).catch(error => console.warn("No se pudo avisar de la notoriedad", error));
+    }
     // Quién ha dado el último golpe (si muere al empezar turno, recibe su recompensa)
     personaje.ultimoGolpe = origen?.instancia
         ? { instancia: origen.instancia, jugador: origen.jugador ?? null, nombre: String(origen.nombre ?? autor).slice(0, 60) }
@@ -6625,6 +6715,12 @@ function htmlFichaResumen(resumen, { perfil = false } = {}) {
                 <button type="button" class="btn-cor gastar" data-ego="gastar" title="Quitar esta cantidad" aria-label="Quitar puntos de ego">${iconoSao("egoMenos")}</button>
             </span>
         </div>` : ""}
+        <div class="ranura ranura-notoriedad" title="Sube al dañar o matar a otros jugadores. Los demás solo ven el color">
+            <span class="ranura-icono" data-icono="personaje"></span>
+            <span class="ranura-etiqueta">Notoriedad</span>
+            <b class="ranura-valor">${personaje.notoriedad}</b>
+            <span class="punto-franja franja-${colorFranja({ notoriedad: personaje.notoriedad })}" aria-hidden="true"></span>
+        </div>
         ${personaje.esUnderworld ? htmlHabilidadesUnderworld(personaje, perfilUnderworldAbierto) : ""}` : ""}
         ${htmlDatosPerfil()}` : "";
 

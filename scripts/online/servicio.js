@@ -555,7 +555,10 @@ export async function publicarEstadoSala(datos) {
         turno: Math.max(0, Math.trunc(Number(datos.turno) || 0)),
         // Estadísticas de protagonista (o null) y habilidades del Underworld habilitadas: solo las lee el máster
         stats: cargarEstadisticas(datos.stats),
-        uw: datos.uw === true
+        uw: datos.uw === true,
+        // Notoriedad (franja de color) y alerta del sistema (contador oculto): solo las lee el máster
+        notoriedad: enteroPositivo(datos.notoriedad),
+        alerta: enteroPositivo(datos.alerta)
     };
     const clave = `${estado.sala.codigo}|${personajeLocal.id}|${JSON.stringify(documento)}`;
     if (clave === estadoSalaEscrito) return;
@@ -868,7 +871,10 @@ function escucharSala(codigo) {
             // stats y uw vienen de cada jugador: se validan al leer
             estadosSala = Object.fromEntries(instantanea.docs.map(d => {
                 const datos = d.data();
-                return [d.id, { ...datos, stats: cargarEstadisticas(datos.stats), uw: datos.uw === true }];
+                return [d.id, {
+                    ...datos, stats: cargarEstadisticas(datos.stats), uw: datos.uw === true,
+                    notoriedad: enteroPositivo(datos.notoriedad), alerta: enteroPositivo(datos.alerta)
+                }];
             }));
             avisar("estadosSala", getEstadosSala());
         }, error => console.warn("Error escuchando los estados de la sala:", error)));
@@ -985,12 +991,17 @@ const nombreDe = (instancia) => (instancia.startsWith("m-") ? nombresMaster.get(
 
 /* Estado que cada personaje de esta pestaña publica en su grupo: { vida, pa, nivel, estados, iniciativa, turno }
    (lo da la interfaz). turno = hora (ms) en la que pulsó Play por última vez, o 0: el más reciente parpadea. */
-const ESTADO_GRUPO_INICIAL = { vida: 1, pa: 0, nivel: 1, estados: [], iniciativa: 0, turno: 0 };
+const ESTADO_GRUPO_INICIAL = { notoriedad: 0, vida: 1, pa: 0, nivel: 1, estados: [], iniciativa: 0, turno: 0 };
 const estadosGrupo = new Map();
 
-function normalizarEstadoGrupo({ vida, pa, nivel, estados, iniciativa, turno } = {}) {
+/* Entero ≥ 0 acotado (notoriedad, alerta del sistema): viene de otro jugador */
+const enteroPositivo = (valor) => Math.max(0, Math.min(9999, Math.trunc(Number(valor) || 0)));
+
+function normalizarEstadoGrupo({ vida, pa, nivel, estados, iniciativa, turno, notoriedad } = {}) {
     const fraccion = (v) => Math.round(Math.min(1, Math.max(0, Number(v) || 0)) * 100) / 100;
     return {
+        // Notoriedad: la franja de color que ven los compañeros (la alerta del sistema no va al grupo)
+        notoriedad: enteroPositivo(notoriedad),
         vida: fraccion(vida),
         pa: fraccion(pa),
         nivel: Math.max(0, Math.trunc(Number(nivel) || 0)),
@@ -1016,6 +1027,7 @@ function grupoPublico(id, datos, instancia) {
         estados: Array.isArray(m?.estados) ? m.estados.map(String) : [],
         iniciativa: Number(m?.iniciativa) || 0,
         turno: Number(m?.turno) || 0,
+        notoriedad: enteroPositivo(m?.notoriedad),
         orden: Number(m?.orden) || 0,
         lider: inst === datos.lider
     })).sort((x, y) => x.orden - y.orden);
@@ -1206,8 +1218,8 @@ async function sincronizarEntrada(instancia) {
     const propio = g.datos.miembros.find(m => m.instancia === instancia);
     if (!propio) return;
     const deseado = entradaDe(instancia);
-    const actual = { jugador: propio.jugador, nombre: propio.nombre, vida: propio.vida, pa: propio.pa, nivel: propio.nivel,
-        estados: propio.estados, iniciativa: propio.iniciativa, turno: propio.turno };
+    const actual = { jugador: propio.jugador, nombre: propio.nombre, notoriedad: propio.notoriedad, vida: propio.vida, pa: propio.pa,
+        nivel: propio.nivel, estados: propio.estados, iniciativa: propio.iniciativa, turno: propio.turno };
     if (JSON.stringify(actual) === JSON.stringify(deseado)) return;
     const { db, f } = sdk;
     const cambios = { [`miembros.${instancia}`]: { ...deseado, orden: propio.orden } };
