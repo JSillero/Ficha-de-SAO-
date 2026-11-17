@@ -7,7 +7,7 @@ import { modificadorEfectosEquipo } from "./efectosEquipo.js";
 import { cargarDiario } from "./diario.js";
 import { cargarTrueque } from "./trueque.js";
 import { cargarCreacion } from "./creacion.js";
-import { crearNpc, cargarNpc, equiposDePartes, DEFENSA_MINIMA_NPC, defensaParalisisNpc } from "./npc.js";
+import { crearNpc, cargarNpc, equiposDePartes, DEFENSA_MINIMA_NPC, defensaParalisisNpc, limpiarPesadilla } from "./npc.js";
 import { guardarFaseActiva, convertirEnJefe } from "./jefes.js";
 
 export { TAMANO_INVENTARIO };
@@ -63,7 +63,7 @@ const CAMPOS_SIMPLES = [
     'numeroAcciones', 'izquierda', 'derecha', 'cabeza', 'pies', 'reaccionGuardada',
     'enSigilo', 'valorSigilo',
     'comidaActiva', 'tipoProfesion', 'esUnderworld', 'protagonista', 'zona', 'cor', 'puntosEgo', 'nombreReal',
-    'esNpc', 'esJefe', 'permitirTrueque', 'neutral', 'notoriedad', 'alertaSistema', 'idPlantilla', 'underworldHabilitado', 'habilidadesUnderworld', 'alertaSistemaBotin',
+    'esNpc', 'esJefe', 'esPesadilla', 'permitirTrueque', 'neutral', 'notoriedad', 'alertaSistema', 'idPlantilla', 'underworldHabilitado', 'habilidadesUnderworld', 'alertaSistemaBotin',
     'desbloqueosArteExtra', 'desbloqueosArteGastados',
     'notas', 'listadoArtes', 'notasBaul', 'listaDeAmigos', 'recetasProfesion', 'comportamientoCombate'
 ];
@@ -113,6 +113,7 @@ export default class PJ {
            Se decide al crearlo y no cambia. idPlantilla: plantilla del compendio de la que salió (o null). */
         this.esNpc = false;
         this.esJefe = false; // NPC con fases (jefes.js)
+        this.esPesadilla = false; // NPC pesadilla (npc.js, esPesadilla): sin PA, recompensa ni curación
         this.idPlantilla = null;
         this.npc = crearNpc();
 
@@ -267,7 +268,9 @@ export default class PJ {
         this.experienciaMax = 0;
         // Los NPC no tienen artes sin equipar: todas están equipadas
         (this.artes || []).forEach(arte => { arte.equipada = true; });
-        this.puntosArteMax = Math.max(0, npc.puntosArteMax + this.getModificador("arte"));
+        // Las pesadillas no tienen PA
+        this.puntosArteMax = this.esPesadilla ? 0 : Math.max(0, npc.puntosArteMax + this.getModificador("arte"));
+        if (this.esPesadilla) this.puntosArte = 0;
         const usadas = (this.artes || []).filter(arte => arte.equipada && !arte.onirica)
             .reduce((suma, arte) => suma + (Number(arte.ranuras) || 0), 0);
         this.espaciosArte = usadas + 1;
@@ -643,6 +646,10 @@ export default class PJ {
         // Huecos del inventario según la capacidad (con equipo, modificadores y artes ya cargados).
         // No se pierde nada: lo que no cabe queda como sobrante.
         ajustarInventario(this);
+
+        // Pesadilla (npc.js): solo los NPC; nunca es jefe ni neutral
+        this.esPesadilla = this.esNpc && this.esPesadilla === true;
+        limpiarPesadilla(this);
 
         // Jefe (jefes.js): solo los NPC. Uno sin fases (fichas a medias) pasa a tener una, su estado actual
         this.esJefe = this.esNpc && this.esJefe === true;

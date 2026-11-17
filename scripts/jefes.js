@@ -84,7 +84,7 @@ function faseDelPj(pj, opciones = {}) {
     return cargarFase(fase);
 }
 
-export const esJefe = (pj) => Boolean(pj?.esNpc && pj.esJefe && pj.npc?.fases?.length);
+export const esJefe = (pj) => Boolean(pj?.esNpc && pj.esJefe && !pj.esPesadilla && pj.npc?.fases?.length);
 export const faseActual = (pj) => Math.min(Math.max(0, pj.npc?.faseActual ?? 0), Math.max(0, (pj.npc?.fases?.length ?? 1) - 1));
 export const numeroFases = (pj) => pj.npc?.fases?.length ?? 0;
 
@@ -136,6 +136,7 @@ export function aplicarFase(pj, i, { empezar = false } = {}) {
 
 /** Convierte un NPC en jefe: la fase 1 es su estado actual */
 export function convertirEnJefe(pj) {
+    if (pj.esPesadilla) return; // las pesadillas no pueden ser jefes
     pj.esNpc = true;
     pj.esJefe = true;
     pj.npc.fases = [faseDelPj(pj)];

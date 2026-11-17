@@ -9,7 +9,7 @@
 // No toca el DOM.
 
 import { ARMAS, TIPOS_DOS_MANOS, equipoActivo } from "./equipamiento.js";
-import { cargarArte, calcularDannoArte } from "./artes.js";
+import { cargarArte, calcularDannoArte, costePAPara } from "./artes.js";
 import { equipoDeRanura, esRanuraParte, ranurasDePartes } from "./reliquias.js";
 import { partesDeMano } from "./turno.js";
 import { partesDeEquipoNpc, PARTE_DE_MANO } from "./npc.js";
@@ -72,7 +72,8 @@ export function motivoNoUsarEfecto(pj, ranura, indice) {
     if (!efecto) return "Ese efecto no existe.";
     if (!equipo.tipo) return "El equipo no está puesto.";
     if (efecto.tipo === "pasiva") return "Los efectos pasivos no se usan: están siempre activos.";
-    if ((Number(pj.puntosArte) || 0) < efecto.costePA) return `Faltan PA: cuesta ${efecto.costePA} y tienes ${pj.puntosArte}.`;
+    const coste = costePAPara(pj, efecto);
+    if ((Number(pj.puntosArte) || 0) < coste) return `Faltan PA: cuesta ${coste} y tienes ${pj.puntosArte}.`;
     return null;
 }
 
@@ -103,9 +104,10 @@ export function usarEfectoEquipo(pj, ranura, indice, gastar) {
     const arma = mano ? equipoDeRanura(pj, mano) : null;
     if (danno && efecto.haceDanno && arma?.pocionAplicada) arma.pocionAplicada = null;
 
-    pj.puntosArte = Math.max(0, (Number(pj.puntosArte) || 0) - efecto.costePA);
+    const coste = costePAPara(pj, efecto);
+    pj.puntosArte = Math.max(0, (Number(pj.puntosArte) || 0) - coste);
     const resumen = [efecto.descripcion.trim() || "(El efecto no tiene descripción)"];
     // Se comparte en la sala: de un NPC (o jefe) no se dice cuántos PA le quedan
-    if (efecto.costePA > 0) resumen.push(pj.esNpc ? `−${efecto.costePA} PA` : `−${efecto.costePA} PA (quedan ${pj.puntosArte})`);
+    if (coste > 0) resumen.push(pj.esNpc ? `−${coste} PA` : `−${coste} PA (quedan ${pj.puntosArte})`);
     return { ok: true, resumen, danno, arte: efecto, equipo };
 }

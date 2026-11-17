@@ -11,7 +11,7 @@ import PJ, { HABILIDADES_UNDERWORLD } from "./PJ.js";
 import { VALORES_COMBATE, PROFESIONES, crearResumenFicha, estadisticasProtagonista } from "./resumenFicha.js";
 import {
     VALORES_NPC, MAX_TIRADAS_NPC, MAX_PARTES_NPC, cargarTiradaNpc, parteNpc, tieneParte, partesExtra, parteQueOcupa,
-    partesDeEquipoNpc, motivoNoQuitarParte, quitarParte, anadirParte, anadirBrazo, esCuerpoPorDefecto, PARTE_DE_MANO
+    partesDeEquipoNpc, motivoNoQuitarParte, quitarParte, anadirParte, anadirBrazo, esCuerpoPorDefecto, PARTE_DE_MANO, esPesadilla
 } from "./npc.js";
 import { pasarFaseSiToca, numeroFases, esJefe, barrasJefe, faseActual } from "./jefes.js";
 import { tirarFalloEmbriaguez } from "./embriaguez.js";
@@ -71,7 +71,7 @@ import {
     equiparArte, desequiparArte, motivoNoEquiparArte, motivoNoDesequiparArte, usarArte, motivoNoUsarArte, partesDeArte,
     cargarArte, cargarRequisito, cumpleRequisitos, ajustarMemoriaArtes, GRUPOS_ARTE, TIPOS_REQUISITO,
     desbloqueosDisponibles, desbloqueosNaturales, anadirDesbloqueos, quitarDesbloqueos, motivoNoConseguirArte, conseguirArte,
-    motivoInactiva, crearOnirica, motivoNoCrearOnirica, arteActiva,
+    motivoInactiva, crearOnirica, motivoNoCrearOnirica, arteActiva, puedeTenerOniricas,
     ETIQUETAS_CARACTERISTICA, ETIQUETAS_HABILIDAD, ETIQUETAS_ARMADURA as ETIQUETAS_TIPO_ARMADURA
 } from "./artes.js";
 
@@ -238,8 +238,16 @@ inputNivel.addEventListener('change', (e) => {
     actualizarTodo();
 });
 
+/* Aviso al intentar subir la vida de una pesadilla fuera del perfil del máster */
+function avisarPesadillaNoSeCura() {
+    mostrarPopupInfo("No se puede", ["Una pesadilla no se cura: su vida solo sube editándola en el perfil."]);
+}
+
 inputVida.addEventListener('change', (e) => {
-    personaje.vida = Math.trunc(Number(e.target.value) || 0);
+    const nueva = Math.trunc(Number(e.target.value) || 0);
+    // Una pesadilla no se cura: su vida solo sube desde el perfil del máster
+    if (esPesadilla(personaje) && nueva > personaje.vida) avisarPesadillaNoSeCura();
+    personaje.vida = esPesadilla(personaje) ? Math.min(personaje.vida, nueva) : nueva;
     actualizarTodo();
 });
 
@@ -302,7 +310,9 @@ function updateHealthFromMouse(e) {
     if (percentage < 0) percentage = 0;
     if (percentage > 1) percentage = 1;
 
-    personaje.vida = Math.round(percentage * personaje.vidaMax);
+    const nueva = Math.round(percentage * personaje.vidaMax);
+    // Una pesadilla no se cura: la barra solo baja su vida (sube desde el perfil del máster)
+    personaje.vida = esPesadilla(personaje) ? Math.min(personaje.vida, nueva) : nueva;
     actualizarTodo();
 }
 
@@ -385,6 +395,8 @@ let ultimoModoNpc = null;
 function aplicarModoNpc() {
     const npc = Boolean(personaje.esNpc);
     document.body.classList.toggle("modo-npc", npc);
+    // Pesadilla (npc.js): sin PA ni casilla Neutral (.no-pesadilla)
+    document.body.classList.toggle("modo-pesadilla", esPesadilla(personaje));
     // Los NPC no tienen artes sin equipar (también lo hace PJ.calcularNpc; aquí, antes de pintar las listas)
     if (npc) personaje.artes.forEach(arte => { arte.equipada = true; });
     if (npc === ultimoModoNpc) return;
@@ -599,6 +611,16 @@ function pintarMuerteNpc() {
     document.getElementById("modalMuerteNpcLabel").textContent = `${nombre} ha caído`;
     document.getElementById("textoMuerteNpc").textContent =
         `${nombre} está a 0 PV. Al derrotarlo sale de la sesión y su copia se borra (la plantilla sigue en el compendio).`;
+    // Pesadilla: no da EXP ni recompensa ni alerta al sistema; solo se confirma la derrota
+    if (esPesadilla(pj)) {
+        document.getElementById("selectExpMuerteNpc").value = "";
+        document.getElementById("campoExpMuerteNpc").hidden = true;
+        document.getElementById("avisoMuerteNpc").textContent = "Las pesadillas no dan EXP ni recompensa.";
+        document.getElementById("mitadMuerteNpc").textContent = "";
+        document.getElementById("avisoUnderworldMuerteNpc").hidden = true;
+        document.getElementById("recompensaMuerteNpc").innerHTML = "";
+        return;
+    }
 
     const enSala = Boolean(getEstadoOnline().sala);
     const select = document.getElementById("selectExpMuerteNpc");
@@ -762,6 +784,7 @@ function conUnderworldActivo(candidato) {
 function pintarMitadMuerteNpc() {
     if (muertePjAbierta) return; // la muerte de un personaje no da EXP
     const pj = npcPorId(muerteNpcAbierta?.id);
+    if (esPesadilla(pj)) return; // ni EXP ni alerta
     const instancia = document.getElementById("selectExpMuerteNpc").value;
     const elegido = instancia ? candidatosExp().find(p => p.instancia === instancia) : null;
     const aviso = document.getElementById("avisoUnderworldMuerteNpc");
@@ -778,9 +801,18 @@ function pintarMitadMuerteNpc() {
 /* Reparto de la derrota: un evento "derrota" para toda la sala (con el sonido de muerte). Quien mata recibe toda la
    EXP y la recompensa (Cor y objetos clave directos; los objetos, a su botín); sus compañeros de grupo, la mitad de
    la EXP. Lo aplica cada pestaña al recibirlo (alDerrota). Sin sala solo se pinta aquí, para repartirlo a mano. */
-function repartirDerrota({ nombre, exp, cor, objetos, objetosClave, para, companeros, alertaSistema = false, muerte = false, armaFuego = false }) {
+function repartirDerrota({ nombre, exp, cor, objetos, objetosClave, para, companeros, alertaSistema = false, muerte = false, armaFuego = false, pesadilla = false }) {
     const mitad = Math.floor(exp / 2);
     const lineas = [];
+    // Pesadilla: se anuncia la derrota sin dar nada, sin alerta y sin sonido (silencio: tampoco la notificación)
+    if (pesadilla) {
+        emitirEvento("derrota", {
+            titulo: `${nombre} ha sido derrotada`, subtitulo: "Pesadilla",
+            lineas: ["Las pesadillas no dan EXP ni recompensa"],
+            silencio: true, npc: nombre, atacante: null, exp: 0, grupo: [], mitad: 0, botin: null, alertaSistema: false, pesadilla: true
+        }, lectura ? { forzar: true, personaje: "Máster" } : {});
+        return;
+    }
     // Último golpe con arma de fuego: nadie recibe nada
     if (armaFuego) {
         reproducir("muerte");
@@ -820,6 +852,7 @@ function repartirDerrota({ nombre, exp, cor, objetos, objetosClave, para, compan
 const cantidadSegura = (valor) => Math.max(0, Math.min(1e7, Math.floor(Number(valor) || 0)));
 function alDerrota(evento) {
     const d = evento.datos ?? {};
+    if (d.pesadilla === true) return; // una pesadilla no da nada a nadie ni alerta al sistema
     const npc = String(d.npc ?? "un NPC").slice(0, 60);
     const recibir = (instancia, aplicar) => {
         const pj = leerPersonajeDeInstancia(instancia);
@@ -1064,9 +1097,13 @@ function inicializarMuerteNpc() {
         if (!pj) return;
         reproducir("click");
         const deFuego = Boolean(datos.atacante?.armaFuego);
-        const instancia = deFuego ? "" : document.getElementById("selectExpMuerteNpc").value;
+        const pesadilla = esPesadilla(pj);
+        const instancia = deFuego || pesadilla ? "" : document.getElementById("selectExpMuerteNpc").value;
         const para = candidatosExp().find(p => p.instancia === instancia) ?? null;
-        const reparto = deFuego ? {
+        const reparto = pesadilla ? {
+            // Pesadilla: no da nada ni alerta al sistema
+            nombre: pj.nombre || "Sin nombre", exp: 0, cor: 0, objetos: [], objetosClave: [], para: null, companeros: [], pesadilla: true
+        } : deFuego ? {
             // Último golpe con arma de fuego: se anuncia la derrota, pero no se reparte nada
             nombre: pj.nombre || "Sin nombre", exp: 0, cor: 0, objetos: [], objetosClave: [], para: null, companeros: [], armaFuego: true
         } : {
@@ -1166,7 +1203,7 @@ function inicializarMuerte() {
     // NPC neutral (ficha, bajo Comportamiento en combate): lo marca el máster; lo quita un golpe de un personaje
     prepararFormularioSao(document.getElementById("fichaNeutralNpc"));
     document.getElementById("npcNeutral").addEventListener("change", (e) => {
-        if (!personaje.esNpc) return;
+        if (!personaje.esNpc || esPesadilla(personaje)) return; // una pesadilla no puede ser neutral
         personaje.neutral = e.target.checked;
         actualizarTodo();
     });
@@ -1545,7 +1582,7 @@ function actualizarInformacion() {
     const hud = document.querySelector(".sao-bar-wrapper");
     hud?.classList.toggle("muerto", personaje.vida <= 0);
     /* Franja de color: notoriedad (personajes) o neutral (NPC), como en las filas de la cabecera */
-    if (hud) ponerFranja(hud, { npc: personaje.esNpc, neutral: personaje.neutral, notoriedad: personaje.notoriedad });
+    if (hud) ponerFranja(hud, { npc: personaje.esNpc, neutral: personaje.neutral, notoriedad: personaje.notoriedad, pesadilla: esPesadilla(personaje) });
     document.getElementById("npcNeutral").checked = Boolean(personaje.neutral);
 
     /* Jefe: una barra por fase (como la ven los jugadores) en vez de la de vida */
@@ -1818,7 +1855,7 @@ function inicializarValoresNpc() {
         const valor = VALORES_NPC.find(v => v.clave === input.dataset.npc);
         if (!valor) return;
         // Si la vida o los PA estaban al máximo, siguen al máximo
-        const vidaLlena = personaje.vida >= personaje.vidaMax;
+        const vidaLlena = personaje.vida >= personaje.vidaMax && !esPesadilla(personaje); // la pesadilla no se cura
         const paLleno = personaje.puntosArte >= personaje.puntosArteMax;
         const numero = Math.trunc(Number(input.value));
         personaje.npc[valor.clave] = Number.isFinite(numero) ? Math.max(valor.min, numero) : personaje.npc[valor.clave];
@@ -5727,8 +5764,8 @@ function actualizarArtes() {
     const equipadas = conIndice.filter(({ arte }) => arte.equipada && !arte.onirica);
     const sinEquipar = conIndice.filter(({ arte }) => !arte.equipada && !arte.onirica);
 
-    // Habilidades oníricas: solo con Underworld (si no, se guardan pero no se ven)
-    const conUnderworld = Boolean(personaje.esUnderworld);
+    // Habilidades oníricas: solo con Underworld o en una pesadilla (si no, se guardan pero no se ven)
+    const conUnderworld = puedeTenerOniricas(personaje);
     document.getElementById("bloqueOniricas").hidden = !conUnderworld;
     document.getElementById("btnCrearOnirica").hidden = !conUnderworld;
     pintarLista(listaOniricasEl, !conUnderworld ? "" : oniricas.length
@@ -5828,7 +5865,7 @@ function actualizarArtesPasivas() {
     // Las oníricas solo salen con Underworld
     const pasivas = personaje.artes
         .map((arte, indice) => ({ arte, indice }))
-        .filter(({ arte }) => arte.equipada && arte.tipo === "pasiva" && (!arte.onirica || personaje.esUnderworld));
+        .filter(({ arte }) => arte.equipada && arte.tipo === "pasiva" && (!arte.onirica || puedeTenerOniricas(personaje)));
     // Las pasivas del equipo puesto también (siempre activas mientras se lleva)
     const deEquipo = pasivasDeEquipo(personaje);
     const visible = pasivas.length + deEquipo.length > 0;
@@ -7067,7 +7104,7 @@ function htmlFichaResumen(resumen, { perfil = false } = {}) {
     const tarjeta = `<div class="fila-objeto vista-previa-sao tarjeta-perfil">
             <span class="objeto-icono">${iconoSao("personaje")}</span>
             <div class="objeto-info">
-                <div class="objeto-cabecera"><span class="objeto-nombre">${e(resumen.nombre || "Sin nombre")}</span><span class="objeto-cantidad">LV ${resumen.nivel}</span></div>
+                <div class="objeto-cabecera"><span class="objeto-nombre">${e(resumen.nombre || "Sin nombre")}</span>${resumen.nivel === null ? "" : `<span class="objeto-cantidad">LV ${resumen.nivel}</span>`}</div>
                 <div class="objeto-detalle">${[e(PROFESIONES[resumen.profesion] ?? "Sin profesión"), ...marcas].join(" · ")}</div>
             </div>
         </div>`;

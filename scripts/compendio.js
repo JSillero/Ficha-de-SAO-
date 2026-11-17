@@ -71,7 +71,8 @@ function resumenDe(id) {
         // Jefe: número de fases y la suma de sus PV
         const fases = datos.esJefe && Array.isArray(datos.npc?.fases) ? datos.npc.fases : [];
         const vidaMax = fases.length ? fases.reduce((suma, fase) => suma + (Number(fase?.valores?.vidaMax) || 0), 0) : datos.npc?.vidaMax;
-        return { nivel: datos.nivel, vidaMax, exp: datos.npc?.expRecompensa ?? 0, jefe: fases.length > 0, fases: fases.length };
+        return { nivel: datos.nivel, vidaMax, exp: datos.npc?.expRecompensa ?? 0, jefe: fases.length > 0, fases: fases.length,
+            pesadilla: datos.esNpc === true && datos.esPesadilla === true };
     } catch {
         return {};
     }

@@ -11,6 +11,7 @@
 import PJ from "./PJ.js";
 import { ESTADOS_INFO, estaActivo } from "./estados.js";
 import { esJefe, barrasJefe } from "./jefes.js";
+import { esPesadilla } from "./npc.js";
 
 const CLAVE = "fichaSAO.master";
 const clavePj = (id) => `${CLAVE}.pj.${id}`;
@@ -78,6 +79,7 @@ export function resumenDe(pj) {
         // Franja de la cabecera: notoriedad (personajes) o neutral (NPC); alerta para la ventana de la sala
         notoriedad: Number(pj.notoriedad) || 0,
         neutral: Boolean(pj.esNpc && pj.neutral),
+        pesadilla: esPesadilla(pj), // sin franja de color
         alerta: Number(pj.alertaSistema) || 0,
         // Jefe: lo que ven los jugadores en la cabecera (va al registro de la sala, servicio.js). Sin PA
         jefe: esJefe(pj) ? {

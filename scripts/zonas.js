@@ -8,7 +8,7 @@
 
 import { TURNOS_PERMANENTE } from "./modificador.js";
 import { restablecerAcciones as restablecerPartes } from "./turno.js";
-import { equiposDePartes } from "./npc.js";
+import { equiposDePartes, esPesadilla } from "./npc.js";
 import { quitarComida } from "./objetos.js";
 import { ESTADOS_INFO, quitarEstado, esEstadoNegativo } from "./estados.js";
 import { reiniciarEnfriamientos } from "./reliquias.js";
@@ -123,7 +123,8 @@ export function descansoCorto(pj) {
     const resumen = [];
 
     // Primero la regeneración, que puede venir de estados, comida o modificadores que el descanso quita
-    const curacion = curacionRegeneracionDescanso(pj);
+    // (las pesadillas no se curan)
+    const curacion = esPesadilla(pj) ? 0 : curacionRegeneracionDescanso(pj);
     if (curacion > 0 && pj.vida < pj.vidaMax) {
         const antes = pj.vida;
         pj.vida = Math.min(pj.vidaMax, pj.vida + curacion); // vidaMax ya descuenta la oscuridad
@@ -180,7 +181,7 @@ export function descansoLargo(pj) {
         resumen.push(`PA: ${pj.puntosArte} → ${pj.puntosArteMax}`);
         pj.puntosArte = pj.puntosArteMax;
     }
-    if (pj.vida < pj.vidaMax) {
+    if (pj.vida < pj.vidaMax && !esPesadilla(pj)) {
         resumen.push(`PV: ${pj.vida} → ${pj.vidaMax}`);
         pj.vida = pj.vidaMax;
     }

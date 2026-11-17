@@ -1050,7 +1050,7 @@ function pintarGrupo() {
             <div class="fila-online${m.instancia === integranteSenalado ? " senalada" : ""}${enLinea.has(m.instancia) ? "" : " desconectado"}"
                 data-instancia="${escaparHtml(m.instancia)}">
                 <span class="nombre-online">${escaparHtml(m.nombre || "Sin nombre")}
-                    <span class="texto-online-secundario">LV ${m.nivel}${detalles ? ` · ${escaparHtml(detalles)}` : ""}</span>
+                    <span class="texto-online-secundario">${[m.pesadilla ? "" : `LV ${m.nivel}`, escaparHtml(detalles)].filter(Boolean).join(" · ")}</span>
                 </span>
                 ${propio ? "" : `<button type="button" class="btn-cabecera" data-accion="ficha">Ficha</button>`}
                 ${propio ? `<button type="button" class="btn-cabecera btn-online-peligro" data-accion="salir">Salir</button>`
@@ -1204,7 +1204,8 @@ export const htmlFilaHud = () => `
 /** Color de la franja de un personaje (cursores de SAO): NPC amarilla si es neutral y roja si no; personajes verde
  *  con 0 de notoriedad y naranja con 1 o más. Clases franja-* en hud.css */
 export const COLORES_FRANJA = ["verde", "naranja", "amarilla", "roja"];
-export function colorFranja({ npc = false, neutral = false, notoriedad = 0 } = {}) {
+export function colorFranja({ npc = false, neutral = false, notoriedad = 0, pesadilla = false } = {}) {
+    if (pesadilla) return null; // las pesadillas no tienen franja
     if (npc) return neutral ? "amarilla" : "roja";
     return (Number(notoriedad) || 0) > 0 ? "naranja" : "verde";
 }
@@ -1214,7 +1215,7 @@ export function ponerFranja(elemento, datos) {
     COLORES_FRANJA.forEach(c => elemento.classList.toggle(`franja-${c}`, c === color));
 }
 
-/** Rellena una fila de la cabecera: { nombre, vida, pa (fracciones), nivel, estados, notoriedad, npc, neutral } */
+/** Rellena una fila de la cabecera: { nombre, vida, pa (fracciones), nivel, estados, notoriedad, npc, neutral, pesadilla } */
 export function rellenarFilaHud(fila, m) {
     ponerFranja(fila, m);
     fila.querySelector(".hud-grupo-nombre").textContent = m.nombre || "Sin nombre";
@@ -1226,7 +1227,7 @@ export function rellenarFilaHud(fila, m) {
     // A 0 PV o menos la fila entera en rojo (muerte de personajes)
     fila.classList.toggle("muerto", Number(m.vida) <= 0);
     fila.querySelector(".sao-arte-fill").style.width = `${Math.round(m.pa * 100)}%`;
-    fila.querySelector(".hud-grupo-nivel").textContent = `LV ${m.nivel}`;
+    fila.querySelector(".hud-grupo-nivel").textContent = m.pesadilla ? "" : `LV ${m.nivel}`; // las pesadillas no tienen nivel
     pintarEstadosHud(fila.querySelector(".hud-grupo-estados"), m.estados);
 }
 

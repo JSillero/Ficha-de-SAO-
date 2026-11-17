@@ -6,7 +6,7 @@
 
 import { HABILIDADES_LISTA } from "./PJ.js";
 import { prepararAtaque, prepararAtaqueNpc } from "./ataque.js";
-import { equiposDePartes } from "./npc.js";
+import { equiposDePartes, esPesadilla } from "./npc.js";
 import { mediaDado } from "./dados.js";
 import { modoSigiloPorArmadura } from "./turno.js";
 
@@ -96,7 +96,7 @@ export function estadisticasProtagonista(pj) {
         .filter(item => item?.tipo === "escudo" || item?.tipo === "gran_escudo").map(item => Number(item.defensa) || 0);
     return {
         vidaMax: Math.trunc(Number(pj.vidaMax) || 0),
-        nivel: Math.trunc(Number(pj.nivel) || 0),
+        nivel: esPesadilla(pj) ? null : Math.trunc(Number(pj.nivel) || 0), // las pesadillas no tienen nivel
         defensa: redondear(defensa),
         defensaEscudo: escudos.length ? redondear(defensa + Math.max(...escudos)) : null,
         armadura: redondear(pj.armadura),
@@ -139,7 +139,7 @@ export function crearResumenFicha(pj, textos) {
     const resumen = cargarResumenFicha({
         version: VERSION_RESUMEN,
         nombre: pj.nombre,
-        nivel: pj.nivel,
+        nivel: esPesadilla(pj) ? null : pj.nivel, // las pesadillas no tienen nivel
         profesion: pj.tipoProfesion,
         // Solo los NPC (campo de texto bajo Acciones)
         comportamiento: pj.esNpc ? pj.comportamientoCombate : "",
@@ -149,7 +149,7 @@ export function crearResumenFicha(pj, textos) {
         combate: VALORES_COMBATE.filter(({ soloUnderworld }) => !soloUnderworld || pj.esUnderworld)
             .map(({ clave }) => ({ clave, valor: pj[clave] })),
         // Las habilidades oníricas solo con Underworld
-        artes: (pj.artes || []).filter(arte => arte.equipada && (!arte.onirica || pj.esUnderworld)).map(arte => ({
+        artes: (pj.artes || []).filter(arte => arte.equipada && (!arte.onirica || pj.esUnderworld || esPesadilla(pj))).map(arte => ({
             nombre: arte.nombre, tipo: arte.tipo, descripcion: arte.descripcion,
             detalle: (arte.onirica ? "Onírica · " : "") + textos.detalleArte(arte)
         })),
@@ -174,7 +174,7 @@ export function cargarResumenFicha(datos) {
     return {
         version: VERSION_RESUMEN,
         nombre: texto(datos.nombre),
-        nivel: numero(datos.nivel),
+        nivel: datos.nivel === null ? null : numero(datos.nivel),
         profesion: PROFESIONES[datos.profesion] ? datos.profesion : "",
         comportamiento: texto(datos.comportamiento, MAX_COMPORTAMIENTO),
         habilidades: lista(datos.habilidades, h => ({ clave: texto(h?.clave), base: numero(h?.base), efectivo: numero(h?.efectivo) }))

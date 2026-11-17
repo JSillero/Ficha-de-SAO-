@@ -12,7 +12,7 @@ import { esZonaSegura, MOTIVOS_ZONA } from "./zonas.js";
 import { gastarEstricto } from "./objetos.js";
 import { calcularDannoAtaque, dannoElementalArma } from "./ataque.js";
 import { cargarEstadosAlAcertar, anadirEstadosAlGolpe } from "./estadosAlAcertar.js";
-import { partesExtra, partesDeEquipoNpc, PARTE_DE_MANO } from "./npc.js";
+import { partesExtra, partesDeEquipoNpc, PARTE_DE_MANO, esPesadilla } from "./npc.js";
 
 /* Ranura del arma con la que se usa un arte: una mano, o en un NPC "parte:<id>" (sus partes que no son brazos) */
 const itemDeRanura = (pj, ranura) => (ranura?.startsWith("parte:")
@@ -237,8 +237,14 @@ export function conseguirArte(pj, arte) {
    Artes activas o pasivas con onirica: true. No gastan desbloqueos ni memoria, no tienen requisitos
    ni catálogo, están siempre equipadas (no se desequipan) y solo cuentan con la casilla Underworld. */
 
+/* Pueden llevar habilidades oníricas los personajes del Underworld y las pesadillas */
+export const puedeTenerOniricas = (pj) => Boolean(pj?.esUnderworld || esPesadilla(pj));
+
+/* PA que cuesta un arte o efecto activo (las pesadillas no tienen PA: no les cuesta nada) */
+export const costePAPara = (pj, arte) => (esPesadilla(pj) ? 0 : Number(arte?.costePA) || 0);
+
 export function motivoNoCrearOnirica(pj) {
-    return pj.esUnderworld ? null : "Solo los personajes del Underworld tienen habilidades oníricas.";
+    return puedeTenerOniricas(pj) ? null : "Solo los personajes del Underworld tienen habilidades oníricas.";
 }
 
 /** Añade una habilidad onírica (ya equipada) sin gastar desbloqueos */
@@ -331,7 +337,7 @@ export function motivoRequisitos(pj, arte) {
 
 /** Por qué un arte equipada está inactiva, o null. Las oníricas solo dependen de la casilla Underworld */
 export function motivoInactiva(pj, arte) {
-    if (arte.onirica) return pj.esUnderworld ? null : "Solo los personajes del Underworld pueden usar habilidades oníricas";
+    if (arte.onirica) return puedeTenerOniricas(pj) ? null : "Solo los personajes del Underworld pueden usar habilidades oníricas";
     return motivoRequisitos(pj, arte);
 }
 
@@ -464,7 +470,8 @@ export function motivoNoUsarArte(pj, arte) {
     if (arte.uso.tipo === "arma" && !manoDeArte(pj, arte)) {
         return `Necesitas ${unirConO(arte.uso.armas.map(etiquetaArma))}${arte.uso.ambasManos ? " en las dos manos" : " equipado"}.`;
     }
-    if ((Number(pj.puntosArte) || 0) < arte.costePA) return `Faltan PA: cuesta ${arte.costePA} y tienes ${pj.puntosArte}.`;
+    const coste = costePAPara(pj, arte);
+    if ((Number(pj.puntosArte) || 0) < coste) return `Faltan PA: cuesta ${coste} y tienes ${pj.puntosArte}.`;
     return null;
 }
 
@@ -557,10 +564,11 @@ export function usarArte(pj, arte, gastar = gastarEstricto(pj)) {
         if (item?.pocionAplicada) item.pocionAplicada = null;
     });
 
-    pj.puntosArte = Math.max(0, (Number(pj.puntosArte) || 0) - arte.costePA);
+    const coste = costePAPara(pj, arte);
+    pj.puntosArte = Math.max(0, (Number(pj.puntosArte) || 0) - coste);
     const resumen = [arte.descripcion.trim() || "(El arte no tiene descripción)"];
     // Se comparte en la sala: de un NPC (o jefe) no se dice cuántos PA le quedan
-    if (arte.costePA > 0) resumen.push(pj.esNpc ? `−${arte.costePA} PA` : `−${arte.costePA} PA (quedan ${pj.puntosArte})`);
+    if (coste > 0) resumen.push(pj.esNpc ? `−${coste} PA` : `−${coste} PA (quedan ${pj.puntosArte})`);
     if (arte.combo) resumen.push("Combo: no gasta acción");
     return { ok: true, resumen, danno, arte };
 }

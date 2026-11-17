@@ -5,10 +5,14 @@
 import PJ, { ESTADOS_LISTA, HABILIDADES_UNDERWORLD, HABILIDADES_LISTA } from "./PJ.js";
 import Equipamiento, { esArmaFuego } from "./equipamiento.js";
 import Modificador, { TURNOS_PERMANENTE } from "./modificador.js";
-import { cargarObjeto, crearInventarioVacio, capacidadInventario } from "./objetos.js";
+import { cargarObjeto, crearInventarioVacio, capacidadInventario, aplicarEfectoEnObjetivo } from "./objetos.js";
 import { cargarEfectos } from "./efectosEquipo.js";
 import { cargarArte, artesEquipadas, ranurasUsadas, motivoRequisitos, desbloqueosDisponibles } from "./artes.js";
 import { convertirEnJefe, copiarFase, aplicarFase, esJefe, faseActual, numeroFases } from "./jefes.js";
+import { limpiarPesadilla } from "./npc.js";
+import { aplicarDanno, activarEstado } from "./estados.js";
+import { iniciarTurno } from "./turno.js";
+import { descansoLargo } from "./zonas.js";
 
 /* Ids de la interfaz que no coinciden con el nombre del campo en PJ */
 const ALIAS_INTERFAZ = { arte: "puntosArte" };
@@ -377,11 +381,64 @@ function validarNpc(pj) {
         avisos.push("Los PV máximos del jefe no coinciden con los de su fase actual guardada.");
     }
     if (pj.vida > pj.vidaMax) avisos.push(`PV actuales (${pj.vida}) por encima del máximo (${pj.vidaMax}).`);
+    if (pj.esPesadilla) {
+        if (pj.esJefe) avisos.push("Pesadilla marcada como jefe (las pesadillas no pueden ser jefes).");
+        if (pj.puntosArteMax > 0 || pj.puntosArte > 0) avisos.push("Pesadilla con PA (no deberían tener).");
+        const r = pj.npc.recompensa;
+        if (pj.npc.expRecompensa > 0 || r.cor > 0 || r.objetos.length || r.objetosClave.length) avisos.push("Pesadilla con recompensa (no dan nada).");
+        if (pj.neutral) avisos.push("Pesadilla neutral (no pueden serlo).");
+    }
     if (pj.puntosArte > pj.puntosArteMax) avisos.push(`PA actuales (${pj.puntosArte}) por encima del máximo (${pj.puntosArteMax}).`);
     if (pj.esUnderworld || pj.protagonista) avisos.push("Un NPC no puede ser Underworld ni protagonista.");
     const huecosLibres = pj.inventario.filter(hueco => !hueco).length;
     if (huecosLibres !== 1) avisos.push(`El inventario del NPC tiene ${huecosLibres} huecos libres (debería tener 1).`);
     return avisos;
+}
+
+/* Pesadilla de prueba: un NPC de prueba convertido (sin PA ni recompensa) */
+export function crearPesadillaPrueba() {
+    const pj = crearNpcPrueba();
+    pj.nombre = "pesadilla de prueba";
+    pj.esPesadilla = true;
+    convertirEnJefe(pj); // no debe hacer nada
+    limpiarPesadilla(pj);
+    pj.calcularCaracteristicas();
+    pj.vida = pj.vidaMax;
+    return pj;
+}
+
+/* Reglas de la pesadilla sobre una copia: daño elemental directo, luz y oscuridad sin efecto, efectos del golpe a
+   mano, sin curación y estados puestos a mano que sí actúan al empezar turno */
+export function comprobarPesadilla() {
+    const fallos = [];
+    const nueva = () => {
+        const pj = new PJ();
+        pj.cargarJSON(JSON.parse(crearPesadillaPrueba().toJSONString()));
+        pj.zona = "noSegura";
+        pj.vida = 40;
+        return pj;
+    };
+    let pj = nueva();
+    if (esJefe(pj) || pj.puntosArteMax !== 0) fallos.push("Es jefe o tiene PA.");
+    // Sin resistencias ni debilidades, para que las cuentas sean exactas
+    pj.equipoArmadura.resistencias = {};
+    pj.equipoArmadura.debilidades = {};
+    aplicarDanno(pj, 5, "fuego");
+    if (pj.vida !== 35 || (Number(pj.estados.quemadura?.valor) || 0) > 0) fallos.push(`Fuego 5: PV ${pj.vida} (esperado 35) y sin quemadura.`);
+    const vida = pj.vida;
+    aplicarDanno(pj, 5, "luz");
+    aplicarDanno(pj, 5, "oscuridad");
+    if (pj.vida !== vida || (Number(pj.estados.oscuridad?.valor) || 0) > 0) fallos.push("La luz o la oscuridad le afectan.");
+    aplicarEfectoEnObjetivo(pj, { pv: 10, estados: [{ clave: "veneno", valor: 3, turnos: 3, probabilidad: 100 }] });
+    if (pj.vida !== vida || (Number(pj.estados.veneno?.valor) || 0) > 0) fallos.push("El efecto del golpe se aplica solo.");
+    activarEstado(pj, "regeneracion", 5, 3);
+    activarEstado(pj, "veneno", 2, 3);
+    iniciarTurno(pj);
+    if (pj.vida !== vida - 2) fallos.push(`Inicio de turno con veneno 2 y regeneración 5: PV ${pj.vida} (esperado ${vida - 2}).`);
+    pj = nueva();
+    descansoLargo(pj);
+    if (pj.vida !== 40) fallos.push("El descanso largo la cura.");
+    return fallos.map(f => `Pesadilla: ${f}`);
 }
 
 /**
@@ -392,10 +449,12 @@ export function ejecutarDebug(personaje, documento = document) {
     const prueba = verificarIdaVuelta(crearPersonajePrueba());
     const npc = verificarIdaVuelta(crearNpcPrueba());
     const jefe = verificarIdaVuelta(crearJefePrueba());
+    const pesadilla = verificarIdaVuelta(crearPesadillaPrueba());
     return {
         idaVueltaActual: actual.diferencias,
-        idaVueltaPrueba: [...prueba.diferencias, ...npc.diferencias.map(d => `NPC: ${d}`), ...jefe.diferencias.map(d => `Jefe: ${d}`)],
-        camposSinGuardar: [...new Set([...actual.sinGuardar, ...prueba.sinGuardar, ...npc.sinGuardar, ...jefe.sinGuardar])],
+        idaVueltaPrueba: [...prueba.diferencias, ...npc.diferencias.map(d => `NPC: ${d}`), ...jefe.diferencias.map(d => `Jefe: ${d}`),
+            ...pesadilla.diferencias.map(d => `Pesadilla: ${d}`), ...comprobarPesadilla()],
+        camposSinGuardar: [...new Set([...actual.sinGuardar, ...prueba.sinGuardar, ...npc.sinGuardar, ...jefe.sinGuardar, ...pesadilla.sinGuardar])],
         interfaz: verificarInterfaz(personaje, documento),
         avisos: validarFicha(personaje)
     };

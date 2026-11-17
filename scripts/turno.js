@@ -6,7 +6,7 @@ import { TURNOS_PERMANENTE } from "./modificador.js";
 import { TIPOS_DOS_MANOS } from "./equipamiento.js";
 import { esZonaSegura } from "./zonas.js";
 import { avanzarEnfriamientos } from "./reliquias.js";
-import { equiposDePartes, aciertoMaximo } from "./npc.js";
+import { equiposDePartes, aciertoMaximo, esPesadilla } from "./npc.js";
 
 /* Máximo de acciones por turno: se pueden usar 3 de los 4 tipos */
 export const ACCIONES_MAX = 3;
@@ -295,7 +295,8 @@ export function iniciarTurno(pj) {
     }
     // Regeneración: la del estado más la que dan equipo y modificadores (atributo "regeneracion")
     const regeneracion = valor("regeneracion") + (Number(pj.getModificador("regeneracion")) || 0);
-    if (regeneracion > 0) {
+    // Las pesadillas no se curan
+    if (regeneracion > 0 && !esPesadilla(pj)) {
         // vidaMax ya descuenta la oscuridad
         const antes = pj.vida;
         pj.vida = Math.min(pj.vidaMax, pj.vida + regeneracion);

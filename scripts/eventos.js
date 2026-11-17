@@ -239,8 +239,9 @@ function pintarEvento(evento, propio, idAutorPropio = null) {
         hacerGolpesAplicables(popup, evento, autor, idAutorPropio);
     }
     mostrarPopup(popup, { titulo, tipo: tipoPopup, evento });
-    // Los propios ya han sonado al hacer la acción; los de los demás suenan aquí
-    if (!propio) {
+    // Los propios ya han sonado al hacer la acción; los de los demás suenan aquí (salvo los que piden silencio,
+    // p. ej. la derrota de una pesadilla)
+    if (!propio && evento.datos?.silencio !== true) {
         const sonido = evento.datos?.sonido;
         reproducir(SONIDOS_EVENTO.includes(sonido) ? sonido : SONIDO_EVENTO_AJENO);
     }

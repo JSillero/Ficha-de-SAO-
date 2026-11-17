@@ -5,7 +5,7 @@
 import { TURNOS_PERMANENTE } from "./modificador.js";
 import { efectoHielo, salirDeSigilo, dannoHemorragia } from "./turno.js";
 import { ELEMENTOS } from "./equipamiento.js";
-import { aciertoMaximo, defensaParalisisNpc } from "./npc.js";
+import { aciertoMaximo, defensaParalisisNpc, esPesadilla } from "./npc.js";
 
 /* Multiplicador con coma decimal: 1.5 → "1,5" */
 const conComa = (numero) => String(numero).replace(".", ",");
@@ -121,6 +121,10 @@ export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
     const resumen = [];
     // Daño directo (no de estados) rompe el sigilo. La luz cura, así que no cuenta.
     let rompeSigilo = false;
+    const pesadilla = esPesadilla(pj);
+
+    // Pesadilla: la luz y la oscuridad no le afectan
+    if (pesadilla && (tipo === "luz" || tipo === "oscuridad")) return [`${TIPOS_DANNO[tipo].etiqueta}: sin efecto en una pesadilla`];
 
     // Armadura elemental: resta su valor a cada impacto del elemento (en la luz, también a lo que cura)
     if (ELEMENTOS.includes(tipo) && !opciones.ignorarArmadura) {
@@ -145,6 +149,19 @@ export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
             cantidad = multiplicado;
             dannoDebilidad = multiplicado;
         }
+    }
+
+    // Pesadilla: el daño elemental (ya con resistencia y debilidad) solo quita PV, sin estado ni otro efecto
+    if (pesadilla && ELEMENTOS.includes(tipo)) {
+        const antes = pj.vida;
+        pj.vida -= cantidad;
+        resumen.push(`${cantidad} de daño directo (PV: ${antes} → ${pj.vida})`);
+        if (pj.enSigilo) {
+            salirDeSigilo(pj);
+            resumen.push("Pierdes el sigilo");
+        }
+        pj.calcularCaracteristicas();
+        return resumen;
     }
 
     // En los NPC la luz y la oscuridad van al revés: la luz resta PV máximos y la oscuridad cura y deslumbra

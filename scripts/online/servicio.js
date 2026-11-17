@@ -1049,7 +1049,7 @@ const estadosGrupo = new Map();
 /* Entero ≥ 0 acotado (notoriedad, alerta del sistema): viene de otro jugador */
 const enteroPositivo = (valor) => Math.max(0, Math.min(9999, Math.trunc(Number(valor) || 0)));
 
-function normalizarEstadoGrupo({ vida, pa, nivel, estados, iniciativa, turno, notoriedad } = {}) {
+function normalizarEstadoGrupo({ vida, pa, nivel, estados, iniciativa, turno, notoriedad, pesadilla } = {}) {
     const fraccion = (v) => Math.round(Math.min(1, Math.max(0, Number(v) || 0)) * 100) / 100;
     return {
         // Notoriedad: la franja de color que ven los compañeros (la alerta del sistema no va al grupo)
@@ -1059,7 +1059,10 @@ function normalizarEstadoGrupo({ vida, pa, nivel, estados, iniciativa, turno, no
         nivel: Math.max(0, Math.trunc(Number(nivel) || 0)),
         estados: (Array.isArray(estados) ? estados : []).map(String).slice(0, 20),
         iniciativa: Math.round((Number(iniciativa) || 0) * 10) / 10,
-        turno: Math.max(0, Math.trunc(Number(turno) || 0))
+        turno: Math.max(0, Math.trunc(Number(turno) || 0)),
+        // Pesadilla del máster en un grupo: su fila no lleva franja (solo se envía si lo es; al final, por el
+        // orden de la comparación de sincronizarEntrada)
+        ...(pesadilla === true ? { pesadilla: true } : {})
     };
 }
 
@@ -1080,6 +1083,7 @@ function grupoPublico(id, datos, instancia) {
         iniciativa: Number(m?.iniciativa) || 0,
         turno: Number(m?.turno) || 0,
         notoriedad: enteroPositivo(m?.notoriedad),
+        pesadilla: m?.pesadilla === true,
         orden: Number(m?.orden) || 0,
         lider: inst === datos.lider
     })).sort((x, y) => x.orden - y.orden);
@@ -1271,7 +1275,8 @@ async function sincronizarEntrada(instancia) {
     if (!propio) return;
     const deseado = entradaDe(instancia);
     const actual = { jugador: propio.jugador, nombre: propio.nombre, notoriedad: propio.notoriedad, vida: propio.vida, pa: propio.pa,
-        nivel: propio.nivel, estados: propio.estados, iniciativa: propio.iniciativa, turno: propio.turno };
+        nivel: propio.nivel, estados: propio.estados, iniciativa: propio.iniciativa, turno: propio.turno,
+        ...(propio.pesadilla ? { pesadilla: true } : {}) };
     if (JSON.stringify(actual) === JSON.stringify(deseado)) return;
     const { db, f } = sdk;
     const cambios = { [`miembros.${instancia}`]: { ...deseado, orden: propio.orden } };

@@ -9,6 +9,7 @@ import { MANOS, gastarVarias, gastarTodas, partesDeMano, parteDeMano, manoVacia,
 import { esZonaSegura } from "./zonas.js";
 import { cargarEfectos } from "./efectosEquipo.js";
 import { cargarEstadosAlAcertar, cargarEstadoAlAcertar, MAX_ESTADOS_AL_ACERTAR } from "./estadosAlAcertar.js";
+import { esPesadilla } from "./npc.js";
 
 /* Huecos base del inventario; el modificador `inventario` los amplía (o reduce) */
 export const TAMANO_INVENTARIO = 5;
@@ -460,7 +461,8 @@ export function motivoNoBeber(pj, pocion) {
 function aplicarEfectoPocion(pj, pocion) {
     const resumen = [];
     const pv = Number(pocion.pv) || 0;
-    if (pv !== 0) {
+    if (pv > 0 && esPesadilla(pj)) resumen.push("Una pesadilla no se cura");
+    else if (pv !== 0) {
         const antes = pj.vida;
         // Una poción que hace daño puede dejar los PV en negativo
         pj.vida = pv > 0 ? Math.max(pj.vida, Math.min(pj.vidaMax, pj.vida + pv)) : pj.vida + pv;
@@ -487,6 +489,8 @@ function aplicarEfectoPocion(pj, pocion) {
  */
 export function aplicarEfectoEnObjetivo(pj, efecto) {
     if (!efecto || typeof efecto !== "object") return [];
+    // Pesadilla: los efectos de los golpes no se aplican solos (el máster los pone a mano)
+    if (esPesadilla(pj)) return ["Sin efecto en una pesadilla (se aplica a mano)"];
     const resumen = [];
     const pv = Math.trunc(Number(efecto.pv) || 0);
     if (pv !== 0) {

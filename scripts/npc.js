@@ -200,6 +200,27 @@ export function aciertoMaximo(pj) {
     return mejor + (Number(pj.getModificador("acierto")) || 0) - pj.getModificadorEstados("acierto");
 }
 
+/**
+ * Pesadilla: NPC (esNpc + esPesadilla) que no puede ser jefe, no da EXP ni recompensa, no tiene PA, no se cura
+ * (solo el máster editando su vida en el perfil), puede llevar habilidades oníricas, recibe el daño elemental
+ * como daño directo (sin estado; la luz y la oscuridad no le afectan), los efectos de los golpes no se le aplican
+ * solos, no alerta al sistema, no tiene franja de color ni puede ser neutral.
+ */
+export const esPesadilla = (pj) => Boolean(pj?.esNpc && pj.esPesadilla);
+
+/** Quita lo que una pesadilla no puede tener: recompensa, EXP que da, PA y neutralidad */
+export function limpiarPesadilla(pj) {
+    if (!esPesadilla(pj)) return;
+    pj.esJefe = false;
+    pj.neutral = false;
+    pj.npc.expRecompensa = 0;
+    pj.npc.recompensa = { cor: 0, objetos: [], objetosClave: [] };
+    pj.npc.puntosArteMax = 0;
+    pj.npc.fases = [];
+    pj.npc.faseActual = 0;
+    pj.puntosArte = 0;
+}
+
 /** ¿Tiene exactamente las cuatro partes de un personaje? (entonces se ve el muñeco de acciones) */
 export function esCuerpoPorDefecto(pj) {
     const partes = pj.npc?.partes ?? [];

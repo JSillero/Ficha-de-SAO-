@@ -60,7 +60,7 @@
                                 <span class="sao-valor"><input type="number" id="vida" class="sao-input-vida" value="18000"> / <span
                                     id="vidaMax">18000</span></span>
                             </div>
-                            <div class="sao-sub-grupo">
+                            <div class="sao-sub-grupo no-pesadilla">
                                 <span class="sao-lvl-label">LV.</span> <input type="number" id="nivel" class="sao-input-nivel" value="96">
                             </div>
                         </div>
@@ -283,7 +283,7 @@
                             <div>
                                 <h3>Comportamiento en combate</h3>
                                 <!-- Neutral (personaje.neutral): franja amarilla hasta que un jugador lo golpea; después, roja -->
-                                <div class="form-sao ficha-neutral-npc" id="fichaNeutralNpc">
+                                <div class="form-sao ficha-neutral-npc no-pesadilla" id="fichaNeutralNpc">
                                     <div class="ranura" title="Neutral hasta que un jugador lo ataca">
                                         <span class="ranura-icono" data-icono="personaje"></span>
                                         <label class="ranura-etiqueta" for="npcNeutral">Neutral</label>
@@ -1034,6 +1034,7 @@
                         <button type="button" class="btn-cabecera" id="btnExportarCompendio">Exportar</button>
                         <button type="button" class="btn-cabecera" id="btnCrearNpcCompendio">+ Crear NPC</button>
                         <button type="button" class="btn-cabecera" id="btnCrearJefeCompendio">+ Crear jefe</button>
+                        <button type="button" class="btn-cabecera" id="btnCrearPesadillaCompendio">+ Crear pesadilla</button>
                     </div>
                     <input type="file" id="fileCompendio" accept=".json" hidden>
                 </div>
@@ -1045,6 +1046,7 @@
                             <option value="">Todos</option>
                             <option value="npc">NPC</option>
                             <option value="jefe">Jefes</option>
+                            <option value="pesadilla">Pesadillas</option>
                         </select></label>
                         <label class="buscar-compendio">Buscar <input type="search" id="buscarCompendio" maxlength="60"></label>
                     </div>
@@ -1171,6 +1173,7 @@
                             <button type="button" class="btn-eleccion" data-tipo="personaje" aria-pressed="true">Personaje</button>
                             <button type="button" class="btn-eleccion" data-tipo="npc" aria-pressed="false">NPC</button>
                             <button type="button" class="btn-eleccion" data-tipo="jefe" aria-pressed="false">Jefe</button>
+                            <button type="button" class="btn-eleccion" data-tipo="pesadilla" aria-pressed="false">Pesadilla</button>
                         </div>
                         <!-- Jefe (.modo-jefe): pestañas de las fases, siempre arriba, y las opciones de la fase (pintarFasesPerfil
                              en interfazMaster.js). Lo que se ve debajo (valores, acciones, equipo, artes...) es de la fase elegida -->
@@ -1186,7 +1189,7 @@
                             <input type="text" id="perfilMasterNombreReal" maxlength="60">
                         </div>
                         <div class="ranuras-dobles">
-                            <div class="ranura">
+                            <div class="ranura no-pesadilla">
                                 <span class="ranura-icono" data-icono="artes"></span>
                                 <label class="ranura-etiqueta" for="perfilMasterNivel">Nivel</label>
                                 <input type="number" id="perfilMasterNivel" min="1" max="150">
@@ -1211,7 +1214,7 @@
                                 <label class="ranura-etiqueta" for="perfilMasterTrueque">Permitir trueque</label>
                                 <input type="checkbox" id="perfilMasterTrueque">
                             </div>
-                            <div class="ranura solo-npc" title="Neutral hasta que un jugador lo ataca (franja amarilla; si no, roja)">
+                            <div class="ranura solo-npc no-pesadilla" title="Neutral hasta que un jugador lo ataca (franja amarilla; si no, roja)">
                                 <span class="ranura-icono" data-icono="personaje"></span>
                                 <label class="ranura-etiqueta" for="perfilMasterNeutral">Neutral</label>
                                 <input type="checkbox" id="perfilMasterNeutral">
@@ -1230,7 +1233,7 @@
                                 <label class="ranura-etiqueta" for="perfilMasterVida">PV<span id="perfilMasterVidaFase"></span> <span class="ranura-maximo">/ <span id="perfilMasterVidaMax"></span></span></label>
                                 <input type="number" id="perfilMasterVida">
                             </div>
-                            <div class="ranura">
+                            <div class="ranura no-pesadilla">
                                 <span class="ranura-icono" data-icono="artes"></span>
                                 <label class="ranura-etiqueta" for="perfilMasterPA">PA <span class="ranura-maximo">/ <span id="perfilMasterPAMax"></span></span></label>
                                 <input type="number" id="perfilMasterPA" min="0">
@@ -1342,8 +1345,8 @@
                                 </span>
                             </div>
                         </details>
-                        <!-- NPC: recompensa al morir (EXP, Cor, objetos y objetos clave), al final del perfil -->
-                        <details class="ranura-desplegable solo-npc">
+                        <!-- NPC: recompensa al morir (EXP, Cor, objetos y objetos clave), al final del perfil. Las pesadillas no dan -->
+                        <details class="ranura-desplegable solo-npc no-pesadilla">
                             <summary><span class="ranura-icono" data-icono="cor"></span><span class="ranura-etiqueta">Recompensa</span><span class="ranura-resumen" id="perfilMasterContadorRecompensa"></span></summary>
                             <div class="ranura-cuerpo">
                                 <div class="ranuras-dobles">

@@ -13,7 +13,7 @@ import {
     salirPorMuerte
 } from "./interfazOnline.js";
 import { PROFESIONES, VALORES_COMBATE, estadisticasProtagonista } from "./resumenFicha.js";
-import { ETIQUETAS_CARACTERISTICA, ETIQUETAS_HABILIDAD, ranurasUsadas, ranurasLibres, motivoInactiva } from "./artes.js";
+import { ETIQUETAS_CARACTERISTICA, ETIQUETAS_HABILIDAD, ranurasUsadas, ranurasLibres, motivoInactiva, puedeTenerOniricas } from "./artes.js";
 import { iconoSao } from "./iconos.js";
 import { escaparHtml } from "./html.js";
 import { reproducir } from "./sonidos.js";
@@ -26,7 +26,7 @@ import {
 import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA } from "./equipamiento.js";
 import {
     VALORES_NPC, MAX_TIRADAS_NPC, crearNpc, cargarPiso, PARTES_MANO, MAX_PARTES_NPC, parteNpc, tieneParte,
-    anadirParte, anadirBrazo, quitarParte, motivoNoQuitarParte, parteQueOcupa
+    anadirParte, anadirBrazo, quitarParte, motivoNoQuitarParte, parteQueOcupa, esPesadilla, limpiarPesadilla
 } from "./npc.js";
 import * as compendio from "./compendio.js";
 import {
@@ -585,7 +585,7 @@ function pintarPersonajesMaster() {
             <span class="objeto-icono">${iconoSao("personaje")}</span>
             <div class="objeto-info">
                 <div class="objeto-cabecera"><span class="objeto-nombre">${escaparHtml(r.nombre || "Sin nombre")}</span></div>
-                <div class="objeto-detalle">LV ${escaparHtml(r.nivel ?? "?")} · Iniciativa ${escaparHtml(Math.round((r.iniciativa ?? 0) * 10) / 10)}</div>
+                <div class="objeto-detalle">${r.pesadilla ? "" : `LV ${escaparHtml(r.nivel ?? "?")} · `}Iniciativa ${escaparHtml(Math.round((r.iniciativa ?? 0) * 10) / 10)}</div>
             </div>
             <div class="objeto-acciones">
                 <button type="button" class="btn-objeto" data-accion="usar" title="Añadir a la sesión" aria-label="Añadir a la sesión">${iconoSao("anadirAmigo")}</button>
@@ -645,9 +645,9 @@ let faseEnJuego = 0; // jefe: fase en la que está en la ficha (las pestañas so
 /**
  * Abre el perfil: { crear: true } para un personaje nuevo (npc: true lo empieza como NPC; jefe: true, como jefe;
  * jefeDe: id de una plantilla de NPC, jefe nuevo con ese NPC como fase 1);
- * { plantilla: id } para editar una plantilla del compendio; si no, el de la ficha.
+ * pesadilla: true, como pesadilla; { plantilla: id } para editar una plantilla del compendio; si no, el de la ficha.
  */
-export function abrirPerfilMaster({ crear = false, npc = false, jefe = false, jefeDe = null, plantilla = null } = {}) {
+export function abrirPerfilMaster({ crear = false, npc = false, jefe = false, pesadilla = false, jefeDe = null, plantilla = null } = {}) {
     creando = crear;
     plantillaEditada = !crear && plantilla && compendio.existe(plantilla) ? plantilla : null;
     borrador = new PJ();
@@ -662,8 +662,8 @@ export function abrirPerfilMaster({ crear = false, npc = false, jefe = false, je
         convertirEnJefe(borrador);
     } else borrador.nombre = "";
     tipoFijo = false;
-    if (crear && (jefe || npc) && !borrador.esJefe) cambiarTipoBorrador(jefe ? "jefe" : "npc");
-    tipoFijo = crear && (npc || jefe || Boolean(jefeDe));
+    if (crear && (jefe || npc || pesadilla) && !borrador.esJefe) cambiarTipoBorrador(jefe ? "jefe" : pesadilla ? "pesadilla" : "npc");
+    tipoFijo = crear && (npc || jefe || pesadilla || Boolean(jefeDe));
     faseEnJuego = faseActual(borrador);
     // Personaje o NPC solo se elige al crear (y no desde el compendio, que siempre crea NPC)
     el("perfilMasterTipo").hidden = !crear || tipoFijo;
@@ -679,20 +679,27 @@ export function abrirPerfilMaster({ crear = false, npc = false, jefe = false, je
 
 function ponerTituloPerfil() {
     el("modalPerfilMasterLabel").textContent = creando
-        ? (borrador.esJefe ? "Nuevo jefe" : borrador.esNpc ? "Nuevo NPC" : "Nuevo personaje")
+        ? (borrador.esJefe ? "Nuevo jefe" : esPesadilla(borrador) ? "Nueva pesadilla" : borrador.esNpc ? "Nuevo NPC" : "Nuevo personaje")
         : plantillaEditada ? `Plantilla: ${borrador.nombre || "Sin nombre"}`
         : `Perfil de ${ctx.personaje().nombre || "Sin nombre"}`;
 }
 
-/* Tipo del borrador: personaje, npc o jefe */
-const tipoDe = (pj) => (pj.esJefe ? "jefe" : pj.esNpc ? "npc" : "personaje");
+/* Tipo del borrador: personaje, npc, jefe o pesadilla */
+const tipoDe = (pj) => (pj.esJefe ? "jefe" : esPesadilla(pj) ? "pesadilla" : pj.esNpc ? "npc" : "personaje");
 
-/* Al crear: personaje, NPC o jefe. El NPC empieza con sus valores por defecto y la vida y los PA llenos; entre
-   NPC y jefe se conserva lo que haya (el NPC pasa a ser la fase 1, o el jefe se queda con la fase que se ve) */
+/* Al crear: personaje, NPC, jefe o pesadilla. El NPC empieza con sus valores por defecto y la vida y los PA llenos;
+   entre NPC, jefe y pesadilla se conserva lo que haya (el NPC pasa a ser la fase 1, o el jefe se queda con la fase
+   que se ve; la pesadilla pierde la recompensa y los PA, limpiarPesadilla) */
 function cambiarTipoBorrador(tipo) {
     if (!creando || tipoFijo || tipoDe(borrador) === tipo) return;
+    borrador.esPesadilla = false;
     if (borrador.esNpc && tipo !== "personaje") {
         if (tipo === "jefe") convertirEnJefe(borrador);
+        else if (tipo === "pesadilla") {
+            borrador.esPesadilla = true;
+            limpiarPesadilla(borrador);
+            borrador.calcularCaracteristicas();
+        }
         else {
             borrador.esJefe = false;
             borrador.npc.fases = [];
@@ -710,6 +717,10 @@ function cambiarTipoBorrador(tipo) {
         borrador.setUnderworld(false);
         borrador.protagonista = false;
         borrador.modificadores = []; // el de ejemplo de un personaje nuevo es de Atletismo, que un NPC no tiene
+    }
+    if (tipo === "pesadilla") {
+        borrador.esPesadilla = true;
+        limpiarPesadilla(borrador);
     }
     borrador.calcularCaracteristicas();
     borrador.vida = borrador.vidaMax;
@@ -894,6 +905,7 @@ function pintarPerfil() {
     pj.calcularCaracteristicas();
     el("formPerfilMaster").classList.toggle("modo-npc", pj.esNpc);
     el("formPerfilMaster").classList.toggle("modo-jefe", esJefe(pj));
+    el("formPerfilMaster").classList.toggle("modo-pesadilla", esPesadilla(pj));
     el("perfilMasterTipo").querySelectorAll("[data-tipo]").forEach(boton => {
         boton.setAttribute("aria-pressed", String(boton.dataset.tipo === tipoDe(pj)));
     });
@@ -988,14 +1000,14 @@ function pintarArtesPerfil() {
     // Primero las oníricas, luego las equipadas y luego las demás; sin Underworld las oníricas no se ven
     const orden = (arte) => arte.onirica ? 0 : arte.equipada ? 1 : 2;
     const visibles = pj.artes.map((arte, i) => ({ arte, i }))
-        .filter(({ arte }) => !arte.onirica || pj.esUnderworld)
+        .filter(({ arte }) => !arte.onirica || puedeTenerOniricas(pj))
         .sort((a, b) => orden(a.arte) - orden(b.arte));
     el("perfilMasterArtes").innerHTML = visibles.length
         ? visibles.map(({ arte, i }) => filaArtePerfil(arte, i)).join("")
         : `<p class="lista-vacia">Sin artes.</p>`;
     // Los NPC no tienen memoria de artes
     el("perfilMasterMemoria").textContent = pj.esNpc ? "" : `(memoria ${ranurasUsadas(pj)} / ${pj.espaciosArte})`;
-    el("perfilMasterCrearOnirica").hidden = !pj.esUnderworld;
+    el("perfilMasterCrearOnirica").hidden = !puedeTenerOniricas(pj);
 }
 
 const opcionesArte = () => ({ pj: borrador, origen: el("modalPerfilMaster"), alTerminar: pintarArtesPerfil, libre: true });
@@ -1427,7 +1439,7 @@ function aplicarCampo(input) {
     } else if (input.id === "perfilMasterAlerta") {
         if (!pj.esNpc) pj.alertaSistema = Math.max(0, entero(input.value, pj.alertaSistema));
     } else if (input.id === "perfilMasterNeutral") {
-        if (pj.esNpc) pj.neutral = input.checked;
+        if (pj.esNpc && !esPesadilla(pj)) pj.neutral = input.checked; // una pesadilla no puede ser neutral
     } else if (input.id === "perfilMasterEgo") {
         pj.puntosEgo = Math.max(0, entero(input.value, pj.puntosEgo));
     } else if (input.dataset.parteNombre && pj.esNpc) {
@@ -1472,6 +1484,8 @@ function aceptarPerfil() {
         return;
     }
     reproducir("click");
+    // Pesadilla: sin recompensa, EXP que dar, PA ni neutralidad
+    limpiarPesadilla(pj);
     // Jefe: al crear (o en una plantilla) empieza en la fase 1 con la vida llena; al editar vuelve a la fase en juego
     if (esJefe(pj)) {
         if (creando || plantillaEditada) reiniciarJefe(pj);
@@ -1690,9 +1704,10 @@ function pintarCompendio() {
         .map(piso => `<option value="${piso ?? "sin"}">${etiquetaPiso(piso)}</option>`).join("");
     filtro.value = [...filtro.options].some(o => o.value === elegido) ? elegido : "";
     const buscado = normalizarBusqueda(el("buscarCompendio").value);
-    const tipo = el("filtroTipoCompendio").value; // "", "npc" o "jefe"
+    const tipo = el("filtroTipoCompendio").value; // "", "npc", "jefe" o "pesadilla"
+    const tipoDeFila = (r) => (r.jefe ? "jefe" : r.pesadilla ? "pesadilla" : "npc");
     const visibles = todas.filter(p => (!filtro.value || String(p.piso ?? "sin") === filtro.value)
-        && (!tipo || (tipo === "jefe") === Boolean(p.resumen.jefe))
+        && (!tipo || tipoDeFila(p.resumen) === tipo)
         && (!buscado || normalizarBusqueda(p.nombre).includes(buscado)));
     if (!visibles.length) {
         el("listaCompendio").innerHTML = `<p class="lista-vacia">${todas.length ? "Ningún NPC coincide." : "El compendio está vacío. Crea uno con \"+ Crear NPC\"."}</p>`;
@@ -1711,12 +1726,12 @@ function pintarCompendio() {
             <div class="fila-objeto" data-id="${escaparHtml(p.id)}">
                 <span class="objeto-icono">${iconoSao("personaje")}</span>
                 <div class="objeto-info">
-                    <div class="objeto-cabecera"><span class="objeto-nombre">${escaparHtml(p.nombre || "Sin nombre")}</span>${r.jefe ? `<span class="marca-jefe">Jefe</span>` : ""}</div>
-                    <div class="objeto-detalle">LV ${escaparHtml(r.nivel ?? "?")} · ${r.jefe ? `${escaparHtml(r.fases)} fase${r.fases === 1 ? "" : "s"} · ` : ""}${escaparHtml(r.vidaMax ?? "?")} PV · ${escaparHtml(r.exp ?? 0)} EXP</div>
+                    <div class="objeto-cabecera"><span class="objeto-nombre">${escaparHtml(p.nombre || "Sin nombre")}</span>${r.jefe ? `<span class="marca-jefe">Jefe</span>` : ""}${r.pesadilla ? `<span class="marca-jefe marca-pesadilla">Pesadilla</span>` : ""}</div>
+                    <div class="objeto-detalle">${r.pesadilla ? "" : `LV ${escaparHtml(r.nivel ?? "?")} · `}${r.jefe ? `${escaparHtml(r.fases)} fase${r.fases === 1 ? "" : "s"} · ` : ""}${escaparHtml(r.vidaMax ?? "?")} PV${r.pesadilla ? "" : ` · ${escaparHtml(r.exp ?? 0)} EXP`}</div>
                 </div>
                 <div class="objeto-acciones">
                     ${botonObjeto("usar", "anadirAmigo", "Añadir una copia a la sesión")}
-                    ${r.jefe ? "" : botonObjeto("crearJefe", "jefe", "Crear un jefe a partir de este NPC")}
+                    ${r.jefe || r.pesadilla ? "" : botonObjeto("crearJefe", "jefe", "Crear un jefe a partir de este NPC")}
                     ${botonObjeto("editar", "editar", "Editar plantilla")}
                     ${botonObjeto("duplicar", "duplicar", "Duplicar plantilla")}
                     ${botonObjeto("descartar", "descartar", "Borrar del compendio")}
@@ -1895,6 +1910,11 @@ function inicializarCompendio() {
         reproducir("click");
         volverAlCompendio = true;
         dejarCompendio(() => abrirPerfilMaster({ crear: true, jefe: true }));
+    });
+    el("btnCrearPesadillaCompendio").addEventListener("click", () => {
+        reproducir("click");
+        volverAlCompendio = true;
+        dejarCompendio(() => abrirPerfilMaster({ crear: true, pesadilla: true }));
     });
     el("buscarCompendio").addEventListener("input", pintarCompendio);
     el("btnCrearNpcCompendio").addEventListener("click", () => {

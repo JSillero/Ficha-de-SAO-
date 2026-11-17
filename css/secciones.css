@@ -3492,9 +3492,11 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
     width: 60px;
 }
 
-/* Personaje o NPC (solo al crear; cambiarTipoBorrador en interfazMaster.js): el elegido en azul, el otro en gris */
+/* Personaje, NPC, jefe o pesadilla (solo al crear; cambiarTipoBorrador en interfazMaster.js): el elegido en azul,
+   los demás en gris */
 .perfil-master-tipo {
     display: flex;
+    flex-wrap: wrap;
     justify-content: center;
     gap: 8px;
 }
@@ -3502,7 +3504,18 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
 .perfil-master-tipo[hidden],
 .perfil-master.modo-npc .solo-personaje,
 .perfil-master:not(.modo-npc) .solo-npc,
-.perfil-master:not(.modo-jefe) .solo-jefe {
+.perfil-master:not(.modo-jefe) .solo-jefe,
+.perfil-master.modo-pesadilla .no-pesadilla,
+.perfil-master.modo-pesadilla #perfilMasterValoresNpc label:has(input[data-npc="puntosArteMax"]) {
+    display: none;
+}
+
+/* Pesadilla en la ficha (body.modo-pesadilla, aplicarModoNpc en interfaz.js): sin PA (HUD y valores de combate)
+   ni casilla Neutral */
+body.modo-pesadilla .no-pesadilla,
+body.modo-pesadilla .sao-arte-controls,
+body.modo-pesadilla .sao-arte-track,
+body.modo-pesadilla .valor-npc[data-valor="puntosArteMax"] {
     display: none;
 }
 
@@ -3559,6 +3572,11 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
     border-radius: 999px;
     background: #c0392b;
     color: #FBFBFB;
+}
+
+/* Compendio de NPC: marca de pesadilla (pintarCompendio) */
+.marca-jefe.marca-pesadilla {
+    background: #4D4D4D;
 }
 
 .modal-sao .perfil-master-tipo .btn-eleccion[aria-pressed="false"] {
