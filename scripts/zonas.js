@@ -9,8 +9,9 @@
 import { TURNOS_PERMANENTE } from "./modificador.js";
 import { restablecerAcciones as restablecerPartes } from "./turno.js";
 import { equiposDePartes, esPesadilla } from "./npc.js";
-import { quitarComida } from "./objetos.js";
-import { ESTADOS_INFO, quitarEstado, esEstadoNegativo } from "./estados.js";
+import { quitarComida, vaciarCristalesElementales } from "./objetos.js";
+import { vaciarEnergiaManos } from "./elementosSacro.js";
+import { ESTADOS_INFO, quitarEstado, esEstadoNegativo, noSeCura } from "./estados.js";
 import { reiniciarEnfriamientos } from "./reliquias.js";
 
 /* Zonas: etiqueta e icono (iconos.js y imgs/<icono>.svg) */
@@ -123,8 +124,8 @@ export function descansoCorto(pj) {
     const resumen = [];
 
     // Primero la regeneración, que puede venir de estados, comida o modificadores que el descanso quita
-    // (las pesadillas no se curan)
-    const curacion = esPesadilla(pj) ? 0 : curacionRegeneracionDescanso(pj);
+    // (las pesadillas y quien tiene Anticuración no se curan)
+    const curacion = noSeCura(pj) ? 0 : curacionRegeneracionDescanso(pj);
     if (curacion > 0 && pj.vida < pj.vidaMax) {
         const antes = pj.vida;
         pj.vida = Math.min(pj.vidaMax, pj.vida + curacion); // vidaMax ya descuenta la oscuridad
@@ -151,6 +152,10 @@ export function descansoCorto(pj) {
     }
 
     resumen.push(...reiniciarEnfriamientos(pj));
+    // Cristales elementales: la Hela se pierde en cualquier descanso (13-sacro.md §11)
+    resumen.push(...vaciarCristalesElementales(pj, false));
+    // La energía de Sacro guardada en las manos se pierde en cualquier descanso (13-sacro.md §7)
+    resumen.push(...vaciarEnergiaManos(pj));
 
     // Las armas lanzadas que no se han recogido se pierden (la interfaz pide confirmación antes)
     for (const { equipo } of pj.armasLanzadas ?? []) {
@@ -169,6 +174,8 @@ export function descansoCorto(pj) {
  */
 export function descansoLargo(pj) {
     const resumen = descansoCorto(pj).filter(linea => linea !== "Sin cambios");
+    // Cristales elementales: en el largo se pierde todo menos la Metala
+    resumen.push(...vaciarCristalesElementales(pj, true));
 
     for (const [clave, estado] of Object.entries(pj.estados)) {
         if (!estadoActivo(estado) || !esEstadoNegativo(clave)) continue;

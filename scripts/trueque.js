@@ -1,7 +1,7 @@
 /* Trueque entre personajes de la sala, sin DOM (la ventana está en interfazTrueque.js).
  *
  * Oferta: { objetos: [{ objeto, origen }], objetosClave: [{ nombre, descripcion }], cor }
- * - origen: "inventario" o "baul" (de dónde salió, para devolverlo allí si se cancela).
+ * - origen: "inventario", "baul" o "cinturon/accesorio-N" (de dónde salió, para devolverlo allí si se cancela).
  * Lo ofrecido queda apartado: sale del inventario, del baúl y del Cor al enviar la oferta y vuelve si se rechaza
  * o se cancela (devolverOferta). Así no se puede gastar mientras se negocia.
  *
@@ -14,8 +14,9 @@
  * Si la ficha se carga con un trueque que esta pestaña no está negociando (se cerró a medias), lo apartado se
  * devuelve (la interfaz lo comprueba en actualizarTodo). */
 import {
-    cargarObjeto, cargarObjetosClave, anadirAInventario, anadirABaul, anadirCor, gastarCor, manoParaUsar
+    cargarObjeto, cargarObjetosClave, anadirAInventario, anadirABaul, anadirCor, gastarCor, manoParaUsar, equipoEnRanura
 } from "./objetos.js";
+import { cinturonesPuestos, anadirACinturon } from "./cinturon.js";
 import { puedeGastar, parteDeMano, gastarAccion } from "./turno.js";
 import { esZonaSegura, baulAccesible } from "./zonas.js";
 
@@ -27,6 +28,18 @@ const entero = (valor, maximo = MAX_COR) => Math.max(0, Math.min(maximo, Math.fl
 
 export const ofertaVacia = () => ({ objetos: [], objetosClave: [], cor: 0 });
 
+/* Origen de un objeto del cinturón: "cinturon/accesorio-N" (sin ":", que separa las claves de la ventana) */
+const PREFIJO_CINTURON = "cinturon/";
+export const esOrigenCinturon = (origen) => String(origen ?? "").startsWith(PREFIJO_CINTURON);
+const origenValido = (origen) => origen === "baul" || (esOrigenCinturon(origen) && /^accesorio-\d+$/.test(origen.slice(PREFIJO_CINTURON.length)))
+    ? origen : "inventario";
+/* Lista de la que sale un objeto según su origen (null si ese cinturón ya no está) */
+function listaOrigen(pj, origen) {
+    if (origen === "baul") return pj.baul;
+    if (esOrigenCinturon(origen)) return equipoEnRanura(pj, origen.slice(PREFIJO_CINTURON.length))?.cinturon?.objetos ?? null;
+    return pj.inventario;
+}
+
 /** ¿No ofrece nada? */
 export const ofertaSinNada = (oferta) => !oferta || (!oferta.objetos.length && !oferta.objetosClave.length && !oferta.cor);
 
@@ -35,7 +48,7 @@ export function cargarOferta(datos) {
     const objetos = (Array.isArray(datos?.objetos) ? datos.objetos : []).slice(0, MAX_OBJETOS_TRUEQUE)
         .map(fila => {
             const objeto = cargarObjeto(fila?.objeto);
-            return objeto ? { objeto, origen: fila?.origen === "baul" ? "baul" : "inventario" } : null;
+            return objeto ? { objeto, origen: origenValido(fila?.origen) } : null;
         })
         .filter(Boolean);
     const objetosClave = cargarObjetosClave(Array.isArray(datos?.objetosClave) ? datos.objetosClave.slice(0, MAX_OBJETOS_TRUEQUE) : []);
@@ -80,6 +93,9 @@ export function disponiblesTrueque(pj) {
     const objetos = [];
     (pj.inventario ?? []).forEach((objeto, indice) => { if (objeto) objetos.push({ origen: "inventario", indice, objeto }); });
     if (!pj.esNpc && baulAccesible(pj)) (pj.baul ?? []).forEach((objeto, indice) => objetos.push({ origen: "baul", indice, objeto }));
+    cinturonesPuestos(pj).forEach(({ ranura, equipo }) => equipo.cinturon.objetos.forEach((objeto, indice) => {
+        if (objeto) objetos.push({ origen: `${PREFIJO_CINTURON}${ranura}`, indice, objeto });
+    }));
     return { objetos, objetosClave: (pj.objetosClave ?? []).map((objeto, indice) => ({ indice, objeto })), cor: Number(pj.cor) || 0 };
 }
 
@@ -91,7 +107,7 @@ export function disponiblesTrueque(pj) {
  */
 export function apartarOferta(pj, seleccion, { permitirVacia = false } = {}) {
     const fallo = (texto) => ({ ok: false, resumen: [texto] });
-    const lista = (origen) => (origen === "baul" ? pj.baul : pj.inventario);
+    const lista = (origen) => listaOrigen(pj, origen);
     const filas = (seleccion?.objetos ?? []).filter(fila => entero(fila.cantidad) > 0);
     const claves = [...new Set((seleccion?.objetosClave ?? []).map(Number))];
     const cor = entero(seleccion?.cor);
@@ -115,6 +131,9 @@ export function apartarOferta(pj, seleccion, { permitirVacia = false } = {}) {
     }
     // Las pilas que se quedan a 0: hueco vacío en el inventario, fila fuera en el baúl
     pj.inventario = pj.inventario.map(objeto => (objeto && objeto.cantidad <= 0 ? null : objeto));
+    cinturonesPuestos(pj).forEach(({ equipo }) => {
+        equipo.cinturon.objetos = equipo.cinturon.objetos.map(objeto => (objeto && objeto.cantidad <= 0 ? null : objeto));
+    });
     pj.baul = pj.baul.filter(objeto => objeto.cantidad > 0);
     claves.sort((a, b) => b - a).forEach(i => oferta.objetosClave.unshift(...pj.objetosClave.splice(i, 1)));
     if (cor > 0) gastarCor(pj, cor);
@@ -134,7 +153,10 @@ export function devolverOferta(pj, oferta) {
             anadirABaul(pj, objeto);
             continue;
         }
-        const resto = anadirAInventario(pj, objeto);
+        // Del cinturón vuelve al cinturón; lo que no quepa, al inventario y después al botín
+        const restoCinturon = esOrigenCinturon(origen) ? anadirACinturon(pj, objeto) : objeto.cantidad;
+        if (restoCinturon <= 0) continue;
+        const resto = anadirAInventario(pj, { ...objeto, cantidad: restoCinturon });
         if (resto > 0) {
             pj.botin.push({ ...objeto, cantidad: resto });
             alBotin.push(`${objeto.nombre} ×${resto}`);

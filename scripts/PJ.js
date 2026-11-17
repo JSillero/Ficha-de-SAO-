@@ -9,6 +9,7 @@ import { cargarTrueque } from "./trueque.js";
 import { cargarCreacion } from "./creacion.js";
 import { crearNpc, cargarNpc, equiposDePartes, DEFENSA_MINIMA_NPC, defensaParalisisNpc, limpiarPesadilla } from "./npc.js";
 import { guardarFaseActiva, convertirEnJefe } from "./jefes.js";
+import { energiaVacia, cargarEnergiaManos, cargarHechizo, cargarAmbiente } from "./elementosSacro.js";
 
 export { TAMANO_INVENTARIO };
 
@@ -51,7 +52,8 @@ export const ESTADOS_LISTA = [
     'veneno', 'regeneracion', 'quemadura', 'paralisis', 'congelacion', 'oscuridad', 'hemorragia',
     'aturdido', 'cegado', 'dormido', 'wither', 'embriaguez',
     'electrocutado', // Atletismo restado por electricidad
-    'deslumbrado'    // Percepción restada por luz con los PV al máximo
+    'deslumbrado',   // Percepción restada por luz con los PV al máximo
+    'anticuracion'   // Humo de Morna (13-sacro.md §8): nada cura mientras dura (noSeCura en estados.js)
 ];
 
 /* Campos que se guardan y se cargan tal cual (sin conversión) */
@@ -153,6 +155,9 @@ export default class PJ {
         this.botin = []; // objetos de la recompensa de un NPC por recoger (ventana de botín; sin límite)
         this.trueque = null; // trueque en curso con lo apartado (trueque.js)
         this.creacion = null; // objeto pedido al máster con los materiales apartados (creacion.js)
+        this.ambienteSacro = []; // lo que el máster dice que hay en el ambiente para el próximo hechizo (13-sacro.md §3.2)
+        this.hechizo = null; // petición de magia enviada al máster, esperando (elementosSacro.js, interfazSacro.js)
+        this.energiaManos = energiaVacia(); // energía de Sacro guardada en cada mano (elementosSacro.js, 13-sacro.md §7)
         this.ultimoGolpe = null; // { instancia, jugador, nombre } de quien dio el último golpe (desde un pop-up), o null
         this.permitirTrueque = false; // NPC: puede hacer trueques (los personajes siempre pueden)
         this.neutral = false; // NPC neutral (franja amarilla) hasta que un jugador lo golpea
@@ -612,11 +617,17 @@ export default class PJ {
             instancia: String(golpe.instancia).slice(0, 120),
             jugador: golpe.jugador ? String(golpe.jugador).slice(0, 128) : null,
             nombre: String(golpe.nombre ?? "").slice(0, 60),
-            armaFuego: golpe.armaFuego === true // con arma de fuego: si muere, nadie recibe nada
+            armaFuego: golpe.armaFuego === true, // con arma de fuego: si muere, nadie recibe nada
+            magia: golpe.magia === true // con magia (13-sacro.md §10): nadie recibe nada; quien la lanzó, +2 de alerta
         } : null;
 
         /* Lanzas y cuchillos lanzados sin recoger */
         this.armasLanzadas = cargarArmasLanzadas(jsonObject.armasLanzadas);
+
+        /* Energía de Sacro guardada en las manos */
+        this.energiaManos = cargarEnergiaManos(jsonObject.energiaManos);
+        this.hechizo = cargarHechizo(jsonObject.hechizo);
+        this.ambienteSacro = cargarAmbiente(jsonObject.ambienteSacro);
 
         /* Equipo (con la poción aplicada, si la hay) */
         this.equipoArmadura = cargarEquipo(jsonObject.equipoArmadura);
@@ -699,6 +710,9 @@ export default class PJ {
             trueque: this.trueque,
             creacion: this.creacion,
             ultimoGolpe: this.ultimoGolpe,
+            energiaManos: this.energiaManos,
+            hechizo: this.hechizo,
+            ambienteSacro: this.ambienteSacro,
 
             /* Equipo */
             equipoArmadura: this.equipoArmadura,

@@ -6,6 +6,7 @@ import { ARMAS, ELEMENTOS } from "./equipamiento.js";
 import { combinarModos } from "./dados.js";
 import { ESTADOS_INFO, TIPOS_DANNO, CURAR_NEGATIVOS } from "./estados.js";
 import { anadirEstadosAlGolpe } from "./estadosAlAcertar.js";
+import { ELEMENTOS_SACRO, entradaDannoSacro } from "./elementosSacro.js";
 
 /* Nombre del arma para el efecto del golpe */
 const nombreArma = (item) => item?.nombre?.trim() || ARMAS[item?.tipo]?.etiqueta || "Arma";
@@ -49,6 +50,51 @@ export function prepararAtaque(pj, propMano, modosExtra = [1]) {
         valorCaracteristica: caracteristica.valor,
         etiquetaCaracteristica: caracteristica.etiqueta
     };
+}
+
+/* Sin arma: puñetazo y patada (05-combate-y-estados.md §1.1) _____________________________
+ * Para todos los personajes (no los NPC). Tirada: dado medio + Combate (Sigilo en sigilo) + el mayor entre Reflejos
+ * y Fortaleza. Daño: el bonificador CaC (×2 en el crítico; en sigilo ×2, ×4 en el crítico, como las armas); la
+ * patada además lo multiplica según la armadura. */
+export const MULT_PATADA = { pesada: 4, media: 3 };
+export const MULT_PATADA_BASE = 2; // sin armadura, ropa, real o ligera
+export const multPatada = (pj) => MULT_PATADA[pj?.equipoArmadura?.tipo] ?? MULT_PATADA_BASE;
+
+/** Tirada de un puñetazo o una patada. tipo: "puno" | "patada" */
+export function prepararAtaqueSinArma(pj, tipo, modosExtra = [1]) {
+    if (pj.esNpc) return null;
+    const caracteristica = caracteristicaArma(pj, "otros"); // "mejor": la más alta entre Reflejos y Fortaleza
+    const { modo, bonificador } = combinarModos(1, ...[].concat(modosExtra));
+    return {
+        nombre: tipo === "patada" ? "Patada" : "Puñetazo",
+        tipo,
+        modo,
+        bonificador,
+        valorHabilidad: Math.max(0, Number(pj.getGenerico(pj.getHabilidadAtaque())) || 0),
+        etiquetaHabilidad: pj.enSigilo ? "Sigilo" : "Combate",
+        valorCaracteristica: caracteristica.valor,
+        etiquetaCaracteristica: caracteristica.etiqueta
+    };
+}
+
+/** Daño de un puñetazo o una patada (la energía de Sacro de la mano se suma aparte, en la fase de energía) */
+export function calcularDannoSinArma(pj, tipo, critico) {
+    const bono = Math.max(0, Number(pj.dFisico) || 0);
+    let multBono = critico ? 2 : 1;
+    const notas = [];
+    if (pj.enSigilo) {
+        multBono = critico ? 4 : 2;
+        notas.push("Ataque desde el sigilo. Si el objetivo no muere, sales del sigilo.");
+    }
+    if (critico) notas.push("Crítico: bonificador de daño multiplicado.");
+    const desglose = [`${conMult(bono, multBono)} (Bonif. CaC)`];
+    let total = bono * multBono;
+    if (tipo === "patada") {
+        const mult = multPatada(pj);
+        total *= mult;
+        desglose.push(`×${mult} (Patada${MULT_PATADA[pj.equipoArmadura?.tipo] ? ` con armadura ${pj.equipoArmadura.tipo}` : ""})`);
+    }
+    return { total, desglose, elemental: [], notas };
 }
 
 /* NPC _____________________________________________________________________________
@@ -254,13 +300,24 @@ export function calcularDannoLanzamiento(pj, objeto, critico) {
     if (critico) notas.push("Crítico: bonificador de daño multiplicado.");
     if (estadosDeObjeto(objeto).length || objeto?.elemental?.tipo) notas.push(`Efecto: ${describirEfecto(objeto)}`);
 
-    return {
+    const golpe = {
         total: dannoObjeto + bono * multBono,
         desglose: [
             `${dannoObjeto} (Objeto)`,
             `${conMult(bono, multBono)} (Bonif. distancia)`
         ],
+        elemental: [],
         efecto: efectoDeObjeto(objeto),
         notas
     };
+    // Cristal elemental lleno (13-sacro.md §11): se rompe y libera su elemento, como magia (si mata: +2 de alerta y
+    // nadie recibe nada). El elemento no lo multiplican el crítico ni el sigilo
+    const elemento = objeto?.subtipo === "cristalElemental" ? objeto.elemento : null;
+    const info = ELEMENTOS_SACRO[elemento?.clave];
+    if (info && elemento.puntos > 0) {
+        golpe.elemental.push(entradaDannoSacro(elemento.clave, elemento.puntos));
+        golpe.magia = true;
+        notas.push(`El cristal se rompe y libera ${info.etiqueta} (${info.que.toLowerCase()}): ${elemento.puntos} de daño. Es magia.`);
+    }
+    return golpe;
 }

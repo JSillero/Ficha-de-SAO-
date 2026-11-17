@@ -20,6 +20,7 @@ export const CATEGORIAS_OBJETO = {
     escudo: "Escudos",
     armadura: "Armaduras",
     accesorio: "Accesorios",
+    cinturon: "Cinturones",
     reliquia: "Reliquias",
     otroEquipo: "Otro equipamiento",
     arrojadiza: "Armas arrojadizas",
@@ -40,7 +41,7 @@ export function categoriaObjeto(objeto) {
         const tipo = objeto.equipo?.tipo;
         if (ARMAS[tipo]) return ARMAS[tipo].escudo ? "escudo" : "arma";
         if (TIPOS_ARMADURA.includes(tipo)) return "armadura";
-        if (tipo === TIPO_ACCESORIO) return "accesorio";
+        if (tipo === TIPO_ACCESORIO) return objeto.equipo.cinturon ? "cinturon" : "accesorio";
         if (tipo === TIPO_RELIQUIA) return "reliquia";
         return "otroEquipo";
     }
@@ -64,8 +65,8 @@ export function normalizarPiso(piso) {
     return Number.isFinite(n) && n >= 1 ? Math.min(PISO_MAXIMO, n) : null;
 }
 
-/* Objeto listo para el compendio: una unidad, sin poción aplicada, escudo sin usar, reliquia sin enfriamiento y arma de
-   fuego sin balas */
+/* Objeto listo para el compendio: una unidad, sin poción aplicada, escudo sin usar, reliquia sin enfriamiento, arma de
+   fuego sin balas y cinturón vacío */
 function limpiarObjeto(datos) {
     const objeto = cargarObjeto(JSON.parse(JSON.stringify(datos)));
     if (!objeto) return null;
@@ -75,6 +76,7 @@ function limpiarObjeto(datos) {
         objeto.equipo.enUso = false;
         objeto.equipo.reliquia?.habilidades?.forEach(h => { h.restante = 0; });
         objeto.equipo.balas = []; // arma de fuego: se da sin balas
+        if (objeto.equipo.cinturon) objeto.equipo.cinturon.objetos = objeto.equipo.cinturon.objetos.map(() => null); // cinturón vacío
     }
     return objeto;
 }

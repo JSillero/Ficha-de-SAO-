@@ -85,6 +85,8 @@ export default class Equipamiento {
         this.enUso = false; // true cuando el escudo se ha activado con el botón Usar
         this.pocionAplicada = null; // poción untada en el arma: se aplica en el siguiente ataque
         this.reliquia = tipo === TIPO_RELIQUIA ? { habilidades: [] } : null; // { habilidades } si es reliquia (reliquias.js)
+        // Cinturón (accesorio): { huecos, objetos: [objeto|null] }, una unidad por hueco (cinturon.js; se carga en cargarEquipo)
+        this.cinturon = null;
         this.efectos = []; // pasivas y activas con formato de arte (efectosEquipo.js; se cargan en cargarEquipo)
         // Armas: estados que provoca al acertar, con su probabilidad (estadosAlAcertar.js; se cargan en cargarEquipo)
         this.estadosAlAcertar = [];

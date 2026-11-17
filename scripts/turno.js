@@ -6,7 +6,9 @@ import { TURNOS_PERMANENTE } from "./modificador.js";
 import { TIPOS_DOS_MANOS } from "./equipamiento.js";
 import { esZonaSegura } from "./zonas.js";
 import { avanzarEnfriamientos } from "./reliquias.js";
-import { equiposDePartes, aciertoMaximo, esPesadilla } from "./npc.js";
+import { equiposDePartes, aciertoMaximo } from "./npc.js";
+import { noSeCura } from "./estados.js";
+import { avanzarEnergiaManos } from "./elementosSacro.js";
 
 /* Máximo de acciones por turno: se pueden usar 3 de los 4 tipos */
 export const ACCIONES_MAX = 3;
@@ -120,10 +122,16 @@ export function parteDeMano(propMano) {
     return propMano === "manoIzquierda" ? "izquierda" : "derecha";
 }
 
-/** Una mano está vacía si no tiene nada y la otra no lleva algo a dos manos. */
-export function manoVacia(pj, propMano) {
+/** Sin nada equipado en esa mano (ni un arma a dos manos en la otra). Para atacar sin arma. */
+export function sinEquipo(pj, propMano) {
     const otra = propMano === "manoIzquierda" ? "manoDerecha" : "manoIzquierda";
     return !pj[propMano]?.tipo && !TIPOS_DOS_MANOS.includes(pj[otra]?.tipo);
+}
+
+/** Una mano está vacía si no tiene nada, la otra no lleva algo a dos manos y no tiene energía de Sacro guardada
+ *  (con energía solo puede atacar u ofrecerla, 13-sacro.md §7). */
+export function manoVacia(pj, propMano) {
+    return sinEquipo(pj, propMano) && !pj.energiaManos?.[propMano];
 }
 
 /** Mano libre: vacía y con su acción disponible. Devuelve la primera (o null). */
@@ -246,6 +254,9 @@ export function iniciarTurno(pj) {
     const estados = pj.estados;
     const valor = (estado) => Number(estados[estado]?.valor) || 0;
 
+    // Energía de Sacro en las manos: se pierde al segundo Play desde que se guardó
+    resumen.push(...avanzarEnergiaManos(pj));
+
     // 0. Estados que ya agotaron sus turnos
     for (const [nombre, estado] of Object.entries(estados)) {
         if (estado.turnos === 0 && estado.valor > 0) {
@@ -295,8 +306,8 @@ export function iniciarTurno(pj) {
     }
     // Regeneración: la del estado más la que dan equipo y modificadores (atributo "regeneracion")
     const regeneracion = valor("regeneracion") + (Number(pj.getModificador("regeneracion")) || 0);
-    // Las pesadillas no se curan
-    if (regeneracion > 0 && !esPesadilla(pj)) {
+    // Las pesadillas y quien tiene Anticuración no se curan
+    if (regeneracion > 0 && !noSeCura(pj)) {
         // vidaMax ya descuenta la oscuridad
         const antes = pj.vida;
         pj.vida = Math.min(pj.vidaMax, pj.vida + regeneracion);

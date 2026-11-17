@@ -9,6 +9,8 @@
 //   p = relleno principal, s = relleno secundario (71 %), f = recorte con el color de fondo,
 //   t = trazo del glifo, o = opacidad secundaria, tf = trazo grueso con el color de fondo (separador).
 
+import { SENALAR_D } from "./siluetasSacro.js";
+
 function estrella(cx, cy, r, clase = "p") {
     const puntos = Array.from({ length: 10 }, (_, i) => {
         const angulo = (-90 + i * 36) * Math.PI / 180;
@@ -78,6 +80,11 @@ const corona = (x = 0, y = 0, escala = 1) => `
         </g>`;
 const coronaConSigno = (signo) => `${corona(-4, -6, 0.82)}${insigniaSigno(signo)}`;
 
+/* Estrella de impacto de Combate (centrada en 54, 47.5), reutilizada en los demás iconos de atacar */
+const ESTRELLA_IMPACTO = `
+            <polygon class="s" points="54,30.604 60.833,22 62.448,32.868 72.667,28.833 68.632,39.052 79.5,40.667 70.896,47.5 79.5,54.333 68.632,55.948 72.667,66.167 62.448,62.132 60.833,73 54,64.396 47.167,73 45.552,62.132 35.333,66.167 39.368,55.948 28.5,54.333 37.104,47.5 28.5,40.667 39.368,39.052 35.333,28.833 45.552,32.868 47.167,22"/>
+            <polygon class="f" points="54,36.567 58.421,31 59.466,38.032 66.079,35.421 63.468,42.034 70.5,43.079 64.933,47.5 70.5,51.921 63.468,52.966 66.079,59.579 59.466,56.968 58.421,64 54,58.433 49.579,64 48.534,56.968 41.921,59.579 44.532,52.966 37.5,51.921 43.067,47.5 37.5,43.079 44.532,42.034 41.921,35.421 48.534,38.032 49.579,31"/>`;
+
 const GLIFOS = {
     fuego: `
         <path class="s" d="M50 16C59 31 73 40 71 60C70 74 61 83 50 83C39 83 30 74 29 62C28 49 37 43 40 32C44 40 46 45 47 50C50 39 53 29 50 16Z"/>
@@ -110,6 +117,44 @@ const GLIFOS = {
         <path class="p" d="M50 80C22 61 19 41 31 32C40 26 47 30 50 37C53 30 60 26 69 32C81 41 78 61 50 80Z"/>
         <rect class="f" x="46" y="40" width="8" height="24" rx="1"/>
         <rect class="f" x="38" y="48" width="24" height="8" rx="1"/>`,
+    // Puñetazo (atacar con la mano libre) y patada (desde la armadura), 05-combate-y-estados.md §1.1: con la estrella
+    // de impacto de Combate, como los demás botones de atacar (elegidos en tests/demoIconosAtaque.html, B y B)
+    puno: `
+        <g transform="translate(60 42) rotate(5.5) scale(0.95) translate(-54 -47.5)">${ESTRELLA_IMPACTO}</g>
+        <g transform="translate(40 56) rotate(-12) scale(0.72) translate(-50 -52)">
+            <rect class="f" x="18" y="16" width="64" height="72" rx="14"/>
+            <rect class="p" x="27" y="26" width="11" height="24" rx="5.5"/>
+            <rect class="p" x="40" y="22" width="11" height="28" rx="5.5"/>
+            <rect class="p" x="53" y="23" width="11" height="27" rx="5.5"/>
+            <rect class="p" x="66" y="28" width="10" height="22" rx="5"/>
+            <rect class="p" x="27" y="40" width="49" height="28" rx="10"/>
+            <path class="tf" style="stroke-width:5" d="M30 56H58"/>
+            <rect class="s" x="24" y="51" width="36" height="11" rx="5.5"/>
+            <rect class="p" x="36" y="68" width="28" height="14" rx="3"/>
+        </g>`,
+    patada: `
+        <g transform="translate(64 36) rotate(5.5) scale(0.85) translate(-54 -47.5)">${ESTRELLA_IMPACTO}</g>
+        <g transform="translate(42 56) rotate(-38) scale(0.78) translate(-61 -48)">
+            <path class="tf" style="stroke-width:10" d="M36 10H58V52L76 57C85 60 88 67 86 76H36Z"/>
+            <path class="p" d="M36 10H58V52L76 57C85 60 88 67 86 76H36Z"/>
+            <rect class="f" x="36" y="70" width="52" height="4"/>
+            <rect class="s" x="36" y="10" width="22" height="7" rx="2"/>
+        </g>`,
+    // Cinturón (accesorio con inventario propio): correa con hebilla y dos bolsas
+    cinturon: `
+        <rect class="s" x="17" y="56" width="16" height="17" rx="3"/>
+        <rect class="s" x="67" y="56" width="16" height="17" rx="3"/>
+        <rect class="p" x="8" y="40" width="84" height="18" rx="4"/>
+        <rect class="f" x="36" y="33" width="28" height="32" rx="5"/>
+        <rect class="p" x="40" y="37" width="20" height="24" rx="3"/>
+        <rect class="f" x="45" y="42" width="10" height="14" rx="1"/>
+        <rect class="p" x="48" y="47" width="14" height="4" rx="1"/>`,
+    anticuracion: `
+        <path class="p" d="M50 80C22 61 19 41 31 32C40 26 47 30 50 37C53 30 60 26 69 32C81 41 78 61 50 80Z"/>
+        <rect class="f" x="46" y="40" width="8" height="24" rx="1"/>
+        <rect class="f" x="38" y="48" width="24" height="8" rx="1"/>
+        <path class="tf" d="M22 78L78 22"/>
+        <path class="t" d="M22 78L78 22"/>`,
     aturdido: `
         <ellipse class="t o" cx="50" cy="54" rx="30" ry="13"/>
         ${estrella(50, 38, 13)}
@@ -287,6 +332,36 @@ const GLIFOS = {
         <polygon class="p" points="50,12 72,34 50,88 28,34"/>
         <polygon class="s" points="50,12 72,34 50,88"/>
         <path class="tf" style="stroke-width:4" d="M28 34H72"/>`,
+    // Aligi: ofrecer la energía de Sacro de una mano. La mano que señala de imgs/señalar.svg (siluetasSacro.js) con un
+    // halo y una estrella de energía en la punta del índice (opción D de tests/demoSacro.html)
+    aligi: `
+        <circle class="s" cx="44.5" cy="30" r="14"/>
+        <g transform="translate(30 90) scale(0.0046875 -0.0046875)"><path class="p" d="${SENALAR_D}"/></g>
+        ${poligonoEstrella(44.5, 30, 9, 3.5, 4, "p")}`,
+    // Transfusión de sangre (13-sacro.md §9): dos gotas con una flecha de una a otra
+    transfusion: `
+        <path class="p" d="M28 22C28 22 12 44 12 54A16 16 0 0 0 44 54C44 44 28 22 28 22Z"/>
+        <path class="s" d="M72 46C72 46 56 68 56 78A16 16 0 0 0 88 78C88 68 72 46 72 46Z"/>
+        <path class="t" d="M46 28Q64 24 70 38"/>
+        <path class="t" d="M62 36L70 40L72 31"/>`,
+    // Akva (elemento de Sacro, agua): una gota con su brillo
+    akva: `
+        <path class="p" d="M50 12C50 12 24 46 24 63A26 26 0 0 0 76 63C76 46 50 12 50 12Z"/>
+        <path class="s" d="M50 12C50 12 76 46 76 63A26 26 0 0 1 50 89Z"/>
+        <path class="tf" style="stroke-width:5" d="M36 62A14 14 0 0 0 46 76"/>`,
+    // Metala (elemento de Sacro, metal): dos lingotes apilados
+    metala: `
+        <polygon class="s" points="20,62 30,48 70,48 80,62"/>
+        <polygon class="p" points="14,80 24,64 76,64 86,80"/>
+        <polygon class="p" points="32,44 40,30 60,30 68,44"/>
+        <path class="tf" style="stroke-width:3" d="M24 64H76M40 30H60"/>`,
+    // Cristal elemental (arma arrojadiza que guarda un elemento de Sacro): el cristal con un destello
+    cristalElemental: `
+        <polygon class="p" points="44,14 64,34 44,86 24,34"/>
+        <polygon class="s" points="44,14 64,34 44,86"/>
+        <path class="tf" style="stroke-width:4" d="M24 34H64"/>
+        ${poligonoEstrella(72, 66, 14, 5, 4, "p")}
+        ${poligonoEstrella(74, 28, 8, 3, 4, "s")}`,
     material: `
         <polygon class="p" points="50,16 80,32 80,68 50,84 20,68 20,32"/>
         <polygon class="s" points="50,50 80,32 80,68 50,84"/>

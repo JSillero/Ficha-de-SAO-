@@ -4,12 +4,13 @@
 
 import Modificador, { cargarModificador, TURNOS_PERMANENTE } from "./modificador.js";
 import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, cargarEquipamiento } from "./equipamiento.js";
-import { activarEstado, quitarEstado, aplicarDanno, ESTADOS_INFO, TIPOS_DANNO, CURAR_NEGATIVOS, curaConTodosLosNegativos, estaActivo } from "./estados.js";
+import { activarEstado, quitarEstado, aplicarDanno, ESTADOS_INFO, TIPOS_DANNO, CURAR_NEGATIVOS, curaConTodosLosNegativos, estaActivo, noSeCura } from "./estados.js";
 import { MANOS, gastarVarias, gastarTodas, partesDeMano, parteDeMano, manoVacia, puedeGastar } from "./turno.js";
 import { esZonaSegura } from "./zonas.js";
 import { cargarEfectos } from "./efectosEquipo.js";
 import { cargarEstadosAlAcertar, cargarEstadoAlAcertar, MAX_ESTADOS_AL_ACERTAR } from "./estadosAlAcertar.js";
 import { esPesadilla } from "./npc.js";
+import { ELEMENTOS_SACRO, ELEMENTOS_CRISTAL } from "./elementosSacro.js";
 
 /* Huecos base del inventario; el modificador `inventario` los amplía (o reduce) */
 export const TAMANO_INVENTARIO = 5;
@@ -113,6 +114,7 @@ function cargarElemental(datos) {
 /** Equipamiento guardado, con la poción aplicada (si la hay) normalizada */
 export function cargarEquipo(datos) {
     const equipo = cargarEquipamiento(datos);
+    equipo.cinturon = cargarCinturon(equipo.cinturon);
     equipo.pocionAplicada = cargarObjeto(equipo.pocionAplicada);
     equipo.efectos = cargarEfectos(equipo.efectos);
     equipo.estadosAlAcertar = cargarEstadosAlAcertar(equipo.estadosAlAcertar);
@@ -120,6 +122,53 @@ export function cargarEquipo(datos) {
     equipo.balas = (Array.isArray(equipo.balas) ? equipo.balas : [])
         .map(bala => cargarObjeto({ ...bala, tipo: "material", cantidad: 1 })).filter(Boolean).slice(0, equipo.cargador);
     return equipo;
+}
+
+/* Cristal elemental (13-sacro.md §11): arma arrojadiza con subtipo "cristalElemental" que guarda un solo elemento de
+   la magia de Sacro (elemento = { clave, puntos }, hasta su capacidad en puntos de daño). Lleno no entra en el
+   inventario (solo en el cinturón o el baúl); al lanzarlo libera el elemento y se rompe. */
+export const SUBTIPO_CRISTAL_ELEMENTAL = "cristalElemental";
+export const MAX_CAPACIDAD_CRISTAL = 999;
+export const esCristalElemental = (objeto) => objeto?.tipo === "arrojadiza" && objeto.subtipo === SUBTIPO_CRISTAL_ELEMENTAL;
+/** ¿Es un cristal elemental con un elemento dentro? */
+export const cristalConElemento = (objeto) => esCristalElemental(objeto) && Boolean(objeto.elemento);
+function cargarElementoCristal(datos, capacidad) {
+    const puntos = Math.min(capacidad, Math.floor(Number(datos?.puntos) || 0));
+    return ELEMENTOS_CRISTAL.includes(datos?.clave) && puntos > 0 ? { clave: datos.clave, puntos } : null;
+}
+
+/**
+ * Descansos: los cristales elementales pierden su elemento. Hela en cualquier descanso, Metala nunca y el resto en el
+ * descanso largo. En el cinturón, el baúl, el botín y (por si acaso) el inventario. @returns {string[]} resumen
+ */
+export function vaciarCristalesElementales(pj, largo) {
+    const resumen = [];
+    const listas = [pj.inventario, pj.baul, pj.botin, ...(pj.accesorios ?? []).map(acc => acc?.cinturon?.objetos)];
+    for (const lista of listas) {
+        for (const objeto of lista ?? []) {
+            if (!cristalConElemento(objeto)) continue;
+            const clave = objeto.elemento.clave;
+            if (clave === "metala" || (clave !== "hela" && !largo)) continue;
+            resumen.push(`${objeto.nombre} pierde su ${ELEMENTOS_SACRO[clave].etiqueta}`);
+            objeto.elemento = null;
+        }
+    }
+    return resumen;
+}
+
+/* Cinturón (accesorio con inventario propio, ver cinturon.js): una unidad por hueco de los tipos admitidos */
+export const TIPOS_CINTURON = ["pocion", "cristal", "arrojadiza"];
+export const MAX_HUECOS_CINTURON = 30; // límite técnico: el personaje tiene que caber en un documento de la nube
+export function cargarCinturon(datos) {
+    if (!datos || typeof datos !== "object") return null;
+    const huecos = Math.max(1, Math.min(MAX_HUECOS_CINTURON, Math.floor(Number(datos.huecos) || 1)));
+    const guardados = Array.isArray(datos.objetos) ? datos.objetos : [];
+    // Lo que no cabe en los huecos (o no es de un tipo admitido) se pierde: no debería pasar
+    const objetos = Array.from({ length: huecos }, (_, i) => {
+        const objeto = cargarObjeto(guardados[i]);
+        return objeto && TIPOS_CINTURON.includes(objeto.tipo) ? { ...objeto, cantidad: 1 } : null;
+    });
+    return { huecos, objetos };
 }
 
 /**
@@ -153,6 +202,11 @@ export function cargarObjeto(datos) {
             objeto.danno = Math.max(0, Number(datos.danno) || 0);
             objeto.estados = cargarEstadosObjeto(datos, tipo);
             objeto.elemental = cargarElemental(datos.elemental);
+            if (datos.subtipo === SUBTIPO_CRISTAL_ELEMENTAL) {
+                objeto.subtipo = SUBTIPO_CRISTAL_ELEMENTAL;
+                objeto.capacidad = Math.max(1, Math.min(MAX_CAPACIDAD_CRISTAL, Math.floor(Number(datos.capacidad) || 1)));
+                objeto.elemento = cargarElementoCristal(datos.elemento, objeto.capacidad);
+            }
             break;
         case "equipo":
             objeto.equipo = cargarEquipo(datos.equipo);
@@ -225,6 +279,8 @@ const huecoInventario = (capacidad) => (lista) => lista.findIndex((hueco, i) => 
 
 /* Mete el objeto en una lista con huecos de inventario (la del personaje o una copia) */
 function apilarEnInventario(pj, lista, objeto) {
+    // Un cristal elemental con elemento solo puede estar en el cinturón o en el baúl
+    if (cristalConElemento(objeto)) return objeto.cantidad;
     // NPC: sin límite, cada pila nueva va a un hueco vacío o al final
     if (pj.esNpc) return apilar(lista, objeto, MAX_PILA_INVENTARIO, (l) => {
         const i = l.findIndex(hueco => !hueco);
@@ -269,6 +325,7 @@ export function transferirABaul(pj, indice) {
 export function transferirAInventario(pj, indice) {
     const objeto = pj.baul[indice];
     if (!objeto) return fallo("No hay objeto en ese hueco.");
+    if (cristalConElemento(objeto)) return fallo("Un cristal elemental con elemento no puede ir al inventario: solo al cinturón o al baúl.");
     const resto = anadirAInventario(pj, objeto);
     if (resto === objeto.cantidad) return fallo("No queda espacio en el inventario para este objeto.");
     const movidos = objeto.cantidad - resto;
@@ -297,6 +354,24 @@ export function descartar(lista, indice, huecosFijos) {
 }
 
 const consumir = (pj, indice) => descartar(pj.inventario, indice, true);
+
+/* Los usos de objetos aceptan un índice del inventario o una referencia { origen, ranura?, indice }:
+   origen "inventario" o "cinturon" (ranura = "accesorio-N" del cinturón, ver cinturon.js) */
+const esRefCinturon = (ref) => ref && typeof ref === "object" && ref.origen === "cinturon";
+/** Objeto al que apunta una referencia (o un índice del inventario), o null */
+export function objetoEn(pj, ref) {
+    if (esRefCinturon(ref)) return equipoEnRanura(pj, ref.ranura)?.cinturon?.objetos?.[ref.indice] ?? null;
+    return pj.inventario[ref && typeof ref === "object" ? ref.indice : ref] ?? null;
+}
+/** Gasta una unidad del objeto de la referencia (en el cinturón, el hueco queda vacío) */
+function consumirDe(pj, ref) {
+    if (esRefCinturon(ref)) {
+        const lista = equipoEnRanura(pj, ref.ranura)?.cinturon?.objetos;
+        if (lista) descartar(lista, ref.indice, true);
+        return;
+    }
+    consumir(pj, ref && typeof ref === "object" ? ref.indice : ref);
+}
 
 /* Usos _______________________________________________________________________ */
 // Cada uso recibe `gastar(partes, descripcion)`: partes es una lista de acciones (PARTES_ACCION)
@@ -386,13 +461,13 @@ export const TIPOS_OFRECIBLES = ["comida", "pocion"];
 
 /** Saca una unidad del inventario para ofrecerla. Devuelve { ok, resumen, objeto } (objeto = la unidad) */
 export function ofrecerObjeto(pj, indice, gastar = gastarEstricto(pj), nombreDestino = "otro jugador") {
-    const objeto = pj.inventario[indice];
+    const objeto = objetoEn(pj, indice);
     if (!TIPOS_OFRECIBLES.includes(objeto?.tipo)) return fallo("Solo se puede ofrecer comida o pociones.");
     const mano = manoParaUsar(pj);
     if (!mano) return fallo("Necesitas una mano libre para ofrecerlo.");
     if (!gastar([parteDeMano(mano)], `Ofrecer ${objeto.nombre} a ${nombreDestino}`)) return fallo("Sin acción en la mano libre.");
     const unidad = { ...copiar(objeto), cantidad: 1 };
-    consumir(pj, indice);
+    consumirDe(pj, indice);
     return { ok: true, resumen: [`Ofreces ${objeto.nombre} a ${nombreDestino}`], objeto: unidad };
 }
 
@@ -461,7 +536,7 @@ export function motivoNoBeber(pj, pocion) {
 function aplicarEfectoPocion(pj, pocion) {
     const resumen = [];
     const pv = Number(pocion.pv) || 0;
-    if (pv > 0 && esPesadilla(pj)) resumen.push("Una pesadilla no se cura");
+    if (pv > 0 && noSeCura(pj)) resumen.push(esPesadilla(pj) ? "Una pesadilla no se cura" : "Anticuración: no recupera PV");
     else if (pv !== 0) {
         const antes = pj.vida;
         // Una poción que hace daño puede dejar los PV en negativo
@@ -493,7 +568,8 @@ export function aplicarEfectoEnObjetivo(pj, efecto) {
     if (esPesadilla(pj)) return ["Sin efecto en una pesadilla (se aplica a mano)"];
     const resumen = [];
     const pv = Math.trunc(Number(efecto.pv) || 0);
-    if (pv !== 0) {
+    if (pv > 0 && noSeCura(pj)) resumen.push("Anticuración: no recupera PV");
+    else if (pv !== 0) {
         const antes = pj.vida;
         pj.vida = pv > 0 ? Math.max(pj.vida, Math.min(pj.vidaMax, pj.vida + pv)) : pj.vida + pv;
         resumen.push(`${pv > 0 ? `Cura ${pv}` : `${-pv} de daño`} (PV: ${antes} → ${pj.vida})`);
@@ -521,13 +597,13 @@ export function aplicarEfectoEnObjetivo(pj, efecto) {
 
 /** Beber una poción gasta la acción de cabeza (boca). */
 export function beberPocion(pj, indice, gastar = gastarEstricto(pj)) {
-    const objeto = pj.inventario[indice];
+    const objeto = objetoEn(pj, indice);
     if (objeto?.tipo !== "pocion") return fallo("No es una poción.");
     const motivo = motivoNoBeber(pj, objeto);
     if (motivo) return fallo(motivo);
     if (!gastar(["cabeza"], `Beber ${objeto.nombre}`)) return fallo("Sin acción de cabeza.");
     const resumen = aplicarEfectoPocion(pj, objeto);
-    consumir(pj, indice);
+    consumirDe(pj, indice);
     return exito(...resumen);
 }
 
@@ -541,7 +617,7 @@ export function manosConArma(pj) {
 
 /** Aplicar una poción al arma gasta la acción de la mano del arma; se aplica en el siguiente ataque. */
 export function aplicarPocionAArma(pj, indice, mano, gastar = gastarEstricto(pj)) {
-    const objeto = pj.inventario[indice];
+    const objeto = objetoEn(pj, indice);
     if (objeto?.tipo !== "pocion") return fallo("No es una poción.");
     if (!manosConArma(pj).includes(mano)) return fallo("En esa mano no hay un arma.");
     const arma = pj[mano];
@@ -551,7 +627,7 @@ export function aplicarPocionAArma(pj, indice, mano, gastar = gastarEstricto(pj)
     }
     const anterior = arma.pocionAplicada;
     arma.pocionAplicada = { ...copiar(objeto), cantidad: 1 };
-    consumir(pj, indice);
+    consumirDe(pj, indice);
     const resumen = [`${objeto.nombre} aplicada a ${nombreArma}: se aplica en el siguiente ataque`];
     if (anterior) resumen.push(`Sustituye a ${anterior.nombre}`);
     return exito(...resumen);
@@ -559,24 +635,24 @@ export function aplicarPocionAArma(pj, indice, mano, gastar = gastarEstricto(pj)
 
 /** Usar un cristal gasta la acción de una mano libre. Devuelve su descripción como mensaje. */
 export function usarCristal(pj, indice, gastar = gastarEstricto(pj)) {
-    const objeto = pj.inventario[indice];
+    const objeto = objetoEn(pj, indice);
     if (objeto?.tipo !== "cristal") return fallo("No es un cristal.");
     const mano = manoParaUsar(pj);
     if (!mano) return fallo("Necesitas una mano libre para usar el cristal.");
     if (!gastar([parteDeMano(mano)], `Usar ${objeto.nombre}`)) return fallo("Sin acción en la mano libre.");
-    consumir(pj, indice);
+    consumirDe(pj, indice);
     return { ok: true, resumen: [objeto.descripcion || "(El cristal no tiene descripción)"], objeto };
 }
 
 /** Lanzar una arrojadiza: necesita una mano libre (gasta su acción) y gasta una unidad. */
 export function lanzarArrojadiza(pj, indice, gastar = gastarEstricto(pj)) {
-    const objeto = pj.inventario[indice];
+    const objeto = objetoEn(pj, indice);
     if (objeto?.tipo !== "arrojadiza") return fallo("No es un arma arrojadiza.");
     const mano = manoParaUsar(pj);
     if (!mano) return fallo("Necesitas una mano libre para lanzar.");
     if (!gastar([parteDeMano(mano)], `Lanzar ${objeto.nombre}`)) return fallo("Sin acción en la mano libre.");
     const lanzado = { ...copiar(objeto), cantidad: 1 };
-    consumir(pj, indice);
+    consumirDe(pj, indice);
     return { ok: true, resumen: [], objeto: lanzado, mano };
 }
 
@@ -794,6 +870,7 @@ export function motivoNoGuardar(pj, ranura) {
     if (ranura === "equipoArmadura" && pj.accesorios.some(acc => !accesorioVacio(acc))) {
         return "Guarda antes los accesorios: sin armadura no hay ranuras.";
     }
+    if (equipoEnRanura(pj, ranura)?.cinturon?.objetos.some(Boolean)) return "Vacía antes el cinturón: no se puede quitar con objetos.";
     if (ranura.startsWith("accesorio-") && !manoParaUsar(pj)) return "Necesitas una mano libre para quitarte el accesorio.";
     return null;
 }

@@ -33,6 +33,7 @@ import {
     esJefe, faseActual, numeroFases, aplicarFase, copiarFase, borrarFase, convertirEnJefe, reiniciarJefe, pasarFaseSiToca,
     OPCIONES_FASE, MAX_FASES_JEFE
 } from "./jefes.js";
+import { ELEMENTOS_SACRO, CLAVES_ELEMENTOS_SACRO, cargarAmbiente } from "./elementosSacro.js";
 
 /**
  * @typedef {Object} ContextoMaster
@@ -1125,8 +1126,38 @@ async function accionObjetoPerfil(lista, indice, accion) {
 
 /* NPC: valores de combate a mano, tiradas libres y recompensa ____________________ */
 
+/* NPC: elementos de Sacro que lleva encima (npc.energia, 13-sacro.md §12); una ranura por elemento con − / + */
+function pintarEnergiaNpcPerfil() {
+    const lista = el("perfilMasterEnergiaNpc");
+    if (!lista || !borrador?.npc) return;
+    const energia = borrador.npc.energia ?? [];
+    if (!lista.children.length) {
+        lista.innerHTML = CLAVES_ELEMENTOS_SACRO.map(clave => {
+            const info = ELEMENTOS_SACRO[clave];
+            return `<div class="ranura campo-ambiente-sacro">
+                <span class="ranura-icono icono-activo" style="--color:${info.color};--color-glifo:${info.colorGlifo ?? "#FBFBFB"}">${iconoSao(info.icono)}</span>
+                <label class="ranura-etiqueta" for="energiaNpc-${clave}">${escaparHtml(info.etiqueta)}</label>
+                <input type="number" id="energiaNpc-${clave}" min="0" max="20" data-energia="${clave}">
+            </div>`;
+        }).join("");
+        lista.addEventListener("input", (e) => {
+            const input = e.target.closest("input[data-energia]");
+            if (!input || !borrador?.npc) return;
+            const resto = (borrador.npc.energia ?? []).filter(a => a.elemento !== input.dataset.energia);
+            borrador.npc.energia = cargarAmbiente([...resto, { elemento: input.dataset.energia, dedos: input.value }]);
+            el("perfilMasterResumenEnergia").textContent = resumenEnergia(borrador.npc.energia);
+        });
+    }
+    lista.querySelectorAll("input[data-energia]").forEach(input => {
+        if (document.activeElement !== input) input.value = energia.find(a => a.elemento === input.dataset.energia)?.dedos ?? 0;
+    });
+    el("perfilMasterResumenEnergia").textContent = resumenEnergia(energia);
+}
+const resumenEnergia = (energia) => energia.length ? energia.map(a => `${ELEMENTOS_SACRO[a.elemento].etiqueta} ×${a.dedos}`).join(", ") : "Ninguno";
+
 function pintarNpcPerfil() {
     const npc = borrador.npc;
+    pintarEnergiaNpcPerfil();
     el("formPerfilMaster").querySelectorAll("input[data-npc]").forEach(input => {
         const clave = input.dataset.npc;
         input.value = clave === "recompensaCor" ? npc.recompensa.cor : (npc[clave] ?? "");

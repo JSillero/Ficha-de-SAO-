@@ -718,9 +718,12 @@
     border-radius: 5px;
 }
 
-/* Botón Usar: icono del arma o escudo (scripts/iconos.js). Lanzar (lanzas y cuchillos) es igual */
+/* Botón Usar: icono del arma o escudo (scripts/iconos.js). Lanzar (lanzas y cuchillos) y la patada de la
+   armadura (pintarBotonPatada en interfaz.js) son iguales */
 .btn-usar-equipo,
-.btn-lanzar-equipo {
+.btn-lanzar-equipo,
+.btn-patada,
+.btn-transfusion {
     width: 40px;
     height: 40px;
     flex-shrink: 0;
@@ -733,19 +736,26 @@
 }
 
 .btn-usar-equipo:hover,
-.btn-lanzar-equipo:hover {
+.btn-lanzar-equipo:hover,
+.btn-patada:hover,
+.btn-transfusion:hover {
     transform: scale(1.08);
 }
 
 .btn-usar-equipo:active,
-.btn-lanzar-equipo:active {
+.btn-lanzar-equipo:active,
+.btn-patada:active {
     transform: scale(0.96);
 }
 
 .btn-usar-equipo:hover .icono-sao,
 .btn-usar-equipo:focus-visible .icono-sao,
 .btn-lanzar-equipo:hover .icono-sao,
-.btn-lanzar-equipo:focus-visible .icono-sao {
+.btn-lanzar-equipo:focus-visible .icono-sao,
+.btn-patada:hover .icono-sao,
+.btn-patada:focus-visible .icono-sao,
+.btn-transfusion:hover .icono-sao,
+.btn-transfusion:focus-visible .icono-sao {
     --fondo: #FBFBFB;
     --glifo: #EBA601;
 }
@@ -759,11 +769,14 @@
 /* Sin acciones disponibles: se puede pulsar igualmente (pide confirmación) */
 .btn-usar-equipo.sin-accion,
 .btn-lanzar-equipo.sin-accion,
+.btn-patada.sin-accion,
 .btn-usar-icono.sin-accion {
     opacity: 0.45;
 }
 
-.btn-lanzar-equipo[hidden] {
+.btn-lanzar-equipo[hidden],
+.btn-patada[hidden],
+.btn-transfusion[hidden] {
     display: none;
 }
 
@@ -948,6 +961,51 @@
     resize: vertical;
 }
 
+
+/* Energía de Sacro guardada en una mano (pintarEnergiaMano en interfaz.js): fichas de los elementos y ofrecer */
+.energia-mano {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border: 1px solid #e3d3a6;
+    border-radius: 8px;
+    font-size: 12px;
+    color: #8a6d2a;
+}
+
+.energia-mano[hidden] {
+    display: none;
+}
+
+.energia-mano .energia-elemento {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px 2px 2px;
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    color: #5a5a5a;
+}
+
+.energia-mano .energia-elemento .icono-sao {
+    width: 20px;
+    height: 20px;
+}
+
+.energia-mano .energia-aviso {
+    flex: 1;
+    min-width: 120px;
+}
+
+/* Cinturón (actualizarCinturon en interfaz.js): con varios cinturones, un título por cada uno */
+.titulo-cinturon {
+    margin: 4px 0 0;
+    font-size: 13px;
+    color: #5a5a5a;
+}
 
 /* Iconos SAO en línea (scripts/iconos.js): los colores salen de variables CSS */
 .icono-sao {
@@ -5164,6 +5222,29 @@ body:not(.modo-master) .solo-master {
     flex-shrink: 0;
 }
 
+/* Icono de un cinturón en su tarjeta de accesorio: abre la ventana del cinturón (abrirCinturonDesdeTarjeta) */
+.accesorio-icono.abre-cinturon {
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.1s;
+}
+
+.accesorio-icono.abre-cinturon:hover,
+.accesorio-icono.abre-cinturon:focus-visible {
+    transform: scale(1.08);
+    outline: none;
+}
+
+.accesorio-icono.abre-cinturon:hover .icono-sao,
+.accesorio-icono.abre-cinturon:focus-visible .icono-sao {
+    --fondo: #FBFBFB;
+    --glifo: #EBA601;
+}
+
+.accesorio-icono.abre-cinturon:active {
+    transform: scale(0.95);
+}
+
 #divEquipamiento .equipamiento-icono.vacio {
     opacity: 0.35;
 }
@@ -6084,4 +6165,140 @@ body.modo-lectura #divEquipamiento .btn-extras-equipo {
     .btn-warning img {
         animation: none;
     }
+}
+
+/* Ventana de magia (#modalSacro, interfazSacro.js): fuentes de elementos, las dos manos (silueta de imgs/mano.svg.svg) con
+   una diana en cada punta de dedo, la fila de los pies, el resumen (coste, acciones, daño) y la forma para el máster */
+/* Cuerpo: fuentes a la izquierda, manos en el centro, resumen debajo */
+.sacro-cuerpo { display: grid; grid-template-columns: 280px 1fr; gap: 12px; align-items: start; }
+.sacro-fuentes { display: flex; flex-direction: column; gap: 8px; }
+.sacro-fuente { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); padding: 8px; }
+.sacro-fuente h3 { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; font-size: 16px; color: #5a5a5a; font-weight: normal; }
+.sacro-fuente h3 .icono-sao { width: 24px; height: 24px; }
+.sacro-fuente h3 .btn-pastilla-sao { margin-left: auto; }
+.sacro-fichas { display: flex; flex-wrap: wrap; gap: 6px; }
+.sacro-fuente .lista-vacia { margin: 0; font-size: 14px; }
+
+/* Ficha de un elemento para arrastrar a un dedo (o tocarla y después el dedo) */
+.ficha-elemento { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 2px; border: none; border-radius: 999px;
+    background: #f4f4f4; color: #4D4D4D; font-size: 14px; cursor: grab; touch-action: none; user-select: none; }
+.ficha-elemento .icono-sao { width: 26px; height: 26px; }
+.ficha-elemento small { color: #888; }
+.ficha-elemento:hover { box-shadow: 0 0 0 2px #EBA601; }
+.ficha-elemento.elegida { box-shadow: 0 0 0 2px #EBA601; background: #fff; }
+.ficha-elemento:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
+.ficha-fantasma { position: fixed; pointer-events: none; z-index: 2000; transform: translate(-50%, -50%) scale(1.1); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3); }
+
+/* Manos y pies */
+.sacro-manos { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); padding: 8px; }
+.sacro-manos-fila { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mano-sacro { text-align: center; }
+.mano-sacro svg { width: 100%; max-width: 200px; height: auto; display: block; margin: 0 auto; }
+.mano-sacro .titulo-mano { font-size: 15px; color: #5a5a5a; }
+.mano-sacro .titulo-mano.ocupada { color: #888; }
+.silueta { fill: #b3b3b3; }
+.mano-sacro.ocupada .silueta { fill: #d9d9d9; }
+.dedo-sacro { cursor: pointer; }
+.dedo-sacro .anillo { fill: #FBFBFB; stroke: #b3b3b3; stroke-width: 2; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+.dedo-sacro:hover .anillo, .dedo-sacro.diana .anillo { stroke: #EBA601; stroke-dasharray: none; stroke-width: 3; }
+.dedo-sacro.lleno .anillo { stroke: none; }
+.dedo-sacro.bloqueado { cursor: not-allowed; opacity: 0.4; }
+.dedo-sacro.sin-dedos .anillo { stroke: #c9c9c9; }
+.pies-sacro { margin-top: 4px; text-align: center; font-size: 14px; color: #888; }
+.pies-sacro svg { width: 100%; max-width: 480px; height: auto; }
+
+/* Resumen y acciones */
+.sacro-resumen { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.dato-sacro { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); padding: 8px; font-size: 15px; color: #5a5a5a; }
+.dato-sacro b { display: block; font-size: 14px; color: #888; font-weight: normal; }
+.dato-sacro .valor { font-size: 20px; color: #4D4D4D; }
+.dato-sacro .valor.negativo { color: #c0392b; }
+.danno-sacro { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.danno-sacro .popup-elemento { background: var(--color); color: var(--color-texto); border-radius: 999px; padding: 1px 9px; font-size: 14px; }
+.sacro-forma { grid-column: 1 / -1; flex-wrap: wrap; }
+.sacro-forma textarea { flex: 1 1 100%; width: 100%; min-height: 44px; }
+.sacro-botones { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.aviso-sacro { grid-column: 1 / -1; margin: 0; }
+.aviso-sacro:empty { display: none; }
+.esperando-sacro { grid-column: 1 / -1; text-align: center; padding: 30px 10px; background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); }
+.esperando-sacro p { color: #5a5a5a; }
+
+
+/* Un poco más grande que modal-xl, y el resto del texto de la ventana más grande (la forma se queda como está) */
+#modalSacro .modal-dialog { max-width: min(1320px, 96vw); }
+#modalSacro .aviso-sacro { font-size: 15px; }
+#modalSacro .sacro-forma .ranura-etiqueta { font-size: 16px; }
+#modalSacro .sacro-botones .btn-pastilla-sao { font-size: 15px; padding: 5px 14px; }
+#modalSacro .sacro-fuente h3 .btn-pastilla-sao { font-size: 14px; padding: 3px 12px; }
+#modalSacro .modal-title .contador-objetos { font-size: 18px; }
+
+@media (max-width: 1024px) {
+    .sacro-cuerpo { grid-template-columns: 1fr; }
+    .sacro-fuentes { flex-direction: row; flex-wrap: wrap; }
+    .sacro-fuente { flex: 1 1 220px; }
+}
+@media (max-width: 600px) {
+    .sacro-manos-fila { gap: 2px; }
+    .sacro-resumen { grid-template-columns: 1fr; }
+}
+
+/* Máster: resolver la magia (#modalSacroMaster) y el ambiente (#modalAmbienteMaster), interfazSacroMaster.js */
+.pedido-sacro-forma {
+    margin: 0 0 6px;
+    font-size: 16px;
+    color: #4D4D4D;
+}
+
+.pedido-sacro-dedos {
+    margin-bottom: 8px;
+}
+
+.fila-danno-sacro .ranura-etiqueta small {
+    color: #888;
+}
+
+.fila-danno-sacro .final-danno-sacro {
+    min-width: 40px;
+    font-size: 13px;
+    color: #8a6d2a;
+}
+
+/* Ambiente: una ranura por elemento (icono de su color, nombre y − / +), en dos columnas con aire entre ellas */
+.lista-ambiente-sacro {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 14px;
+    margin-top: 8px;
+}
+
+.campo-ambiente-sacro .ranura-etiqueta small {
+    color: #888;
+}
+
+#textoAmbienteMaster {
+    margin-bottom: 4px;
+    line-height: 1.4;
+}
+
+@media (max-width: 600px) {
+    .lista-ambiente-sacro {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Resolver la magia: más aire entre bloques */
+#formSacroMaster {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#formSacroMaster .titulo-ranuras {
+    margin: 8px 0 0;
+}
+
+#dannoSacroMaster {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }

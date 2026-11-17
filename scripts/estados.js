@@ -46,6 +46,8 @@ export const ESTADOS_INFO = {
         descripcion: "No actúa hasta que alguien le despierte." },
     wither: { etiqueta: "Wither", icono: "wither", color: "#4E342E", colorGlifo: "#D7CCC8", unidad: null, turnos: DURACION_ELEMENTAL,
         descripcion: "2 de daño por turno hasta dejarlo a 1 PV (no mata)." },
+    anticuracion: { etiqueta: "Anticuración", icono: "anticuracion", color: "#5B2C6F", colorGlifo: "#E8DAEF", unidad: null, turnos: DURACION_ELEMENTAL,
+        descripcion: "Humo de Morna. Mientras dura no se recuperan PV: ni regeneración, ni pociones, ni luz, ni transfusión, ni descanso corto. El descanso largo lo cura." },
     embriaguez: { etiqueta: "Embriaguez", icono: "embriaguez", color: "#D68910", unidad: "Potencia", turnos: DURACION_ELEMENTAL,
         descripcion: "Por cada punto de potencia: +3 Carisma y −1 al resto de habilidades (salvo Sacro). Por cada punto que una habilidad quede por debajo de 0, 10 % de que cualquier acción salga mal y haga algo absurdo. Desventaja en resistencia a la convicción." }
 };
@@ -86,6 +88,9 @@ export function estiloColor(info) {
 export function estaActivo(pj, estado) {
     return (Number(pj.estados?.[estado]?.valor) || 0) > 0;
 }
+
+/** No recupera PV por ningún medio: pesadillas (npc.js) y el estado Anticuración (13-sacro.md §8) */
+export const noSeCura = (pj) => esPesadilla(pj) || estaActivo(pj, "anticuracion");
 
 export function activarEstado(pj, estado, valor = ESTADOS_INFO[estado]?.valorPorDefecto ?? 1, turnos = ESTADOS_INFO[estado]?.turnos ?? TURNOS_PERMANENTE) {
     // turnosTotales: la duración con la que empezó (para dibujar los turnos gastados en gris)
@@ -243,9 +248,12 @@ export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
         }
         case "luz": {
             const antes = pj.vida;
-            const curado = Math.max(0, Math.min(cantidad, pj.vidaMax - pj.vida));
+            // Con Anticuración la luz no cura PV (ni deslumbra: lo que no cura no es "luz de más")
+            const sinCura = noSeCura(pj);
+            const curado = sinCura ? 0 : Math.max(0, Math.min(cantidad, pj.vidaMax - pj.vida));
             pj.vida += curado;
             if (curado > 0) resumen.push(`Cura ${curado} PV: ${antes} → ${pj.vida}`);
+            if (sinCura) resumen.push("Anticuración: no recupera PV");
 
             const curados = CURABLES_CON_LUZ.filter(estado => estaActivo(pj, estado));
             curados.forEach(estado => { pj.estados[estado] = { valor: 0, turnos: 0 }; });
@@ -253,7 +261,7 @@ export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
             pj.calcularCaracteristicas();
 
             // Con los PV al máximo, la luz que sobra resta Percepción
-            const exceso = cantidad - curado;
+            const exceso = sinCura ? 0 : cantidad - curado;
             if (exceso > 0) {
                 const total = sumarElemental(pj, "deslumbrado", exceso);
                 // En un NPC resta Percepción pasiva

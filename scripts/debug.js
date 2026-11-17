@@ -13,6 +13,7 @@ import { limpiarPesadilla } from "./npc.js";
 import { aplicarDanno, activarEstado } from "./estados.js";
 import { iniciarTurno } from "./turno.js";
 import { descansoLargo } from "./zonas.js";
+import { costeGenerar, motivoNoGenerar, dannoElementos, factorRadio, golpesDeElementos, partesHechizo, motivoNoDedos } from "./sacro.js";
 
 /* Ids de la interfaz que no coinciden con el nombre del campo en PJ */
 const ALIAS_INTERFAZ = { arte: "puntosArte" };
@@ -67,6 +68,9 @@ export function crearPersonajePrueba() {
     pj.nivel = 20;
     pj.zona = "base"; // solo admite claves de ZONAS
     pj.esNpc = false; // el NPC tiene su propia ficha de prueba (crearNpcPrueba)
+    // Solo existen en un NPC (cargarJSON los pone a false sin esNpc): tienen sus propias fichas de prueba
+    pj.esJefe = false;
+    pj.esPesadilla = false;
 
     ESTADOS_LISTA.forEach((estado, i) => {
         pj.estados[estado] = { valor: i + 1, turnos: i % 2 ? TURNOS_PERMANENTE : i + 2 };
@@ -116,6 +120,12 @@ export function crearPersonajePrueba() {
     pj.accesorios = [crearEquipo("anillo", "accesorio"), crearEquipo("collar", "accesorio")];
     // Reliquias: el arma de la mano derecha, el primer accesorio y un amuleto (reliquia de mano) en el inventario
     pj.accesorios[0].reliquia = { habilidades: [{ nombre: "eco", descripcion: "repite", enfriamiento: 4, restante: 2 }] };
+    // Cinturón con un objeto de cada tipo admitido y un hueco libre (cinturon.js)
+    pj.accesorios[1].cinturon = {
+        huecos: 4,
+        objetos: [objetos.find(o => o.tipo === "pocion"), objetos.find(o => o.tipo === "cristal"), objetos.find(o => o.tipo === "arrojadiza"), null]
+            .map(o => (o ? { ...JSON.parse(JSON.stringify(o)), cantidad: 1 } : null))
+    };
     pj.manoDerecha.reliquia = { habilidades: [{ nombre: "corte", descripcion: "x2", enfriamiento: 2, restante: 1 }] };
     const amuleto = crearEquipo("amuleto", "reliquia");
     amuleto.reliquia = { habilidades: [
@@ -441,6 +451,61 @@ export function comprobarPesadilla() {
     return fallos.map(f => `Pesadilla: ${f}`);
 }
 
+/* Reglas de Sacro (13-sacro.md) sobre un personaje de prueba: coste de generar, daño por elemento y radio,
+   acciones, límites de dedos y Anticuración */
+export function comprobarSacro() {
+    const fallos = [];
+    const pj = new PJ();
+    pj.cargarJSON(JSON.parse(crearPersonajePrueba().toJSONString()));
+    pj.zona = "noSegura";
+    pj.esUnderworld = true;
+    pj.underworldHabilitado = true;
+    pj.calcularCaracteristicas();
+    pj.aguante = 8;
+    pj.dMagico = 5;
+    pj.vida = 20;
+    const dedos = [
+        { id: "manoIzquierda-0", elemento: "termika", origen: "generar" },
+        { id: "manoIzquierda-1", elemento: "termika", origen: "generar" },
+        { id: "manoIzquierda-2", elemento: "hela", origen: "generar" },
+        { id: "manoIzquierda-3", elemento: "kristala", origen: "ambiente" }
+    ];
+    if (costeGenerar(pj, dedos) !== 11) fallos.push(`Coste de 2 Termika + 1 Hela con Aguante 8: ${costeGenerar(pj, dedos)} (esperado 11).`);
+    pj.vida = 10;
+    if (!motivoNoGenerar(pj, dedos)) fallos.push("Con 10 PV deja generar 11 PV.");
+    pj.vida = 11;
+    if (motivoNoGenerar(pj, dedos)) fallos.push("Con 11 PV no deja generar 11 PV (se puede quedar a 0).");
+    const danno = Object.fromEntries(dannoElementos(pj, dedos).map(e => [e.clave, e.cantidad]));
+    if (danno.termika !== 7 || danno.hela !== 5 || danno.kristala !== 5) fallos.push(`Daño por elemento: ${JSON.stringify(danno)} (esperado termika 7, hela 5, kristala 5).`);
+    const enRadio = Object.fromEntries(dannoElementos(pj, dedos, { radio: 2 }).map(e => [e.clave, e.cantidad]));
+    if (enRadio.termika !== 3 || factorRadio(3) !== 0.25) fallos.push(`Radio 2×2: termika ${enRadio.termika} (esperado 3); factor 3×3 ${factorRadio(3)}.`);
+    const golpes = golpesDeElementos(dannoElementos(pj, dedos));
+    const fichas = golpes[0]?.elemental ?? [];
+    const kristala = fichas.find(f => f.sacro === "kristala");
+    if (golpes.length !== 1 || !golpes[0].magia || fichas.length !== 3 || kristala?.tipo !== "fisico" || !kristala.ignoraArmadura || !fichas.every(f => f.color && f.etiqueta)) {
+        fallos.push("Golpe: una ficha por elemento con color y etiqueta, Kristala física que ignora la armadura, y con magia.");
+    }
+    const partes = partesHechizo([...dedos, { id: "pies-0", elemento: "akva", origen: "generar" }]);
+    if (partes.sort().join() !== "cabeza,izquierda,pies") fallos.push(`Acciones: ${partes.join(", ")} (esperado cabeza, izquierda, pies).`);
+    if (!motivoNoDedos(pj, [{ id: "pies-0", elemento: "akva", origen: "generar" }]) && !["ropa", "real"].includes(pj.equipoArmadura?.tipo)) {
+        fallos.push("Deja usar los pies sin ropa ni armadura real.");
+    }
+    if (!motivoNoDedos(pj, [{ id: "manoIzquierda-0", elemento: "morna", origen: "generar" }])) fallos.push("Deja generar Morna.");
+    // Anticuración: ni regeneración, ni pociones, ni luz (sin otros estados que quiten PV al empezar turno)
+    ESTADOS_LISTA.forEach(clave => { pj.estados[clave] = { valor: 0, turnos: 0 }; });
+    pj.vida = 5;
+    activarEstado(pj, "anticuracion", 1, 3);
+    activarEstado(pj, "regeneracion", 5, 3);
+    iniciarTurno(pj);
+    aplicarDanno(pj, 5, "luz");
+    aplicarEfectoEnObjetivo(pj, { pv: 10 });
+    if (pj.vida !== 5) fallos.push(`Con Anticuración recupera PV: ${pj.vida} (esperado 5).`);
+    pj.zona = "casa";
+    descansoLargo(pj);
+    if (pj.vida !== pj.vidaMax) fallos.push("El descanso largo no cura la Anticuración ni llena los PV.");
+    return fallos.map(f => `Sacro: ${f}`);
+}
+
 /**
  * Ejecuta todas las comprobaciones y devuelve el informe.
  */
@@ -453,7 +518,7 @@ export function ejecutarDebug(personaje, documento = document) {
     return {
         idaVueltaActual: actual.diferencias,
         idaVueltaPrueba: [...prueba.diferencias, ...npc.diferencias.map(d => `NPC: ${d}`), ...jefe.diferencias.map(d => `Jefe: ${d}`),
-            ...pesadilla.diferencias.map(d => `Pesadilla: ${d}`), ...comprobarPesadilla()],
+            ...pesadilla.diferencias.map(d => `Pesadilla: ${d}`), ...comprobarPesadilla(), ...comprobarSacro()],
         camposSinGuardar: [...new Set([...actual.sinGuardar, ...prueba.sinGuardar, ...npc.sinGuardar, ...jefe.sinGuardar, ...pesadilla.sinGuardar])],
         interfaz: verificarInterfaz(personaje, documento),
         avisos: validarFicha(personaje)

@@ -21,3 +21,5 @@ Thumbs.db
 # Build artifacts
 *.map
 CLAUDE.md
+tests/demoIconosAtaque.html
+tests/demoSacro.html

@@ -180,7 +180,7 @@ function pintarElegir() {
     const filas = [
         ...objetos.map(({ origen, indice, objeto }) => filaDisponible({
             clave: claveFila(origen, indice), objeto, maximo: objeto.cantidad, icono: ctx.iconoObjeto(objeto),
-            detalle: `${origen === "baul" ? "Baúl" : "Inventario"} · ${ctx.detalleObjeto(objeto)}`
+            detalle: `${origen === "baul" ? "Baúl" : origen.startsWith("cinturon/") ? "Cinturón" : "Inventario"} · ${ctx.detalleObjeto(objeto)}`
         })),
         ...objetosClave.map(({ indice, objeto }) => filaDisponible({
             clave: claveFila("clave", indice), objeto, maximo: 1, icono: "llave", detalle: "Objeto clave"

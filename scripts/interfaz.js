@@ -15,13 +15,22 @@ import {
 } from "./npc.js";
 import { pasarFaseSiToca, numeroFases, esJefe, barrasJefe, faseActual } from "./jefes.js";
 import { tirarFalloEmbriaguez } from "./embriaguez.js";
+import {
+    ALERTA_MAGIA, ELEMENTOS_SACRO, ELEMENTOS_CRISTAL, golpeConEnergia, golpesOfrecerEnergia, quitarEnergia, energiaEnMano,
+    describirEnergia, guardarEnMano, dannoEnergia, PLAYS_ENERGIA, DEDOS_MANO
+} from "./sacro.js";
+import { inicializarSacro, abrirSacro, actualizarSacro, aplicarResultadoHechizo, aplicarAmbienteSacro, abrirTransfusion, recibirTransfusion } from "./interfazSacro.js";
+import { idsEnSesion } from "./personajesMaster.js";
+import { puedeUsarMagia } from "./sacro.js";
+import { inicializarSacroMaster, abrirHechizosMaster, hechizosPendientes, encolarHechizoLocal, cancelarHechizoLocal, pedirAmbienteLocal } from "./interfazSacroMaster.js";
+import { cinturonesPuestos, huecosCinturon, motivoNoCinturon, meterEnCinturon, sacarDeCinturon, descartarDeCinturon, anadirACinturon, objetoCinturon, destinoSacar } from "./cinturon.js";
 import { sanearHtmlDiario, paginaLlena, anadirPagina, borrarPagina, motivoNoAnadirPagina, MAX_CARACTERES_PAGINA, ETIQUETA_TITULO_DIARIO } from "./diario.js";
 import { ejecutarTirada, combinarModos, esCritico, mostrarPopupDanno } from "./dados.js";
-import { prepararAtaque, prepararAtaqueNpc, aciertoNpc, calcularDannoAtaque, prepararLanzamiento, calcularDannoLanzamiento, calcularDannoLanzamientoArma, describirEfecto } from "./ataque.js";
+import { prepararAtaqueSinArma, calcularDannoSinArma, multPatada, prepararAtaque, prepararAtaqueNpc, aciertoNpc, calcularDannoAtaque, prepararLanzamiento, calcularDannoLanzamiento, calcularDannoLanzamientoArma, describirEfecto } from "./ataque.js";
 import {
     TIPOS_OBJETO, TIPOS_MATERIAL, detalleMaterial, MAX_PILA_INVENTARIO, ELEMENTOS_ARROJADIZA, cargarObjeto, anadirAInventario, anadirABaul,
     transferirABaul, transferirAInventario, descartar, comer, beberPocion, aplicarPocionAArma, manosConArma,
-    usarCristal, lanzarArrojadiza, manoParaUsar, categoriaEquipo, manosParaEquipar, motivoNoEquipar, equipar,
+    usarCristal, lanzarArrojadiza, manoParaUsar, categoriaEquipo, objetoEn, TIPOS_CINTURON, esCristalElemental, cristalConElemento, manosParaEquipar, motivoNoEquipar, equipar,
     motivoNoGuardar, motivoNoBeber, guardarEquipado, ranuraTieneEquipo, getCantidadAccesoriosPorArmadura, ranurasAccesorio, cabenEnInventario,
     anadirCor, gastarCor, anadirEgo, gastarEgo, accesorioVacio, aplicarEfectoEnObjetivo, ofrecerObjeto, consumirOfrecido,
     capacidadInventario, ajustarInventario, cargarObjetosClave, motivoNoLanzar, lanzarArma, recogerArma, motivoNoRecoger, destinoRecoger,
@@ -32,7 +41,7 @@ import {
     puedeGastarVarias, gastarVarias, gastarTodas, partesDeMano, estaIncapacitado,
     iniciarTurno, gastarAccion, devolverAccion, puedeGastar, accionesRestantes,
     correr, puedeCorrer, puedeMoverse, velocidadMovimiento, velocidadCorrer,
-    modoSigiloPorArmadura, puedeEntrarEnSigilo, entrarEnSigilo, salirDeSigilo, dannoHemorragia, parteDisponible
+    modoSigiloPorArmadura, puedeEntrarEnSigilo, entrarEnSigilo, salirDeSigilo, dannoHemorragia, parteDisponible, sinEquipo, manoVacia
 } from "./turno.js";
 import { ESTADOS_INFO, TIPOS_DANNO, aplicarDanno, activarEstado, quitarEstado, estaActivo, estiloColor, CURAR_NEGATIVOS } from "./estados.js";
 import { cargarEstadoAlAcertar, cargarEstadosAlAcertar, describirEstadosAlAcertar, MAX_ESTADOS_AL_ACERTAR } from "./estadosAlAcertar.js";
@@ -430,6 +439,7 @@ function actualizarTodo() {
     pintarTiradasNpc();
     actuaizarTextos();
     actualizarEquipamiento();
+    pintarBotonPatada();
     pintarPartesNpc();
     actualizarModificadores();
     generarAccesorios();
@@ -627,9 +637,18 @@ function pintarMuerteNpc() {
     const candidatos = candidatosExp();
     select.innerHTML = `<option value="">Nadie</option>` + candidatos
         .map(p => `<option value="${escaparHtml(p.instancia)}">${escaparHtml(p.nombre || "Sin nombre")}</option>`).join("");
-    const preseleccionado = atacante?.armaFuego ? null : candidatos.find(p => p.instancia === atacante?.instancia);
+    const preseleccionado = atacante?.armaFuego || atacante?.magia ? null : candidatos.find(p => p.instancia === atacante?.instancia);
     select.value = preseleccionado?.instancia ?? "";
     sincronizarExpMuerteNpc?.(); // la rejilla que viste el select (formularioSao.js)
+    // Último golpe de magia (13-sacro.md §10): nadie recibe nada; quien lo dio, +2 de alerta del sistema
+    if (atacante?.magia) {
+        document.getElementById("campoExpMuerteNpc").hidden = true;
+        document.getElementById("avisoMuerteNpc").textContent = avisoMuertePorMagia(atacante, "EXP ni recompensa");
+        document.getElementById("mitadMuerteNpc").textContent = "";
+        document.getElementById("avisoUnderworldMuerteNpc").hidden = true;
+        document.getElementById("recompensaMuerteNpc").innerHTML = filasRecompensa({ exp: expRecompensa, ...recompensa });
+        return;
+    }
     // Último golpe con arma de fuego: nadie recibe nada (no se elige a quién)
     document.getElementById("campoExpMuerteNpc").hidden = !enSala || Boolean(atacante?.armaFuego);
     if (atacante?.armaFuego) {
@@ -651,6 +670,14 @@ function pintarMuerteNpc() {
     pintarMitadMuerteNpc();
 
     document.getElementById("recompensaMuerteNpc").innerHTML = filasRecompensa({ exp: expRecompensa, ...recompensa });
+}
+
+/* Aviso de la ventana de muerte cuando el último golpe es de magia */
+function avisoMuertePorMagia(atacante, queNo) {
+    const quien = candidatosExp().find(p => p.instancia === atacante?.instancia);
+    const nombre = atacante?.nombre || "alguien";
+    return `El último golpe es de magia (${nombre}): nadie recibe ${queNo}. `
+        + (quien ? `${nombre} recibe +${ALERTA_MAGIA} de alerta del sistema.` : `${nombre} no está conectado: súmale a mano la alerta del sistema (+${ALERTA_MAGIA}).`);
 }
 
 /* Muerte de un personaje (ventana del máster) ____________________________________
@@ -678,7 +705,7 @@ function cargarDatosMuerte(datos, autor) {
     return {
         victima: String(datos?.victima ?? ""),
         nombre: String(autor ?? datos?.nombre ?? "").trim().slice(0, 60) || "Sin nombre",
-        ultimoGolpe: golpe?.instancia ? { instancia: String(golpe.instancia), nombre: String(golpe.nombre ?? "").slice(0, 60), armaFuego: golpe.armaFuego === true } : null,
+        ultimoGolpe: golpe?.instancia ? { instancia: String(golpe.instancia), nombre: String(golpe.nombre ?? "").slice(0, 60), armaFuego: golpe.armaFuego === true, magia: golpe.magia === true } : null,
         restos: {
             cor: cantidadSegura(restos.cor),
             objetos: (Array.isArray(restos.objetos) ? restos.objetos : []).slice(0, 50).map(cargarObjeto).filter(Boolean),
@@ -725,17 +752,19 @@ function pintarMuertePersonaje() {
     select.innerHTML = `<option value="">Nadie</option>` + candidatos
         .map(p => `<option value="${escaparHtml(p.instancia)}">${escaparHtml(p.nombre || "Sin nombre")}</option>`).join("");
     const deFuego = Boolean(ultimoGolpe?.armaFuego);
-    const preseleccionado = deFuego ? null : candidatos.find(p => p.instancia === ultimoGolpe?.instancia);
+    const deMagia = Boolean(ultimoGolpe?.magia);
+    const preseleccionado = deFuego || deMagia ? null : candidatos.find(p => p.instancia === ultimoGolpe?.instancia);
     select.value = preseleccionado?.instancia ?? "";
     sincronizarExpMuerteNpc?.();
-    // Último golpe con arma de fuego: nadie recibe nada
-    document.getElementById("campoExpMuerteNpc").hidden = !enSala || deFuego;
+    // Último golpe con arma de fuego o de magia: nadie recibe nada
+    document.getElementById("campoExpMuerteNpc").hidden = !enSala || deFuego || deMagia;
     document.getElementById("mitadMuerteNpc").textContent = "";
     const avisoUw = document.getElementById("avisoUnderworldMuerteNpc");
     avisoUw.hidden = true;
     avisoUw.textContent = "";
     const avisos = [];
     if (deFuego) avisos.push(`El último golpe es de un arma de fuego${ultimoGolpe.nombre ? ` (${ultimoGolpe.nombre})` : ""}: nadie recibe lo que llevaba.`);
+    else if (deMagia) avisos.push(avisoMuertePorMagia(ultimoGolpe, "lo que llevaba"));
     else if (!enSala) avisos.push("Sin sala: repártelo a mano.");
     else if (!ultimoGolpe) avisos.push("Nadie le dio el último golpe desde un pop-up (fue un estado o daño a mano): elige si alguien lo recibe.");
     else if (!preseleccionado) avisos.push(`El último golpe es de ${ultimoGolpe.nombre || "alguien"}, que no puede recibirlo (un NPC o no está conectado): elige si alguien lo recibe.`);
@@ -747,9 +776,15 @@ function aceptarMuertePersonaje() {
     const datos = muertePjAbierta;
     if (!datos) return;
     reproducir("click");
+    bootstrap.Modal.getOrCreateInstance(document.getElementById("modalMuerteNpc")).hide();
+    // Último golpe de magia: no se reparte nada, pero quien lo dio recibe la alerta
+    if (datos.ultimoGolpe?.magia) {
+        const atacante = candidatosExp().find(p => p.instancia === datos.ultimoGolpe.instancia) ?? null;
+        repartirDerrota({ nombre: datos.nombre, exp: 0, cor: 0, objetos: [], objetosClave: [], para: atacante, companeros: [], muerte: true, magia: true });
+        return;
+    }
     const instancia = datos.ultimoGolpe?.armaFuego ? "" : document.getElementById("selectExpMuerteNpc").value;
     const para = candidatosExp().find(p => p.instancia === instancia) ?? null;
-    bootstrap.Modal.getOrCreateInstance(document.getElementById("modalMuerteNpc")).hide();
     if (!para) return;
     repartirDerrota({
         nombre: datos.nombre, exp: 0, ...structuredClone(datos.restos), para, companeros: [], muerte: true,
@@ -801,7 +836,7 @@ function pintarMitadMuerteNpc() {
 /* Reparto de la derrota: un evento "derrota" para toda la sala (con el sonido de muerte). Quien mata recibe toda la
    EXP y la recompensa (Cor y objetos clave directos; los objetos, a su botín); sus compañeros de grupo, la mitad de
    la EXP. Lo aplica cada pestaña al recibirlo (alDerrota). Sin sala solo se pinta aquí, para repartirlo a mano. */
-function repartirDerrota({ nombre, exp, cor, objetos, objetosClave, para, companeros, alertaSistema = false, muerte = false, armaFuego = false, pesadilla = false }) {
+function repartirDerrota({ nombre, exp, cor, objetos, objetosClave, para, companeros, alertaSistema = false, muerte = false, armaFuego = false, pesadilla = false, magia = false }) {
     const mitad = Math.floor(exp / 2);
     const lineas = [];
     // Pesadilla: se anuncia la derrota sin dar nada, sin alerta y sin sonido (silencio: tampoco la notificación)
@@ -821,6 +856,19 @@ function repartirDerrota({ nombre, exp, cor, objetos, objetosClave, para, compan
             lineas: ["Último golpe con arma de fuego: nadie recibe EXP ni recompensa"],
             sonido: "muerte", npc: nombre, atacante: null, exp: 0, grupo: [], mitad: 0, botin: null, alertaSistema: false, armaFuego: true
         }, lectura ? { forzar: true, personaje: "Máster" } : {});
+        return;
+    }
+    // Último golpe de magia (13-sacro.md §10): nadie recibe nada; quien lo dio (para), +2 de alerta del sistema
+    if (magia) {
+        if (!muerte) reproducir("muerte");
+        const evento = emitirEvento("derrota", {
+            titulo: muerte ? `${nombre} ha muerto por magia` : `${nombre} ha sido derrotado`,
+            subtitulo: muerte ? "Muerte" : "Derrota",
+            lineas: [`Último golpe de magia${para ? ` (${para.nombre || "Sin nombre"})` : ""}: nadie recibe ${muerte ? "lo que llevaba" : "EXP ni recompensa"}`],
+            ...(muerte ? { muerte: true } : { sonido: "muerte" }),
+            npc: nombre, atacante: para?.instancia ?? null, exp: 0, grupo: [], mitad: 0, botin: null, alertaSistema: false, magia: true
+        }, lectura ? { forzar: true, personaje: "Máster" } : {});
+        if (evento) alDerrota(evento);
         return;
     }
     // muerte: lo que llevaba un personaje muerto (sin EXP; el sonido ya sonó con su muerte)
@@ -860,6 +908,14 @@ function alDerrota(evento) {
         conPersonajeDeInstancia(instancia, aplicar);
         return pj;
     };
+    // Matar con magia: solo +2 de alerta del sistema a quien lo hizo; nada de EXP, botín ni notoriedad
+    if (d.magia === true) {
+        if (!esDeEstaPestana(d.atacante)) return;
+        const pj = recibir(d.atacante, (p) => { if (!p.esNpc) p.alertaSistema = (Number(p.alertaSistema) || 0) + ALERTA_MAGIA; });
+        if (pj) mostrarPopupInfo(escaparHtml(`${leerPersonajeDeInstancia(d.atacante)?.nombre || "Tu personaje"} mata con magia a ${npc}`),
+            [escaparHtml("Nadie recibe nada por una muerte con magia."), `<span class="alerta-sistema">El sistema ha sido alertado</span>`]);
+        return;
+    }
     if (esDeEstaPestana(d.atacante)) {
         const exp = cantidadSegura(d.exp);
         const cor = cantidadSegura(d.botin?.cor);
@@ -958,6 +1014,7 @@ function pintarBotin() {
             </div>
             <div class="objeto-acciones">
                 ${botonObjeto("coger", "inventario", cabe ? "Coger (al inventario)" : "No cabe en el inventario", !cabe)}
+                ${botonCinturon(objeto, true, pj)}
                 ${pj.esNpc ? "" : botonObjeto("baul", "baul", baulAccesible(pj) ? "Guardar en el baúl" : MOTIVOS_ZONA.baul, !baulAccesible(pj))}
                 ${botonObjeto("ofrecer", "amigos", companeros.length ? "Ofrecer a un compañero del grupo" : "No tienes compañeros de grupo conectados", !companeros.length)}
                 ${botonObjeto("descartar", "descartar", "Descartar")}
@@ -1011,7 +1068,36 @@ function cogerDelBotin(pj, indice) {
     return cogidos;
 }
 
+/* Cerrar el botín con objetos sin recoger: se pregunta y, si se acepta, se pierden. confirmarSao oculta el botín
+   (data-hacia-hija) y vuelve a abrirlo al responder; si se aceptó, se cierra entonces */
+let cerrandoBotin = false;
+let cerrarBotinAlVolver = false;
+function avisarAlCerrarBotin() {
+    const modal = document.getElementById("modalBotin");
+    modal.addEventListener("hide.bs.modal", (e) => {
+        if (cerrandoBotin) { cerrandoBotin = false; return; }
+        if (modal.dataset.haciaHija || !(pjBotin()?.botin?.length)) return;
+        // Mirando la ficha de un jugador (modo lectura): su botín no se toca
+        if (lectura && !instanciaBotin) return;
+        e.preventDefault();
+        const n = pjBotin().botin.length;
+        confirmarSao({ titulo: "Botín sin recoger", texto: `Queda${n === 1 ? "" : "n"} ${n} objeto${n === 1 ? "" : "s"} en el botín. Si cierras, se pierde${n === 1 ? "" : "n"}. ¿Cerrar igualmente?` })
+            .then(ok => {
+                if (!ok) return;
+                conPjBotin(pj => { pj.botin = []; pj.alertaSistemaBotin = false; });
+                cerrarBotinAlVolver = true;
+            });
+    });
+    modal.addEventListener("shown.bs.modal", () => {
+        if (!cerrarBotinAlVolver) return;
+        cerrarBotinAlVolver = false;
+        cerrandoBotin = true;
+        bootstrap.Modal.getInstance(modal)?.hide();
+    });
+}
+
 function inicializarBotin() {
+    avisarAlCerrarBotin();
     listaBotinEl.addEventListener("click", async (e) => {
         const boton = e.target.closest("button[data-accion]");
         const indice = Number(boton?.closest(".fila-objeto")?.dataset.index);
@@ -1021,6 +1107,15 @@ function inicializarBotin() {
         const accion = boton.dataset.accion;
         if (accion === "coger") {
             if (!conPjBotin(pj => cogerDelBotin(pj, indice))) mostrarPopupInfo("No cabe", ["Libera un hueco del inventario."]);
+        } else if (accion === "cinturon") {
+            // Como coger: no gasta acciones; lo que no cabe se queda en el botín
+            conPjBotin(pj => {
+                const fila = pj.botin[indice];
+                if (!fila) return;
+                const resto = anadirACinturon(pj, fila);
+                if (resto > 0) fila.cantidad = resto;
+                else pj.botin.splice(indice, 1);
+            });
         } else if (accion === "baul") {
             conPjBotin(pj => {
                 if (!baulAccesible(pj) || !pj.botin[indice]) return;
@@ -1097,8 +1192,9 @@ function inicializarMuerteNpc() {
         if (!pj) return;
         reproducir("click");
         const deFuego = Boolean(datos.atacante?.armaFuego);
+        const deMagia = Boolean(datos.atacante?.magia);
         const pesadilla = esPesadilla(pj);
-        const instancia = deFuego || pesadilla ? "" : document.getElementById("selectExpMuerteNpc").value;
+        const instancia = deFuego || pesadilla ? "" : deMagia ? datos.atacante.instancia : document.getElementById("selectExpMuerteNpc").value;
         const para = candidatosExp().find(p => p.instancia === instancia) ?? null;
         const reparto = pesadilla ? {
             // Pesadilla: no da nada ni alerta al sistema
@@ -1106,6 +1202,9 @@ function inicializarMuerteNpc() {
         } : deFuego ? {
             // Último golpe con arma de fuego: se anuncia la derrota, pero no se reparte nada
             nombre: pj.nombre || "Sin nombre", exp: 0, cor: 0, objetos: [], objetosClave: [], para: null, companeros: [], armaFuego: true
+        } : deMagia ? {
+            // Último golpe de magia: no se reparte nada; quien lo dio (para), +2 de alerta del sistema
+            nombre: pj.nombre || "Sin nombre", exp: 0, cor: 0, objetos: [], objetosClave: [], para, companeros: [], magia: true
         } : {
             nombre: pj.nombre || "Sin nombre",
             exp: pj.npc.expRecompensa,
@@ -1174,7 +1273,8 @@ async function morirPersonaje(instanciaMuerte) {
     const instancia = MODO_MASTER ? `m-${idMaster ?? pj.idPersonaje}` : instanciaEmisora();
     const enSala = Boolean(getEstadoOnline().sala);
     const ultimo = pj.ultimoGolpe;
-    const lineas = [ultimo?.nombre ? `Último golpe: ${ultimo.nombre}${ultimo.armaFuego ? " (arma de fuego: nadie recibe nada)" : ""}` : "Último golpe: nadie"];
+    const sinReparto = ultimo?.armaFuego ? " (arma de fuego: nadie recibe nada)" : ultimo?.magia ? " (magia: nadie recibe nada)" : "";
+    const lineas = [ultimo?.nombre ? `Último golpe: ${ultimo.nombre}${sinReparto}` : "Último golpe: nadie"];
     if (enSala) lineas.push(MODO_MASTER ? "Sale de su grupo y de la sesión." : "Sale de su grupo y de la sala.");
     // Se espera a que salga el aviso antes de dejar la sala (si no, podría no llegar)
     await emitirEventoYEsperar("muertePersonaje", {
@@ -1356,6 +1456,8 @@ const PERMITIDOS_LECTURA = [
     "#modalCompendioObjetos", ".btn-al-compendio", "#btnAbrirCompendioObjetos",
     // Trueque y botín de uno de los personajes del máster que no es la ficha que mira (interfazTrueque.js, pintarBotin)
     "#modalTrueque", "#modalBotin.botin-otro",
+    // Abrir el cinturón desde su tarjeta solo para mirarlo (sus botones siguen bloqueados)
+    ".accesorio-icono.abre-cinturon",
     // Muerte de uno de sus personajes (interfaz.js, bloque "Muerte de personajes")
     "#pantallaMuerte",
     // Pestaña de los jefes de la sala en la cabecera (interfazOnline.js, actualizarHudJefes)
@@ -2857,13 +2959,15 @@ function actualizarEquipamiento() {
 
         // Un escudo no tiene daño, solo defensa; una reliquia sin arma no tiene ninguno de los dos ni ataque
         if (campoDanno) campoDanno.style.display = esEscudo || esReliquiaSinArma ? "none" : "";
-        if (btnUsar) btnUsar.hidden = esReliquiaSinArma || !ARMAS[item.tipo];
+        if (btnUsar) btnUsar.hidden = esReliquiaSinArma || (!ARMAS[item.tipo] && !puedeDarPunetazo(propEquipo));
         if (campoDefensa) campoDefensa.style.display = esEscudo ? "" : "none";
         if (inputDefensa && document.activeElement !== inputDefensa) {
             inputDefensa.value = item.defensa ?? 0;
         }
         if (btnUsar) actualizarBotonUsar(btnUsar, propEquipo);
         actualizarBotonLanzar(elemento, propEquipo);
+        pintarEnergiaMano(elemento.querySelector(".energia-mano"), propEquipo);
+        pintarBotonTransfusion(elemento.querySelector(".btn-transfusion"), propEquipo);
 
         if (select) {
             select.value = item.tipo || "";
@@ -3223,7 +3327,10 @@ const etiquetaMano = (propEquipo) => (personaje.esNpc && parteNpc(personaje, PAR
 function usarEquipo(propEquipo) {
     const item = personaje[propEquipo];
     const arma = ARMAS[item?.tipo];
-    if (!arma) return;
+    if (!arma) {
+        if (puedeDarPunetazo(propEquipo)) atacarSinArma("puno", partesDeMano(propEquipo, false), `Puñetazo · ${etiquetaMano(propEquipo)}`, propEquipo);
+        return;
+    }
     if (arma.fuego) {
         dispararArma(propEquipo, `Disparo con ${arma.etiqueta.toLowerCase()} · ${arma.manos === 2 ? "Dos manos" : etiquetaMano(propEquipo)}`);
         return;
@@ -3232,6 +3339,132 @@ function usarEquipo(propEquipo) {
         `Ataque con ${arma.etiqueta.toLowerCase()} · ${arma.manos === 2 ? "Dos manos" : etiquetaMano(propEquipo)}`,
         () => prepararAtaque(personaje, propEquipo, obtenerConfiguracionTirada().modos));
 }
+
+/* Puñetazo y patada (05-combate-y-estados.md §1.1): para todos los personajes, no los NPC */
+function puedeDarPunetazo(propEquipo) {
+    return !personaje.esNpc && MANOS_PUNO.includes(propEquipo) && sinEquipo(personaje, propEquipo);
+}
+const MANOS_PUNO = ["manoIzquierda", "manoDerecha"];
+
+/* Tirada y daño de un ataque sin arma, gastando esas acciones (la embriaguez puede hacerlo fallar). Un puñetazo suelta
+   toda la energía de Sacro de su mano (golpeConEnergia), que se pierde aunque falle */
+function atacarSinArma(tipo, partes, subtitulo, mano = null) {
+    const { criticoFacil, modos } = obtenerConfiguracionTirada();
+    const ataque = prepararAtaqueSinArma(personaje, tipo, modos);
+    if (!ataque) return;
+    const { resultado: atacado } = conEmbriaguez("ataque", () => gastarAccionesOConfirmar(partes, tipo === "patada" ? "Dar una patada" : "Dar un puñetazo"));
+    if (!atacado) { actualizarTodo(); return; } // borracho o sin acciones
+    ejecutarTirada({
+        nombreAccion: ataque.nombre,
+        subtitulo,
+        valorHabilidad: ataque.valorHabilidad,
+        etiquetaHabilidad: ataque.etiquetaHabilidad,
+        valorCaracteristica: ataque.valorCaracteristica,
+        etiquetaCaracteristica: ataque.etiquetaCaracteristica,
+        modoTirada: ataque.modo,
+        criticoFacil,
+        bonificador: ataque.bonificador,
+        etiquetaBonificador: ataque.bonificador > 0 ? "Ventaja extra" : "Desventaja extra",
+        etiquetaTotal: "ATAQUE",
+        calcularDanno: (resultado) => {
+            const golpe = calcularDannoSinArma(personaje, tipo, esCritico(resultado));
+            return mano ? golpeConEnergia(personaje, golpe, mano) : golpe;
+        }
+    });
+    if (mano) quitarEnergia(personaje, mano);
+    actualizarTodo();
+}
+
+/* Energía de Sacro guardada en una mano (13-sacro.md §7): fichas de sus elementos en la tarjeta y "Ofrecer" (sin
+   tirada ni bonificador CaC: un pop-up de daño que el otro acepta pulsándolo; gasta la acción de esa mano) */
+function pintarEnergiaMano(bloque, mano) {
+    if (!bloque) return;
+    const energia = energiaEnMano(personaje, mano);
+    bloque.hidden = !energia || personaje.esNpc;
+    if (bloque.hidden) {
+        if (bloque.dataset.firma) { bloque.innerHTML = ""; bloque.dataset.firma = ""; }
+        return;
+    }
+    const firma = JSON.stringify(energia);
+    if (bloque.dataset.firma === firma) return;
+    bloque.dataset.firma = firma;
+    const cuenta = new Map();
+    energia.dedos.forEach(dedo => cuenta.set(dedo.elemento, (cuenta.get(dedo.elemento) ?? 0) + 1));
+    const danno = dannoEnergia(personaje, mano).map(e => `${e.cantidad} ${e.etiqueta} (${ELEMENTOS_SACRO[e.elemento].textoDanno})`).join(", ");
+    const turnos = PLAYS_ENERGIA - energia.plays;
+    bloque.innerHTML = [...cuenta].map(([clave, n]) => {
+        const info = ELEMENTOS_SACRO[clave];
+        return `<span class="energia-elemento icono-activo" style="${estiloColor(info)}" title="${escaparHtml(`${info.que}: daño de ${info.textoDanno}`)}">${iconoSao(info.icono)}${escaparHtml(info.etiqueta)}${n > 1 ? ` ×${n}` : ""}</span>`;
+    }).join("")
+        + `<span class="energia-aviso">Daño ${escaparHtml(danno)}. ${turnos > 1 ? "Se pierde al segundo Play" : "Se pierde al pulsar Play"} o al descansar.</span>`
+        + botonObjeto("ofrecerEnergia", "aligi", "Aligi");
+}
+
+/* Transfusión de sangre (13-sacro.md §9): botón en la tarjeta de una mano libre (sin nada equipado ni energía), solo
+   para personajes del Underworld; abre #modalTransfusion (interfazSacro.js) */
+function pintarBotonTransfusion(boton, mano) {
+    if (!boton) return;
+    boton.hidden = personaje.esNpc || !puedeUsarMagia(personaje) || !manoVacia(personaje, mano);
+    if (boton.hidden) return;
+    if (!boton.dataset.icono) {
+        boton.dataset.icono = "transfusion";
+        boton.innerHTML = iconoSao("transfusion");
+        boton.title = "Transfusión de sangre";
+        boton.setAttribute("aria-label", "Transfusión de sangre");
+    }
+}
+document.getElementById("divEquipamiento")?.addEventListener("click", (e) => {
+    const boton = e.target.closest(".btn-transfusion");
+    if (!boton || boton.hidden) return;
+    const mano = getPropiedadEquipo(boton.closest(".equipamiento"));
+    if (!mano) return;
+    reproducir("click");
+    abrirTransfusion(mano);
+});
+
+function ofrecerEnergia(mano) {
+    const energia = energiaEnMano(personaje, mano);
+    if (!energia) return;
+    const descripcion = `Ofrecer ${describirEnergia(energia)}`;
+    if (!gastarAccionesOConfirmar(partesDeMano(mano, false), descripcion)) { actualizarTodo(); return; }
+    mostrarPopupDanno({
+        titulo: `${personaje.nombre || "Alguien"} ofrece energía`,
+        subtitulo: `${describirEnergia(energia)} · ${ETIQUETAS_MANO[mano]}`,
+        descripcion: "Sin tirada: quien la recibe la acepta pulsando el bloque.",
+        golpes: golpesOfrecerEnergia(personaje, mano)
+    });
+    quitarEnergia(personaje, mano);
+    actualizarTodo();
+}
+document.getElementById("divEquipamiento")?.addEventListener("click", (e) => {
+    const boton = e.target.closest('.energia-mano button[data-accion="ofrecerEnergia"]');
+    if (!boton) return;
+    const mano = getPropiedadEquipo(boton.closest(".equipamiento"));
+    if (!mano) return;
+    reproducir("click");
+    ofrecerEnergia(mano);
+});
+
+/* Botón de patada de la tarjeta de armadura: gasta las piernas */
+function pintarBotonPatada() {
+    const boton = document.querySelector(".equipoArmadura .btn-patada");
+    if (!boton) return;
+    boton.hidden = personaje.esNpc;
+    if (boton.hidden) return;
+    if (!boton.dataset.icono) {
+        boton.dataset.icono = "patada";
+        boton.innerHTML = iconoSao("patada");
+    }
+    const sinAccion = !puedeGastarVarias(personaje, ["pies"]);
+    const titulo = `Dar una patada (bonificador CaC ${Math.max(0, personaje.dFisico)} ×${multPatada(personaje)}; gasta las piernas)${sinAccion ? " · Sin acciones disponibles" : ""}`;
+    boton.title = titulo;
+    boton.setAttribute("aria-label", titulo);
+    boton.classList.toggle("sin-accion", sinAccion);
+}
+
+document.querySelector(".equipoArmadura .btn-patada")?.addEventListener("click", () => {
+    if (!personaje.esNpc) atacarSinArma("patada", ["pies"], "Patada · Piernas");
+});
 
 /* NPC: usar el equipo de una de sus partes que no son brazos (cola, boca...) */
 function usarEquipoParte(id) {
@@ -3460,7 +3693,24 @@ function guardarEnInventario(ranura) {
 }
 
 function actualizarBotonUsar(boton, propEquipo) {
+    if (!ARMAS[personaje[propEquipo]?.tipo] && puedeDarPunetazo(propEquipo)) return pintarBotonPuno(boton, propEquipo);
     pintarBotonUsar(boton, personaje[propEquipo], partesDeManoEquipo(propEquipo));
+}
+
+/* Botón de usar de una mano vacía: puñetazo */
+function pintarBotonPuno(boton, propEquipo) {
+    if (boton.dataset.icono !== "puno") {
+        boton.dataset.icono = "puno";
+        boton.innerHTML = iconoSao("puno");
+    }
+    const sinAccion = !puedeGastarVarias(personaje, partesDeMano(propEquipo, false));
+    const energia = energiaEnMano(personaje, propEquipo);
+    const titulo = `Dar un puñetazo (bonificador CaC ${Math.max(0, personaje.dFisico)}${energia ? ` + energía: ${describirEnergia(energia)}` : ""})${sinAccion ? " · Sin acciones disponibles" : ""}`;
+    boton.title = titulo;
+    boton.setAttribute("aria-label", titulo);
+    boton.disabled = false;
+    boton.classList.remove("en-uso");
+    boton.classList.toggle("sin-accion", sinAccion);
 }
 
 /* Icono y texto del botón de usar de un equipo (mano o parte de un NPC) */
@@ -4052,7 +4302,7 @@ function generarAccesorios() {
                 <div class="accesorio-cabecera">
                     <span class="accesorio-icono">${iconoSao("accesorio")}</span>
                     <div class="equipamiento-titulo">
-                        <span class="equipamiento-ranura"><b>Accesorio ${i + 1}</b> <span class="accesorio-marca-reliquia" hidden>Reliquia</span>
+                        <span class="equipamiento-ranura"><b>Accesorio ${i + 1}</b> <span class="accesorio-marca-reliquia" hidden>Reliquia</span> <span class="accesorio-marca-reliquia accesorio-marca-cinturon" hidden></span>
                             <button type="button" class="btn-objeto btn-extras-equipo" hidden></button>
                             <button type="button" class="btn-guardar-equipo" data-ranura="accesorio-${i}">${iconoSao("inventario")}</button></span>
                         <input type="text" class="inputNombreAccesorio" placeholder="${MODO_MASTER ? `Accesorio ${i + 1}` : "Vacío: equipa desde el inventario"}"
@@ -4084,9 +4334,45 @@ function generarAccesorios() {
         pintarDescripcionEquipo(tarjeta?.querySelector(".equipamiento-descripcion"), accesorio);
         const marca = tarjeta?.querySelector(".accesorio-marca-reliquia");
         if (marca) marca.hidden = !esReliquia(accesorio);
+        // Cinturón: huecos ocupados y su icono (los objetos se ven en #modalCinturon, menú del inventario)
+        const marcaCinturon = tarjeta?.querySelector(".accesorio-marca-cinturon");
+        if (marcaCinturon) {
+            const objetos = accesorio.cinturon?.objetos ?? [];
+            marcaCinturon.hidden = !accesorio.cinturon;
+            marcaCinturon.textContent = accesorio.cinturon ? `Cinturón ${objetos.filter(Boolean).length}/${objetos.length}` : "";
+        }
+        const icono = tarjeta?.querySelector(".accesorio-icono");
+        const claveIcono = accesorio.cinturon ? "cinturon" : "accesorio";
+        if (icono && icono.dataset.icono !== claveIcono) { icono.dataset.icono = claveIcono; icono.innerHTML = iconoSao(claveIcono); }
+        // El icono de un cinturón abre su ventana (como la opción del menú del inventario)
+        if (icono) {
+            const abre = Boolean(accesorio.cinturon) && !accesorioVacio(accesorio);
+            icono.classList.toggle("abre-cinturon", abre);
+            if (abre) {
+                icono.setAttribute("role", "button");
+                icono.tabIndex = 0;
+                icono.title = "Abrir el cinturón";
+                icono.setAttribute("aria-label", "Abrir el cinturón");
+            } else {
+                ["role", "tabindex", "title", "aria-label"].forEach(atributo => icono.removeAttribute(atributo));
+            }
+        }
         actualizarBotonGuardar(tarjeta?.querySelector(".btn-guardar-equipo"), `accesorio-${i}`);
     });
 }
+
+/* Icono de un cinturón en su tarjeta de accesorio: abre #modalCinturon (clic, Intro o espacio) */
+function abrirCinturonDesdeTarjeta(e) {
+    const icono = e.target.closest(".accesorio-icono.abre-cinturon");
+    if (!icono || (e.type === "keydown" && e.key !== "Enter" && e.key !== " ")) return;
+    e.preventDefault();
+    reproducir("click");
+    const ventana = document.getElementById("modalCinturon");
+    ventana.dataset.sinSonidoAbrir = "1";
+    bootstrap.Modal.getOrCreateInstance(ventana).show();
+}
+document.getElementById("listaAccesorios")?.addEventListener("click", abrirCinturonDesdeTarjeta);
+document.getElementById("listaAccesorios")?.addEventListener("keydown", abrirCinturonDesdeTarjeta);
 
 /* Partes del cuerpo del NPC (npc.js) ________________________________________
  * Lista de partes (nombre editable y quitar; + en el título de Equipamiento para añadir). Los brazos usan las
@@ -4400,6 +4686,11 @@ function inicializarTiradasHabilidades() {
         const elementos = [img, titulo].filter(Boolean);
         // Profesión: en zona segura o base, un clic abre la creación de objetos y mantener pulsado tira
         if (habilidadId === "profesion") enlazarProfesion(habDiv, elementos, dispararTirada);
+        // Sacro no se tira: abre la ventana de magia (interfazSacro.js)
+        else if (habilidadId === "sacro") elementos.forEach(elemento => {
+            elemento.title = "Magia";
+            elemento.addEventListener('click', () => { reproducir("click"); abrirSacro(); });
+        });
         else elementos.forEach(elemento => elemento.addEventListener('click', dispararTirada));
     });
 
@@ -4511,6 +4802,11 @@ function inicializarTurno() {
         // Descansar con armas lanzadas sin recoger las pierde: se pide confirmación
         const esDescanso = boton.accion === descansoCorto || boton.accion === descansoLargo;
         if (esDescanso && !confirmarPerderArmasLanzadas()) return;
+        // Esperando a que el máster resuelva su magia: no sigue con su turno (13-sacro.md §6.4)
+        if (boton.accion === iniciarTurno && personaje.hechizo) {
+            mostrarPopupInfo("Esperando al máster", [escaparHtml("Tienes una petición de magia sin resolver. Espera al máster o cancélala desde la ventana de Sacro.")]);
+            return;
+        }
         // A 0 PV o menos no se empieza el turno: se muere
         if (boton.accion === iniciarTurno && muereAlEmpezarTurno(personaje)) {
             mostrarMuerte(null);
@@ -4935,29 +5231,57 @@ function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null }) {
     const cantidad = (valor) => Math.max(0, Math.floor(Number(valor) || 0));
     const dannos = [];
     if (cantidad(golpe.total) > 0) dannos.push({ tipo: "fisico", cantidad: cantidad(golpe.total) });
-    (Array.isArray(golpe.elemental) ? golpe.elemental : []).forEach(({ tipo, cantidad: valor }) => {
+    (Array.isArray(golpe.elemental) ? golpe.elemental : []).forEach(({ tipo, cantidad: valor, ignoraArmadura }) => {
         if (ELEMENTOS_DANNO.includes(tipo) && cantidad(valor) > 0) dannos.push({ tipo, cantidad: cantidad(valor) });
+        // Magia física (Akva, Metala; Kristala ignora la armadura): un impacto físico aparte (13-sacro.md §4)
+        else if (tipo === "fisico" && golpe.magia === true && cantidad(valor) > 0) {
+            dannos.push({ tipo, cantidad: cantidad(valor), ignorarArmadura: ignoraArmadura === true });
+        }
     });
     // Poción aplicada al arma o efecto de la arrojadiza: veneno, daño elemental, PV...
     const efecto = golpe.efecto && typeof golpe.efecto === "object" ? golpe.efecto : null;
-    if (!dannos.length && !efecto) {
+    // Transfusión de sangre (13-sacro.md §9): quien la acepta pierde hasta esos PV (nunca por debajo de 0) y se avisa a
+    // quien los recibe. A una pesadilla no se le pueden quitar
+    const transfusion = golpe.transfusion && typeof golpe.transfusion === "object" && golpe.transfusion.para ? golpe.transfusion : null;
+    if (transfusion && esPesadilla(personaje)) {
+        mostrarPopupInfo("No se puede", ["A las pesadillas no se les pueden quitar PV."]);
+        return false;
+    }
+    if (!dannos.length && !efecto && !transfusion) {
         mostrarPopupInfo("Sin daño", ["Este golpe no hace daño."]);
         return false;
     }
     const vidaAntes = personaje.vida;
     const conCabeceras = dannos.length + (efecto ? 1 : 0) > 1;
-    const lineas = dannos.flatMap(({ tipo, cantidad: valor }) => {
+    const lineas = dannos.flatMap(({ tipo, cantidad: valor, ignorarArmadura }) => {
         // Arte o efecto que atraviesa armadura: solo el daño físico se la salta (las resistencias elementales cuentan)
-        const resumen = aplicarDanno(personaje, valor, tipo, { ignorarArmadura: tipo === "fisico" && golpe.atraviesaArmadura === true });
+        const resumen = aplicarDanno(personaje, valor, tipo, { ignorarArmadura: tipo === "fisico" && (golpe.atraviesaArmadura === true || ignorarArmadura === true) });
         return conCabeceras ? [`${TIPOS_DANNO[tipo].etiqueta} ${valor}:`, ...resumen] : resumen;
     });
     if (efecto) {
         const resumen = aplicarEfectoEnObjetivo(personaje, efecto);
         lineas.push(...(conCabeceras ? [`${String(efecto.nombre || "Poción")}:`, ...resumen] : resumen));
     }
+    if (transfusion) {
+        const pedidos = Math.max(0, Math.min(999, Math.floor(Number(transfusion.pv) || 0)));
+        const perdidos = Math.min(pedidos, Math.max(0, personaje.vida));
+        const antes = personaje.vida;
+        personaje.vida -= perdidos;
+        lineas.push(`Transfusión: pierde ${perdidos} PV (PV: ${antes} → ${personaje.vida})`);
+        const para = String(transfusion.para);
+        if (perdidos > 0) {
+            const quien = personaje.nombre || "Alguien";
+            // De esta pestaña (también los personajes de la sesión del máster sin sala): se aplica aquí
+            const propia = esDeEstaPestana(para) || para === instanciaEmisora() || (MODO_MASTER && idsEnSesion().some(id => `m-${id}` === para));
+            if (propia) setTimeout(() => recibirTransfusion(para, perdidos, quien), 0);
+            else emitirPrivado("transfusion", { para, pv: perdidos, de: quien }).catch(error => console.warn("No se pudo enviar la transfusión", error));
+        }
+    }
     // Arma de fuego (armasFuego.js): el golpe no cuenta para la notoriedad ni quita la neutralidad, y si mata nadie
     // recibe recompensa
     const deFuego = golpe.armaFuego === true;
+    // Magia (13-sacro.md §10): no da notoriedad y, si mata, nadie recibe nada (+2 de alerta a quien la lanzó)
+    const deMagia = golpe.magia === true;
     // NPC neutral: deja de serlo cuando le golpea un personaje
     const deUnPersonaje = golpeDePersonaje(origen);
     if (personaje.esNpc && personaje.neutral && deUnPersonaje && !deFuego) {
@@ -4967,7 +5291,7 @@ function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null }) {
     // Notoriedad: el golpe de un personaje de fuera de tu grupo que te deja por debajo de la mitad de la vida.
     // Si la víctima ya tiene notoriedad (cursor naranja), herirla no da puntos: solo matarla (alDerrota)
     const mismoGrupo = (getGrupoSala()?.miembros ?? []).some(m => m.instancia === origen?.instancia);
-    if (!personaje.esNpc && deUnPersonaje && !deFuego && !mismoGrupo && !(Number(personaje.notoriedad) > 0) && personaje.vida < vidaAntes
+    if (!personaje.esNpc && deUnPersonaje && !deFuego && !deMagia && !mismoGrupo && !(Number(personaje.notoriedad) > 0) && personaje.vida < vidaAntes
         && personaje.vida < personaje.vidaMax / 2 && getEstadoOnline().sala) {
         // Si el atacante también es de esta pestaña (dos personajes del máster), su propio evento no le llegaría
         if (esDeEstaPestana(origen.instancia)) setTimeout(() => sumarNotoriedad(origen.instancia, personaje.nombre), 0);
@@ -4975,10 +5299,10 @@ function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null }) {
     }
     // Quién ha dado el último golpe (si muere al empezar turno, recibe su recompensa)
     personaje.ultimoGolpe = origen?.instancia
-        ? { instancia: origen.instancia, jugador: origen.jugador ?? null, nombre: String(origen.nombre ?? autor).slice(0, 60), armaFuego: deFuego }
+        ? { instancia: origen.instancia, jugador: origen.jugador ?? null, nombre: String(origen.nombre ?? autor).slice(0, 60), armaFuego: deFuego, magia: deMagia }
         : null;
     // NPC: quién ha dado el golpe, por si lo deja a 0 PV (comprobarMuerteNpc, en actualizarTodo)
-    atacanteGolpe = { ...(origen ?? { jugador: null, instancia: null, nombre: autor }), armaFuego: deFuego };
+    atacanteGolpe = { ...(origen ?? { jugador: null, instancia: null, nombre: autor }), armaFuego: deFuego, magia: deMagia };
     golpeAlNpc = true;
     actualizarTodo();
     const golpeTexto = golpe.etiqueta ? ` (${golpe.etiqueta})` : "";
@@ -5485,11 +5809,19 @@ function actualizarZona() {
 
 /* Menú del inventario: inventario o baúl de la base ________________________ */
 function inicializarMenuInventario() {
-    const ventanas = { inventario: "modalInventario", objetosClave: "modalObjetosClave", baul: "modalBaul", botin: "modalBotin", trueque: "modalTrueque" };
+    const ventanas = { inventario: "modalInventario", cinturon: "modalCinturon", objetosClave: "modalObjetosClave", baul: "modalBaul", botin: "modalBotin", trueque: "modalTrueque" };
+    // Solo con algún cinturón puesto (cinturon.js)
+    const cinturon = () => {
+        const huecos = huecosCinturon(personaje);
+        return huecos.length ? [{ clave: "cinturon", etiqueta: `Cinturón (${huecos.filter(h => h.objeto).length}/${huecos.length})`, icono: "cinturon" }] : [];
+    };
     const trueque = { clave: "trueque", etiqueta: "Trueque", icono: "trueque" };
     // Modo máster: peticiones de creación de objetos sin resolver (interfazCreacion.js)
-    const creaciones = () => (MODO_MASTER && creacionesPendientes()
-        ? [{ clave: "creaciones", etiqueta: `Creaciones pendientes (${creacionesPendientes()})`, icono: "material" }] : []);
+    const creaciones = () => [
+        ...(MODO_MASTER && creacionesPendientes() ? [{ clave: "creaciones", etiqueta: `Creaciones pendientes (${creacionesPendientes()})`, icono: "material" }] : []),
+        // Peticiones de magia sin resolver (interfazSacroMaster.js)
+        ...(MODO_MASTER && hechizosPendientes() ? [{ clave: "magia", etiqueta: `Magia pendiente (${hechizosPendientes()})`, icono: "magia" }] : [])
+    ];
     crearMenuSao({
         boton: document.getElementById("btnInventario"),
         menu: document.getElementById("menuInventario"),
@@ -5497,6 +5829,7 @@ function inicializarMenuInventario() {
         // (y el trueque, si el máster se lo ha permitido)
         opciones: () => personaje.esNpc ? [{ clave: "inventario", etiqueta: "Inventario", icono: "inventario" }, ...(personaje.permitirTrueque ? [trueque] : []), ...creaciones()] : [
             { clave: "inventario", etiqueta: "Inventario", icono: "inventario" },
+            ...cinturon(),
             { clave: "objetosClave", etiqueta: `Objetos clave (${personaje.objetosClave.length})`, icono: "llave" },
             { clave: "baul", etiqueta: "Baúl de la base", icono: "baul" },
             // Solo mientras haya botín de un NPC por recoger
@@ -5509,6 +5842,7 @@ function inicializarMenuInventario() {
             reproducir("click");
             menu.cerrar({ sonido: false });
             if (clave === "creaciones") return abrirCreacionesMaster();
+            if (clave === "magia") return abrirHechizosMaster();
             const ventana = document.getElementById(ventanas[clave]);
             ventana.dataset.sinSonidoAbrir = "1";
             bootstrap.Modal.getOrCreateInstance(ventana).show();
@@ -6957,6 +7291,7 @@ function etiquetaTipoEquipo(tipo) {
 }
 
 function iconoObjeto(objeto) {
+    if (esCristalElemental(objeto)) return "cristalElemental";
     if (objeto.tipo !== "equipo") return TIPOS_OBJETO[objeto.tipo].icono;
     const tipo = objeto.equipo?.tipo;
     if (ARMAS[tipo]) return tieneIconoSao(tipo) ? tipo : "otros";
@@ -7347,7 +7682,11 @@ function detalleObjeto(objeto) {
         case "pocion": return describirEfecto(objeto, false) || "Sin efecto";
         case "arrojadiza": {
             const efecto = describirEfecto(objeto, false);
-            return `Daño ${objeto.danno} + ${Math.max(0, personaje.dDistancia)} (distancia)` + (efecto ? ` · ${efecto}` : "");
+            // Cristal elemental: el elemento que guarda y cuánto (13-sacro.md §11)
+            const cristal = !esCristalElemental(objeto) ? ""
+                : objeto.elemento ? `Cristal elemental: ${ELEMENTOS_SACRO[objeto.elemento.clave].etiqueta} ${objeto.elemento.puntos}/${objeto.capacidad} · `
+                : `Cristal elemental vacío (capacidad ${objeto.capacidad}) · `;
+            return cristal + `Daño ${objeto.danno} + ${Math.max(0, personaje.dDistancia)} (distancia)` + (efecto ? ` · ${efecto}` : "");
         }
         case "equipo": {
             const equipo = objeto.equipo;
@@ -7357,6 +7696,7 @@ function detalleObjeto(objeto) {
             const mods = textoModificadores(equipo.modificadores);
             if (mods) partes.push(mods);
             if (equipo.pocionAplicada) partes.push(`con ${equipo.pocionAplicada.nombre}`);
+            if (equipo.cinturon) partes.push(`cinturón: ${equipo.cinturon.huecos} hueco${equipo.cinturon.huecos === 1 ? "" : "s"}`);
             if (equipo.reliquia) {
                 const n = equipo.reliquia.habilidades.length;
                 partes.push(`${equipo.tipo !== TIPO_RELIQUIA ? "reliquia: " : ""}${n} habilidad${n === 1 ? "" : "es"}`);
@@ -7421,6 +7761,13 @@ function botonObjeto(accion, icono, titulo, deshabilitado = false) {
         aria-label="${escaparHtml(titulo)}" ${deshabilitado ? "disabled" : ""}>${iconoSao(icono)}</button>`;
 }
 
+/* Meter en el cinturón (solo para los tipos que admite y si hay algún cinturón puesto) */
+function botonCinturon(objeto, accesible, pj = personaje) {
+    if (!TIPOS_CINTURON.includes(objeto.tipo) || !cinturonesPuestos(pj).length) return "";
+    const motivo = accesible ? motivoNoCinturon(pj, objeto) : MOTIVOS_ZONA.baul;
+    return botonObjeto("cinturon", "cinturon", motivo || "Meter en el cinturón", Boolean(motivo));
+}
+
 function filaObjeto(objeto, indice, enInventario) {
     if (!objeto) return `<div class="fila-objeto vacia" data-index="${indice}"><span class="objeto-hueco">Hueco libre</span></div>`;
 
@@ -7438,6 +7785,7 @@ function filaObjeto(objeto, indice, enInventario) {
         botones = botonObjeto("editar", "editar", "Editar")
             + (personaje.esNpc ? "" // los NPC no tienen baúl
                 : botonObjeto("baul", "baul", baulAccesible(personaje) ? "Transferir al baúl" : MOTIVOS_ZONA.baul, !baulAccesible(personaje)))
+            + botonCinturon(objeto, true)
             + botonObjeto("descartar", "descartar", "Descartar 1")
             + botonObjeto("usar", "usar", tituloUsar, Boolean(motivo));
         // Con varias formas de usarlo se elige; las que no se pueden ahora (p. ej. sin mano libre) salen desactivadas
@@ -7454,6 +7802,7 @@ function filaObjeto(objeto, indice, enInventario) {
             : cabe ? "Transferir al inventario" : "No queda espacio en el inventario";
         botones = botonObjeto("editar", "editar", "Editar")
             + botonObjeto("inventario", "inventario", tituloTransferir, !cabe || !baulAccesible(personaje))
+            + botonCinturon(objeto, baulAccesible(personaje))
             + botonObjeto("descartar", "descartar", "Descartar 1");
     }
 
@@ -7515,6 +7864,8 @@ function actualizarObjetos() {
     aviso.hidden = !sobrantes;
     aviso.textContent = `Te ${sobrantes === 1 ? "sobra 1 objeto" : `sobran ${sobrantes} objetos`}: no puedes coger nada más hasta liberar espacio.`;
     document.getElementById("contadorBaul").textContent = `(${personaje.baul.length})`;
+    actualizarCinturon();
+    actualizarSacro();
     actualizarObjetosClave();
     document.getElementById("cantidadCor").textContent = personaje.cor;
 
@@ -7523,6 +7874,103 @@ function actualizarObjetos() {
     crearEnBaul.disabled = !baulAccesible(personaje);
     crearEnBaul.title = crearEnBaul.disabled ? MOTIVOS_ZONA.crearEnBaul : "";
     document.getElementById("avisoZonaBaul").hidden = baulAccesible(personaje);
+}
+
+/* Cinturón (cinturon.js) __________________________________________________
+ * #modalCinturon: los huecos de los cinturones puestos (un título por cinturón si hay varios). Cada objeto se usa
+ * como desde el inventario (opcionesUso/ejecutarUso con la referencia { origen: "cinturon", ranura, indice }), se saca
+ * al inventario o se descarta. Meter o sacar gasta una mano libre fuera de zona segura. */
+const listaCinturonEl = document.getElementById("listaCinturon");
+let eleccionCinturon = null; // "accesorio-N:i" del objeto que está eligiendo cómo usarse
+
+function filaCinturon(objeto, ranura, indice) {
+    const datos = `data-ranura="${ranura}" data-index="${indice}"`;
+    if (!objeto) return `<div class="fila-objeto vacia" ${datos}><span class="objeto-hueco">Hueco libre</span></div>`;
+    const tipoInfo = TIPOS_OBJETO[objeto.tipo];
+    const opciones = opcionesUso(objeto);
+    const disponibles = opciones.filter(opcion => !opcion.motivo);
+    const motivo = !opciones.length ? "Sin uso" : !disponibles.length ? opciones[0].motivo : "";
+    const destino = destinoSacar(personaje, objeto);
+    const tituloSacar = destino === "baul" ? "Sacar al baúl" : destino ? "Sacar al inventario"
+        : cristalConElemento(objeto) ? "Con elemento solo puede ir al baúl de la base" : "No cabe en el inventario";
+    const botones = botonObjeto("sacar", destino === "baul" ? "baul" : "inventario", tituloSacar, !destino)
+        + botonObjeto("descartar", "descartar", "Descartar")
+        + botonObjeto("usar", "usar", motivo || (opciones.length === 1 ? opciones[0].etiqueta : "Usar…"), Boolean(motivo));
+    const eleccion = eleccionCinturon === `${ranura}:${indice}` && opciones.length > 1 ? `<div class="objeto-eleccion">
+        ${opciones.map((opcion, k) => `<button type="button" class="btn-eleccion" data-accion="elegir" data-opcion="${k}"
+            ${opcion.motivo ? `disabled title="${escaparHtml(opcion.motivo)}"` : ""}>${escaparHtml(opcion.etiqueta)}</button>`).join("")}
+        <button type="button" class="btn-eleccion cancelar" data-accion="cancelar">Cancelar</button>
+    </div>` : "";
+    return `<div class="fila-objeto" ${datos}>
+        <span class="objeto-icono" title="${tipoInfo.etiqueta}">${iconoSao(iconoObjeto(objeto))}</span>
+        <div class="objeto-info">
+            <div class="objeto-cabecera"><span class="objeto-nombre">${escaparHtml(objeto.nombre)}</span></div>
+            <div class="objeto-detalle">${tipoInfo.etiqueta} · ${escaparHtml(detalleObjeto(objeto))}</div>
+            ${objeto.descripcion ? `<div class="objeto-descripcion">${escaparHtml(objeto.descripcion)}</div>` : ""}
+        </div>
+        <div class="objeto-acciones">${botones}</div>
+        ${eleccion}
+    </div>`;
+}
+
+function actualizarCinturon() {
+    const cinturones = cinturonesPuestos(personaje);
+    if (eleccionCinturon) {
+        const [ranura, indice] = eleccionCinturon.split(":");
+        if (!objetoCinturon(personaje, ranura, Number(indice))) eleccionCinturon = null;
+    }
+    const huecos = huecosCinturon(personaje);
+    document.getElementById("contadorCinturon").textContent = huecos.length ? `(${huecos.filter(h => h.objeto).length} / ${huecos.length})` : "";
+    pintarLista(listaCinturonEl, cinturones.length
+        ? cinturones.map(({ ranura, equipo }) => (cinturones.length > 1 ? `<h3 class="titulo-cinturon">${escaparHtml(equipo.nombre?.trim() || "Cinturón")}</h3>` : "")
+            + equipo.cinturon.objetos.map((objeto, i) => filaCinturon(objeto, ranura, i)).join("")).join("")
+        : `<p class="lista-vacia">No llevas ningún cinturón puesto.</p>`);
+}
+
+/* Mete una unidad en el cinturón desde el inventario o el baúl */
+function meterEnElCinturon(origen, indice) {
+    const { resultado, fallo } = conEmbriaguez("objeto", () => meterEnCinturon(personaje, origen, indice, gastarAccionesOConfirmar));
+    actualizarTodo();
+    if (!fallo && resultado && !resultado.ok) mostrarPopupInfo("No se puede", resultado.resumen.map(escaparHtml));
+}
+
+function inicializarCinturon() {
+    listaCinturonEl.addEventListener("click", async (e) => {
+        const boton = e.target.closest("button[data-accion]");
+        const fila = boton?.closest(".fila-objeto");
+        if (!fila || boton.disabled) return;
+        const ranura = fila.dataset.ranura;
+        const indice = Number(fila.dataset.index);
+        const objeto = objetoCinturon(personaje, ranura, indice);
+        if (!objeto) return;
+        reproducir("click");
+        const ref = { origen: "cinturon", ranura, indice };
+        const clave = `${ranura}:${indice}`;
+        switch (boton.dataset.accion) {
+            case "sacar": {
+                const { resultado, fallo } = conEmbriaguez("objeto", () => sacarDeCinturon(personaje, ranura, indice, gastarAccionesOConfirmar));
+                if (!fallo && resultado && !resultado.ok) mostrarPopupInfo("No se puede", resultado.resumen.map(escaparHtml));
+                break;
+            }
+            case "descartar":
+                if (!(await confirmarSao({ titulo: "Descartar", texto: `¿Descartar ${objeto.nombre}? Se pierde.` }))) return;
+                descartarDeCinturon(personaje, ranura, indice);
+                break;
+            case "usar": {
+                const opciones = opcionesUso(objeto);
+                if (opciones.length === 1 && !opciones[0].motivo) return ejecutarUso(ref, opciones[0]);
+                eleccionCinturon = eleccionCinturon === clave ? null : clave;
+                break;
+            }
+            case "elegir": {
+                const opcion = opcionesUso(objeto)[Number(boton.dataset.opcion)];
+                if (opcion && !opcion.motivo) return ejecutarUso(ref, opcion);
+                break;
+            }
+            case "cancelar": eleccionCinturon = null; break;
+        }
+        actualizarTodo();
+    });
 }
 
 /* Objetos clave (pestaña del inventario) ___________________________________ */
@@ -7647,8 +8095,9 @@ function confirmarDescarte(objeto) {
     return objeto.cantidad > 1 || confirm(`¿Descartar ${objeto.nombre}? Es la última unidad.`);
 }
 
+/* indice: el del inventario o una referencia { origen: "cinturon", ranura, indice } (objetoEn de objetos.js) */
 function ejecutarUso(indice, opcion) {
-    const objeto = personaje.inventario[indice];
+    const objeto = objetoEn(personaje, indice);
     const gastar = gastarAccionesOConfirmar;
     let titulo = objeto.nombre;
     // Apartado de los mensajes de borracho: equipar es equipo, lanzar una arrojadiza es un ataque
@@ -7682,6 +8131,7 @@ function ejecutarUso(indice, opcion) {
     if (!resultado) return;
 
     eleccionUso = null;
+    eleccionCinturon = null;
     actualizarTodo();
     if (fallo) return; // ya se ha avisado de lo absurdo que ha hecho
     if (opcion.accion === "ofrecer" && resultado.ok) {
@@ -7753,6 +8203,7 @@ function inicializarObjetos() {
                 if (!confirmarDescarte(objeto)) return;
                 descartar(personaje.inventario, indice, true);
                 break;
+            case "cinturon": return meterEnElCinturon("inventario", indice);
             case "usar": {
                 const opciones = opcionesUso(objeto);
                 if (opciones.length === 1 && !opciones[0].motivo) return ejecutarUso(indice, opciones[0]);
@@ -7780,6 +8231,7 @@ function inicializarObjetos() {
 
         if (boton.dataset.accion === "alCompendio") return anadirAlCompendio(objeto);
         if (boton.dataset.accion === "editar") return abrirEditorObjeto("baul", indice);
+        if (boton.dataset.accion === "cinturon") return meterEnElCinturon("baul", indice);
         if (boton.dataset.accion === "inventario" && baulAccesible(personaje)) {
             const resultado = transferirAInventario(personaje, indice);
             if (!resultado.ok) mostrarPopupInfo("Inventario lleno", resultado.resumen);
@@ -7834,6 +8286,7 @@ function inicializarCrearObjeto() {
     let habilidades = [];
     const listaHabilidades = campo("listaHabilidadesObjeto");
     const checkReliquia = campo("objetoEsReliquia");
+    campo("objetoEsCinturon").addEventListener("change", () => actualizarCampos());
     /* Efectos del equipo (formato de arte), editados en el formulario de artes */
     let efectos = [];
     const listaEfectos = campo("listaEfectosObjeto");
@@ -7856,6 +8309,8 @@ function inicializarCrearObjeto() {
         `<optgroup label="Armas y escudos">${Object.entries(ARMAS).map(([clave, arma]) => `<option value="${clave}">${arma.etiqueta}</option>`).join("")}</optgroup>
         <optgroup label="Armaduras">${TIPOS_ARMADURA.map(tipo => `<option value="${tipo}">${ETIQUETAS_ARMADURA[tipo]}</option>`).join("")}</optgroup>
         <optgroup label="Otros"><option value="${TIPO_ACCESORIO}">Accesorio</option><option value="${TIPO_RELIQUIA}">Reliquia</option></optgroup>`;
+    campo("objetoElementoCristal").innerHTML = `<option value="">Ninguno</option>` +
+        ELEMENTOS_CRISTAL.map(clave => `<option value="${clave}">${ELEMENTOS_SACRO[clave].etiqueta} (${ELEMENTOS_SACRO[clave].que.toLowerCase()})</option>`).join("");
     campo("objetoElemental").innerHTML = `<option value="">Ninguno</option>` +
         ELEMENTOS_ARROJADIZA.map(tipo => `<option value="${tipo}">${TIPOS_DANNO[tipo].etiqueta}</option>`).join("");
 
@@ -7876,8 +8331,11 @@ function inicializarCrearObjeto() {
             icono: (v) => iconoObjeto({ tipo: "equipo", equipo: { tipo: v } }),
             alCambiarIcono: ponerIconoRanura("iconoTipoEquipo")
         }),
-        crearFichas(campo("objetoElemental"), { icono: (v) => TIPOS_DANNO[v]?.icono ?? null })
+        crearFichas(campo("objetoElemental"), { icono: (v) => TIPOS_DANNO[v]?.icono ?? null }),
+        crearFichas(campo("objetoSubtipoArrojadiza"), { icono: (v) => (v ? "cristalElemental" : "arrojadiza") }),
+        crearFichas(campo("objetoElementoCristal"), { icono: (v) => ELEMENTOS_SACRO[v]?.icono ?? null })
     ];
+    campo("objetoSubtipoArrojadiza").addEventListener("change", () => actualizarCampos());
     const fichasTipo = selectTipo.nextElementSibling; // los iconos de tipo (crearFichas los pone tras el select)
     prepararFormularioSao(form);
 
@@ -7947,6 +8405,11 @@ function inicializarCrearObjeto() {
         modalEl.querySelectorAll("[data-equipo]").forEach(el => {
             el.style.display = el.dataset.equipo.split(" ").includes(grupoEquipo) ? "" : "none";
         });
+        // Huecos del cinturón: desactivados si no es cinturón (no ocultos, como el resto de campos que no aplican)
+        campo("objetoHuecosCinturon").disabled = !campo("objetoEsCinturon").checked;
+        // Capacidad y elemento del cristal elemental: desactivados en una arrojadiza normal
+        const noCristal = campo("objetoSubtipoArrojadiza").value !== "cristalElemental";
+        ["objetoCapacidadCristal", "objetoElementoCristal", "objetoPuntosCristal"].forEach(id => { campo(id).disabled = noCristal; });
         editorEstadosObjeto.configurar(opcionesEstadosObjeto(tipo));
         campo("labelObjetoDescripcion").textContent = tipo === "cristal" ? "Mensaje al usarlo" : "Descripción";
         campo("campoHabilidadesReliquia").style.display = conHabilidades() ? "" : "none";
@@ -8114,6 +8577,10 @@ function inicializarCrearObjeto() {
             campo("objetoPa").value = objeto.pa || 0;
         }
         if (objeto.tipo === "arrojadiza") {
+            campo("objetoSubtipoArrojadiza").value = objeto.subtipo ?? "";
+            campo("objetoCapacidadCristal").value = objeto.capacidad ?? 10;
+            campo("objetoElementoCristal").value = objeto.elemento?.clave ?? "";
+            campo("objetoPuntosCristal").value = objeto.elemento?.puntos ?? 0;
             campo("objetoDanno").value = objeto.danno;
             campo("objetoElemental").value = objeto.elemental?.tipo ?? "";
             campo("objetoElementalCantidad").value = objeto.elemental?.cantidad ?? 0;
@@ -8135,6 +8602,8 @@ function inicializarCrearObjeto() {
             rellenarElementalesFormulario("debilidades", equipo.debilidades);
             rellenarElementalesFormulario("dannoElemental", equipo.dannoElemental);
             checkReliquia.checked = Boolean(equipo.reliquia);
+            campo("objetoEsCinturon").checked = Boolean(equipo.cinturon);
+            campo("objetoHuecosCinturon").value = equipo.cinturon?.huecos ?? 3;
             habilidades = (equipo.reliquia?.habilidades ?? []).map(cargarHabilidadReliquia);
             pintarHabilidades();
             efectos = cargarEfectos(structuredClone(equipo.efectos ?? []));
@@ -8165,6 +8634,15 @@ function inicializarCrearObjeto() {
         if (tipo === "material") Object.assign(datos, { subtipo: campo("objetoSubtipoMaterial").value, potencia: Math.max(0, numero("objetoPotencia")) });
         if (tipo === "pocion") Object.assign(datos, { pv: numero("objetoPv"), pa: Math.max(0, numero("objetoPa")), estados: editorEstadosObjeto.leer() });
         if (tipo === "arrojadiza") {
+            // Cristal elemental: capacidad y el elemento que lleva dentro (los puntos no pasan de la capacidad)
+            if (campo("objetoSubtipoArrojadiza").value === "cristalElemental") {
+                Object.assign(datos, {
+                    subtipo: "cristalElemental",
+                    capacidad: Math.max(1, numero("objetoCapacidadCristal")),
+                    elemento: campo("objetoElementoCristal").value
+                        ? { clave: campo("objetoElementoCristal").value, puntos: numero("objetoPuntosCristal") } : null
+                });
+            }
             Object.assign(datos, {
                 danno: Math.max(0, numero("objetoDanno")),
                 estados: editorEstadosObjeto.leer(),
@@ -8193,6 +8671,12 @@ function inicializarCrearObjeto() {
                     ? leerElementalesFormulario("debilidades") : cargarDebilidades(),
                 modificadores,
                 reliquia: conHabilidades() ? { habilidades: habilidades.map(cargarHabilidadReliquia) } : null,
+                // Cinturón (solo accesorios): al editar conserva lo que lleva y no baja de los huecos ocupados
+                cinturon: selectTipoEquipo.value === TIPO_ACCESORIO && campo("objetoEsCinturon").checked ? {
+                    huecos: Math.max(1, numero("objetoHuecosCinturon"),
+                        (original?.cinturon?.objetos ?? []).reduce((ultimo, objeto, i) => (objeto ? i + 1 : ultimo), 0)),
+                    objetos: original?.cinturon?.objetos ?? []
+                } : null,
                 // Las armas de fuego no llevan efectos
                 efectos: esArmaFuego(selectTipoEquipo.value) ? [] : efectos,
                 // Arma de fuego: disparos y cargador (nunca más pequeño que las balas que ya lleva); balas infinitas y
@@ -8217,9 +8701,36 @@ function inicializarCrearObjeto() {
         }
         const objeto = cargarObjeto(datosFormulario());
         const lineas = [];
+        const pj = objetivo.pj;
+
+        // Cristal elemental con elemento: no puede ir al inventario. Va al cinturón y lo que no quepa al baúl (fuera de
+        // la base, solo al cinturón). Al editar uno del inventario sale de su hueco
+        if (cristalConElemento(objeto) && destino !== "baul" && (!edicion || edicion.lista === "inventario")) {
+            const libres = huecosCinturon(pj).filter(hueco => !hueco.objeto).length;
+            const puedeBaul = objetivo.libre || baulAccesible(pj);
+            if (objeto.cantidad > libres && !puedeBaul) {
+                aviso.textContent = libres
+                    ? `Con elemento solo cabe en el cinturón (te quedan ${libres} huecos) o en el baúl de la base. Reduce la cantidad.`
+                    : "Con elemento solo cabe en el cinturón o en el baúl: no te quedan huecos en el cinturón y fuera de la base no puede ir al baúl.";
+                return;
+            }
+            if (edicion) pj.inventario[edicion.indice] = null;
+            const resto = anadirACinturon(pj, objeto);
+            if (resto < objeto.cantidad) lineas.push(`${objeto.cantidad - resto} al cinturón.`);
+            if (resto > 0) {
+                anadirABaul(pj, { ...objeto, cantidad: resto });
+                lineas.push(`${resto} al baúl (con elemento no puede ir al inventario).`);
+            }
+            const editado = Boolean(edicion);
+            edicion = null;
+            modal.hide();
+            if (objetivo.alTerminar) objetivo.alTerminar();
+            else actualizarTodo();
+            mostrarPopupInfo(`${editado ? "Editado" : "Creado"}: ${escaparHtml(nombre)}`, lineas.map(escaparHtml));
+            return;
+        }
 
         // Fuera de la base no se puede usar el baúl: lo que no quepa en el inventario no se crea
-        const pj = objetivo.pj;
         if (!objetivo.libre && !baulAccesible(pj)) {
             const pila = objeto.tipo === "equipo" ? 1 : MAX_PILA_INVENTARIO;
             const sobra = edicion?.lista === "inventario" ? objeto.cantidad - pila
@@ -8369,6 +8880,14 @@ function inicializarDebug() {
             actualizarTodo();
             return `${arte.nombre} añadida a las artes sin equipar`;
         },
+        // Energía de Sacro en una mano sin la ventana de magia (hasta que exista), p. ej.
+        // fichaDebug.guardarEnergia("manoIzquierda", ["termika", "termika", "hela"]): gasta la boca y los PV de generar
+        guardarEnergia: (mano, elementos) => {
+            const dedos = (elementos ?? []).slice(0, DEDOS_MANO).map((elemento, i) => ({ id: `${mano}-${i}`, elemento, origen: "generar" }));
+            const resultado = guardarEnMano(personaje, mano, dedos, gastarAccionesOConfirmar);
+            actualizarTodo();
+            return resultado.resumen.join(" · ");
+        },
         requisitosArtes: () => catalogoArtes.map(arte => {
             const { cumple, obligatorios, alternativos } = estadoRequisitos(personaje, arte);
             const marcar = (lista) => lista.map(r => `${r.ok ? "✓" : "✗"} ${r.texto}`).join(", ");
@@ -8462,6 +8981,47 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarFormularioArte();
     inicializarCatalogoArtes();
     inicializarObjetos();
+    inicializarCinturon();
+    inicializarSacro({
+        personaje: () => personaje,
+        actualizarTodo: () => actualizarTodo(),
+        aviso: (titulo, lineas) => mostrarPopupInfo(escaparHtml(titulo), lineas.map(escaparHtml)),
+        gastar: gastarAccionesOConfirmar,
+        conEmbriaguez,
+        reproducir,
+        enSala: () => Boolean(getEstadoOnline().sala),
+        esMaster: MODO_MASTER,
+        instancia: () => (MODO_MASTER ? `m-${personaje.idPersonaje}` : instanciaEmisora()),
+        leerPersonaje: leerPersonajeDeInstancia,
+        conPersonaje: conPersonajeDeInstancia,
+        tirar: (opciones) => ejecutarTirada({ ...opciones, criticoFacil: obtenerConfiguracionTirada().criticoFacil }),
+        abrirBotin: abrirBotinDe,
+        encolarLocal: encolarHechizoLocal,
+        cancelarLocal: cancelarHechizoLocal,
+        pedirAmbienteLocal,
+        // Personajes de esta pestaña (el del jugador, o los de la sesión del máster) y los demás que se pueden elegir
+        personajesPropios: () => (MODO_MASTER ? idsEnSesion().map(id => `m-${id}`) : [instanciaEmisora()]),
+        personajesSala: () => {
+            const propia = MODO_MASTER ? `m-${personaje.idPersonaje}` : instanciaEmisora();
+            const deSala = getEstadoOnline().sala ? getTodosPersonajesSala().map(p => ({ instancia: p.instancia, nombre: p.nombre, npc: Boolean(p.npc) })) : [];
+            const propios = MODO_MASTER ? idsEnSesion().map(id => `m-${id}`).filter(i => !deSala.some(p => p.instancia === i)).map(i => {
+                const x = leerPersonajeDeInstancia(i);
+                return x ? { instancia: i, nombre: x.nombre, npc: Boolean(x.esNpc) } : null;
+            }).filter(Boolean) : [];
+            return [...deSala, ...propios].filter(p => p.instancia && p.instancia !== propia);
+        }
+    });
+    if (MODO_MASTER) inicializarSacroMaster({
+        aviso: (titulo, lineas) => mostrarPopupInfo(escaparHtml(titulo), lineas.map(escaparHtml)),
+        confirmar: confirmarSao,
+        reproducir,
+        iconoObjeto,
+        detalleObjeto: (objeto) => `${TIPOS_OBJETO[objeto.tipo]?.etiqueta ?? ""} · ${detalleObjeto(objeto)}`,
+        abrirCrearObjeto: (...args) => abrirCrearObjetoEn(...args),
+        abrirEditorObjeto: (...args) => abrirEditorObjeto(...args),
+        aplicarResultadoLocal: aplicarResultadoHechizo,
+        aplicarAmbienteLocal: aplicarAmbienteSacro
+    });
     inicializarCor();
     inicializarObjetosClave();
     // Estilo SAO en las ventanas pequeñas con campos (formularioSao.js)

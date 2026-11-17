@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SAO Ficha</title>
 
+    <link rel="icon" href="./imgs/atletismo_on.svg" type="image/svg+xml">
     <link rel="stylesheet" href="./css/main.css">
 
     <!-- Bootstrap CSS v5.2.1 -->
@@ -345,11 +346,14 @@
                                     </select>
                                     <!-- Atacar y, en lanzas y cuchillos, lanzar (actualizarBotonLanzar): juntos a la derecha; ocultos con la mano vacía -->
                                     <span class="acciones-arma">
+                                        <button type="button" class="btn-transfusion" hidden></button>
                                         <button type="button" class="btn-usar-equipo" title="Usar" hidden></button>
                                         <button type="button" class="btn-lanzar-equipo" hidden></button>
                                     </span>
                                 </div>
                                 <p class="equipamiento-vacio">Vacío: equipa desde el inventario</p>
+                                <!-- Energía de Sacro guardada en la mano (pintarEnergiaMano): se suelta con un puñetazo o se ofrece -->
+                                <div class="energia-mano" hidden></div>
                                 <div class="equipamiento-detalles" style="display: none;">
                                     <div class="equipamiento-main-inputs">
                                         <div class="campo-numero">
@@ -418,6 +422,10 @@
                                     <option value="ropa">Ropa</option>
                                     <option value="real">Real</option>
                                 </select>
+                                <!-- Patada (pintarBotonPatada): para todos los personajes, también sin armadura -->
+                                <span class="acciones-arma">
+                                    <button type="button" class="btn-patada" hidden></button>
+                                </span>
                             </div>
                             <p class="equipamiento-vacio">Vacío: equipa desde el inventario</p>
                             <div class="equipamiento-detalles" style="display: none;">
@@ -955,6 +963,188 @@
         </div>
     </div>
 
+    <!-- Cinturón (cinturon.js; actualizarCinturon e inicializarCinturon en interfaz.js): los huecos de los cinturones puestos -->
+    <div class="modal fade modal-sao" id="modalCinturon" tabindex="-1" aria-labelledby="modalCinturonLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalCinturonLabel">Cinturón <span id="contadorCinturon" class="contador-objetos"></span></h5>
+                </div>
+                <div class="modal-body">
+                    <p class="aviso-zona">Pociones, cristales y armas arrojadizas, una unidad por hueco. Meter o sacar gasta la acción de una mano libre fuera de zona segura.</p>
+                    <div id="listaCinturon" class="lista-objetos"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ventana de magia (interfazSacro.js): se abre desde la habilidad Sacro -->
+    <div class="modal fade modal-sao" id="modalSacro" tabindex="-1" aria-labelledby="modalSacroLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalSacroLabel">Sacro <span id="contadorSacro" class="contador-objetos"></span></h5>
+                </div>
+                <div class="modal-body">
+                    <div class="sacro-cuerpo form-sao" id="cuerpoSacro"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao aceptar" id="btnEnviarSacro" title="Enviar al máster" aria-label="Enviar al máster"></button>
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transfusión de sangre (interfazSacro.js, abrirTransfusion): desde el botón de una mano libre -->
+    <div class="modal fade modal-sao" id="modalTransfusion" tabindex="-1" aria-labelledby="modalTransfusionLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTransfusionLabel">Transfusión</h5>
+                </div>
+                <div class="modal-body">
+                    <div class="form-objeto form-sao" id="formTransfusion">
+                        <div class="ranura ranura-fichas">
+                            <span class="ranura-icono" data-icono="transfusion"></span>
+                            <span class="ranura-etiqueta">Qué hacer</span>
+                            <select id="transfusionModo" aria-label="Modalidad">
+                                <option value="aMi">Quitar PV a otro y dármelos</option>
+                                <option value="dar">Dar mis PV a otro</option>
+                                <option value="otro">Quitar PV a uno y dárselos a otro</option>
+                            </select>
+                        </div>
+                        <div class="ranura" id="ranuraTransfusionDe">
+                            <span class="ranura-icono" data-icono="hemorragia"></span>
+                            <label class="ranura-etiqueta" for="transfusionDe">Pierde los PV</label>
+                            <select id="transfusionDe"></select>
+                        </div>
+                        <div class="ranura" id="ranuraTransfusionPara">
+                            <span class="ranura-icono" data-icono="regeneracion"></span>
+                            <label class="ranura-etiqueta" for="transfusionPara">Los recibe</label>
+                            <select id="transfusionPara"></select>
+                        </div>
+                        <div class="ranura">
+                            <span class="ranura-icono" data-icono="aguante"></span>
+                            <label class="ranura-etiqueta" for="transfusionCantidad">PV</label>
+                            <input type="number" id="transfusionCantidad" min="1" value="1">
+                        </div>
+                        <p id="textoTransfusion" class="texto-esperando-trueque"></p>
+                        <p id="avisoTransfusion" class="aviso-zona aviso-sacro"></p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cancelar" aria-label="Cancelar"></button>
+                    <button type="button" class="btn-modal-sao aceptar" id="btnAceptarTransfusion" title="Hacer la transfusión" aria-label="Hacer la transfusión"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modo máster: resolver la magia de un jugador (interfazSacroMaster.js) -->
+    <div class="modal fade modal-sao" id="modalSacroMaster" tabindex="-1" aria-labelledby="modalSacroMasterLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalSacroMasterLabel">Magia <span id="contadorSacroMaster" class="contador-objetos"></span></h5>
+                </div>
+                <div class="modal-body">
+                    <div id="formSacroMaster" class="form-objeto form-sao">
+                        <div id="pedidoSacroMaster"></div>
+                        <h6 class="titulo-ranuras">Daño de cada elemento</h6>
+                        <div id="dannoSacroMaster"></div>
+                        <div class="botones-ranura">
+                            <button type="button" class="btn-pastilla-sao" id="btnJuntarSacroMaster" title="Suma en una fila los elementos que hacen el mismo tipo de daño">Juntar por tipo</button>
+                        </div>
+                        <div class="ranura" title="Lado del área: cada casilla más reduce el daño a la mitad">
+                            <span class="ranura-icono" data-icono="mapa"></span>
+                            <label class="ranura-etiqueta" for="radioSacroMaster">Radio</label>
+                            <input type="number" id="radioSacroMaster" min="1" max="5" value="1">
+                            <span id="textoRadioSacroMaster" class="ranura-resumen"></span>
+                        </div>
+                        <div class="ranura ranura-fichas">
+                            <span class="ranura-icono" data-icono="combate"></span>
+                            <span class="ranura-etiqueta">Tirada</span>
+                            <select id="tiradaSacroMaster" aria-label="Tirada"></select>
+                        </div>
+                        <div class="ranuras-dobles" id="ranuraOtraTiradaSacro" hidden>
+                            <div class="ranura">
+                                <span class="ranura-icono" data-icono="aguante"></span>
+                                <label class="ranura-etiqueta" for="caracteristicaSacroMaster">Característica</label>
+                                <select id="caracteristicaSacroMaster"></select>
+                            </div>
+                            <div class="ranura">
+                                <span class="ranura-icono" data-icono="percepcion"></span>
+                                <label class="ranura-etiqueta" for="habilidadSacroMaster">Habilidad</label>
+                                <select id="habilidadSacroMaster"></select>
+                            </div>
+                        </div>
+                        <div class="ranura ranura-fichas">
+                            <span class="ranura-icono" data-icono="iniciativa"></span>
+                            <span class="ranura-etiqueta">Dado</span>
+                            <select id="dadoSacroMaster" aria-label="Dado"></select>
+                        </div>
+                        <div class="ranura">
+                            <span class="ranura-icono" data-icono="elemental"></span>
+                            <label class="ranura-etiqueta" for="estadoSacroMaster">Estado</label>
+                            <select id="estadoSacroMaster"></select>
+                        </div>
+                        <div class="ranuras-dobles">
+                            <div class="ranura">
+                                <span class="ranura-icono" data-icono="magia"></span>
+                                <label class="ranura-etiqueta" for="valorEstadoSacroMaster">Valor</label>
+                                <input type="number" id="valorEstadoSacroMaster" min="1" max="99" value="1">
+                            </div>
+                            <div class="ranura">
+                                <span class="ranura-icono" data-icono="historial"></span>
+                                <label class="ranura-etiqueta" for="turnosEstadoSacroMaster">Turnos</label>
+                                <input type="number" id="turnosEstadoSacroMaster" min="0" max="99" value="3">
+                            </div>
+                        </div>
+                        <h6 class="titulo-ranuras">Objetos que crea (van a su botín)</h6>
+                        <div id="objetosSacroMaster" class="lista-objetos"></div>
+                        <div class="ranura ranura-alta">
+                            <span class="ranura-icono" data-icono="diario"></span>
+                            <label class="ranura-etiqueta" for="notaSacroMaster">Nota para el jugador</label>
+                            <textarea id="notaSacroMaster" rows="2" maxlength="300"></textarea>
+                        </div>
+                        <div class="botones-ranura">
+                            <button type="button" class="btn-pastilla-sao" id="btnObjetoSacroMaster">+ Crear objeto</button>
+                            <button type="button" class="btn-pastilla-sao" id="btnRechazarSacroMaster">Rechazar</button>
+                            <button type="button" class="btn-pastilla-sao" id="btnSiguienteSacroMaster" hidden>Siguiente petición</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar (sigue pendiente)" aria-label="Cerrar (sigue pendiente)"></button>
+                    <button type="button" class="btn-modal-sao aceptar" id="btnResolverSacroMaster" title="Resolver" aria-label="Resolver"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modo máster: qué hay en el ambiente para la magia de un jugador (interfazSacroMaster.js) -->
+    <div class="modal fade modal-sao" id="modalAmbienteMaster" tabindex="-1" aria-labelledby="modalAmbienteMasterLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalAmbienteMasterLabel">Ambiente</h5>
+                </div>
+                <div class="modal-body form-objeto form-sao">
+                    <p id="textoAmbienteMaster" class="texto-esperando-trueque"></p>
+                    <div id="listaAmbienteMaster" class="lista-ambiente-sacro"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar sin responder" aria-label="Cerrar sin responder"></button>
+                    <button type="button" class="btn-modal-sao aceptar" id="btnEnviarAmbienteMaster" title="Enviar" aria-label="Enviar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Extras del equipo puesto (modo máster y NPC): habilidades de reliquia, efectos y estados al acertar. Se edita una
          copia que se aplica al aceptar (inicializarExtrasEquipo en interfaz.js; botón .btn-extras-equipo de cada tarjeta) -->
     <div class="modal fade modal-sao" id="modalExtrasEquipo" tabindex="-1" aria-labelledby="modalExtrasEquipoLabel" aria-hidden="true">
@@ -1304,6 +1494,11 @@
                                 <button type="button" class="btn-anadir-ranura" data-crear="accesorioNpc" title="Crear accesorio" aria-label="Crear accesorio">+</button>
                             </div>
                         </details>
+                        <!-- NPC: elementos de Sacro que lleva encima (npc.energia; no los usa, solo se los pueden quitar, pintarEnergiaNpcPerfil) -->
+                        <details class="ranura-desplegable solo-npc">
+                            <summary><span class="ranura-icono" data-icono="magia"></span><span class="ranura-etiqueta">Elementos que lleva</span><span class="ranura-resumen" id="perfilMasterResumenEnergia"></span></summary>
+                            <div class="ranura-cuerpo"><div class="lista-ambiente-sacro" id="perfilMasterEnergiaNpc"></div></div>
+                        </details>
                         <!-- NPC: comportamiento en combate (campo comportamientoCombate, el mismo que bajo Acciones) -->
                         <div class="ranura ranura-alta solo-npc">
                             <span class="ranura-icono" data-icono="diario"></span>
@@ -1465,6 +1660,17 @@
                                 <label class="ranura-etiqueta" for="objetoEsReliquia">Es reliquia</label>
                                 <input type="checkbox" id="objetoEsReliquia">
                             </div>
+                            <!-- Cinturón (cinturon.js): inventario propio de pociones, cristales y arrojadizas -->
+                            <div class="ranura" data-equipo="accesorio" title="Guarda pociones, cristales y armas arrojadizas, una unidad por hueco">
+                                <span class="ranura-icono" data-icono="cinturon"></span>
+                                <label class="ranura-etiqueta" for="objetoEsCinturon">Es cinturón</label>
+                                <input type="checkbox" id="objetoEsCinturon">
+                            </div>
+                            <div class="ranura" data-equipo="accesorio" title="Huecos del cinturón">
+                                <span class="ranura-icono" data-icono="inventario"></span>
+                                <label class="ranura-etiqueta" for="objetoHuecosCinturon">Huecos</label>
+                                <input type="number" id="objetoHuecosCinturon" min="1" max="30" value="3">
+                            </div>
                             <!-- Arma de fuego (armasFuego.js): disparos por uso y balas que caben en el cargador -->
                             <div class="ranura" data-equipo="fuego" title="Disparos de cada uso (uno por bala, cada uno con su tirada)">
                                 <span class="ranura-icono" data-icono="armaFuego"></span>
@@ -1503,7 +1709,31 @@
                             </div>
                         </div>
 
-                        <!-- Arrojadiza: daño fijo y un daño elemental -->
+                        <!-- Arrojadiza: clase (normal o cristal elemental, 13-sacro.md §11), daño fijo y un daño elemental -->
+                        <div class="ranura ranura-fichas" data-campos="arrojadiza">
+                            <span class="ranura-icono" data-icono="arrojadiza"></span>
+                            <span class="ranura-etiqueta">Clase</span>
+                            <select id="objetoSubtipoArrojadiza" aria-label="Clase de arma arrojadiza">
+                                <option value="">Normal</option>
+                                <option value="cristalElemental">Cristal elemental</option>
+                            </select>
+                        </div>
+                        <div class="ranura" data-campos="arrojadiza" title="Puntos de daño de un elemento que puede guardar (se llena con la magia de Sacro)">
+                            <span class="ranura-icono" data-icono="cristalElemental"></span>
+                            <label class="ranura-etiqueta" for="objetoCapacidadCristal">Capacidad</label>
+                            <input type="number" id="objetoCapacidadCristal" min="1" max="999" value="10">
+                        </div>
+                        <!-- Elemento que lleva dentro el cristal elemental (también al crearlo) -->
+                        <div class="ranura ranura-fichas" data-campos="arrojadiza">
+                            <span class="ranura-icono" data-icono="elemental"></span>
+                            <span class="ranura-etiqueta">Elemento</span>
+                            <select id="objetoElementoCristal" aria-label="Elemento guardado en el cristal"></select>
+                        </div>
+                        <div class="ranura" data-campos="arrojadiza" title="Puntos de daño del elemento (como mucho la capacidad)">
+                            <span class="ranura-icono" data-icono="fisico"></span>
+                            <label class="ranura-etiqueta" for="objetoPuntosCristal">Puntos guardados</label>
+                            <input type="number" id="objetoPuntosCristal" min="0" max="999" value="0">
+                        </div>
                         <div class="ranura" data-campos="arrojadiza" title="Se le suma el bonificador de daño a distancia">
                             <span class="ranura-icono" data-icono="fisico"></span>
                             <label class="ranura-etiqueta" for="objetoDanno">Daño fijo</label>

@@ -5,6 +5,7 @@
 import { cargarObjeto, cargarObjetosClave, cargarEquipo } from "./objetos.js";
 import { TIPOS_DOS_MANOS, ARMAS } from "./equipamiento.js";
 import { cargarFases } from "./jefes.js"; // ciclo: solo se usa dentro de cargarNpc
+import { cargarAmbiente } from "./elementosSacro.js";
 
 /* Valores de combate que se editan a mano (clave en pj.npc → derivado del PJ que calcula) */
 export const VALORES_NPC = [
@@ -61,6 +62,8 @@ export function crearNpc() {
         tiradas: [],
         recompensa: { cor: 0, objetos: [], objetosClave: [] },
         partes: partesPorDefecto(),
+        // Elementos de Sacro que lleva encima (13-sacro.md §12): no los usa, solo se los pueden quitar
+        energia: [],
         // Solo jefes (jefes.js): fases con su vida, equipo, artes... y la activa
         fases: [],
         faseActual: 0
@@ -112,6 +115,7 @@ export function cargarNpc(datos) {
         // Las piernas siempre están (un NPC guardado sin ellas las recupera)
         if (!vistos.has("pies")) npc.partes.push(partesPorDefecto().find(parte => parte.id === "pies"));
     }
+    npc.energia = cargarAmbiente(datos.energia);
     npc.fases = cargarFases(datos.fases);
     npc.faseActual = Math.min(entero(datos.faseActual, 0), Math.max(0, npc.fases.length - 1));
     return npc;
