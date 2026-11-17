@@ -5726,6 +5726,193 @@ body.modo-lectura #divEquipamiento .btn-extras-equipo {
     text-align: center;
 }
 
+/* Creación de objetos (interfazCreacion.js): ventana del jugador (#modalCreacion: tipos, materiales, espera) y del
+   máster (#modalCreacionMaster, pintarMaster: objetos a la izquierda, petición a la derecha como el panel de
+   protagonistas; a 1024px o menos el panel va encima) */
+.form-sao .ficha-sao:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.resumen-creacion {
+    font-size: 12px;
+    color: #8a6d2a;
+}
+
+.detalle-creacion {
+    margin-top: 10px;
+    padding: 12px;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.creacion-tirada {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.creacion-total {
+    min-width: 56px;
+    font-size: 32px;
+    line-height: 1;
+    text-align: center;
+    color: #4D4D4D;
+}
+
+.creacion-tirada-detalle {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+    color: #5a5a5a;
+}
+
+.creacion-tirada-detalle .dado-chip {
+    margin-left: 4px;
+}
+
+/* Historial de creaciones (#modalHistorialCreaciones, pintarHistorial en interfazCreacion.js): una tarjeta por
+   receta con los materiales, la diferencia, la fecha y los objetos que se crearon */
+.receta-creacion {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.receta-cabecera {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.receta-info {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.receta-materiales {
+    font-size: 13px;
+    color: #4D4D4D;
+}
+
+.receta-detalle {
+    font-size: 12px;
+    color: #888;
+}
+
+.receta-detalle .positivo {
+    color: #27ae60;
+}
+
+.receta-detalle .negativo {
+    color: #c0392b;
+}
+
+.receta-creacion .btn-anadir-ranura {
+    align-self: center;
+}
+
+/* El dado que cuenta (htmlDados en interfazCreacion.js): brilla */
+.creacion-tirada-detalle .dado-chip.dado-seleccionado {
+    animation: brillo-dado-creacion 1.6s ease-in-out infinite;
+}
+
+@keyframes brillo-dado-creacion {
+    0%, 100% { box-shadow: 0 0 4px rgba(235, 166, 1, 0.5); }
+    50% { box-shadow: 0 0 12px 3px rgba(235, 166, 1, 0.9); }
+}
+
+.creacion-marca {
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.creacion-marca.positivo,
+.creacion-dificultad .positivo {
+    color: #27ae60;
+}
+
+.creacion-marca.negativo,
+.creacion-dificultad .negativo {
+    color: #c0392b;
+}
+
+.creacion-dificultad {
+    margin: 0 0 10px;
+    font-size: 13px;
+    color: #5a5a5a;
+}
+
+.creacion-sugerencia {
+    margin: 0 0 10px;
+    padding-left: 18px;
+    font-size: 13px;
+    color: #4D4D4D;
+}
+
+.creacion-descripcion {
+    margin: 0;
+    font-size: 13px;
+    color: #4D4D4D;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.panel-creacion .lista-objetos {
+    margin-bottom: 10px;
+}
+
+#modalCreacionMaster .modal-dialog {
+    max-width: min(1100px, 96vw);
+}
+
+.creacion-master-cuerpo {
+    display: flex;
+    gap: 16px;
+    overflow: hidden;
+}
+
+.creacion-master-principal {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    overflow-y: auto;
+}
+
+.panel-protagonistas.panel-creacion {
+    width: min(420px, 45%);
+}
+
+@media (max-width: 1024px) {
+    .creacion-master-cuerpo {
+        flex-direction: column;
+        overflow-y: auto;
+    }
+
+    .creacion-master-principal {
+        overflow-y: visible;
+    }
+
+    .panel-protagonistas.panel-creacion {
+        order: -1;
+        width: auto;
+        max-height: none;
+    }
+}
+
 /* Pantalla de muerte (#pantallaMuerte, mostrarMuerte en interfaz.js): por encima de todo, la imagen You_are_dead
    se pulsa para continuar y debajo el nombre del personaje */
 .pantalla-muerte {

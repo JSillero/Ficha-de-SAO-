@@ -61,6 +61,8 @@ import * as compendio from "./compendio.js";
 import * as compendioObjetos from "./compendioObjetos.js";
 import { inicializarCompendioObjetos, anadirAlCompendio } from "./interfazCompendioObjetos.js";
 import { inicializarTrueque, comprobarTruequeColgado } from "./interfazTrueque.js";
+import { inicializarCreacion, abrirCreacion, abrirCreacionesMaster, creacionesPendientes, abrirHistorialCreaciones,
+    exportarHistorialCreaciones } from "./interfazCreacion.js";
 import { pintarIconos, crearFichas, crearRejilla, ponerResumen, prepararFormularioSao } from "./formularioSao.js";
 import { reproducir, iniciarBucle, pararBucle, precargarSonidos, estaSilenciado, setSilenciado } from "./sonidos.js";
 import { ejecutarDebug, crearPersonajePrueba, validarFicha } from "./debug.js";
@@ -4358,8 +4360,10 @@ function inicializarTiradasHabilidades() {
             });
         };
 
-        if (img) img.addEventListener('click', dispararTirada);
-        if (titulo) titulo.addEventListener('click', dispararTirada);
+        const elementos = [img, titulo].filter(Boolean);
+        // Profesión: en zona segura o base, un clic abre la creación de objetos y mantener pulsado tira
+        if (habilidadId === "profesion") enlazarProfesion(habDiv, elementos, dispararTirada);
+        else elementos.forEach(elemento => elemento.addEventListener('click', dispararTirada));
     });
 
     // Tiradas de característica: dado + característica (sin habilidad)
@@ -4380,6 +4384,47 @@ function inicializarTiradasHabilidades() {
                 criticoFacil: criticoFacil,
                 ...resolverModoTirada(modos)
             });
+        });
+    });
+}
+
+/* Botón de Profesión (creación de objetos, interfazCreacion.js): en zona segura o en la base, un clic abre
+   #modalCreacion y mantenerlo pulsado MS_PULSACION_PROFESION hace la tirada (.pulsando llena un anillo mientras).
+   En zona no segura (y en modo lectura) cualquier clic tira, como las demás habilidades. */
+const MS_PULSACION_PROFESION = 2000;
+function enlazarProfesion(habDiv, elementos, dispararTirada) {
+    let temporizador = null;
+    let tiradaHecha = false; // la pulsación larga ya ha tirado: el click que sigue no abre la ventana
+    const puedeCrear = () => esZonaSegura(personaje) && !lectura;
+    const cancelar = () => {
+        clearTimeout(temporizador);
+        temporizador = null;
+        habDiv.classList.remove("pulsando");
+    };
+    habDiv.classList.add("hab-profesion");
+    elementos.forEach(elemento => {
+        elemento.addEventListener("pointerdown", (e) => {
+            if (e.button !== 0 || !puedeCrear()) return;
+            tiradaHecha = false;
+            cancelar();
+            habDiv.classList.add("pulsando");
+            temporizador = setTimeout(() => {
+                cancelar();
+                tiradaHecha = true;
+                dispararTirada();
+            }, MS_PULSACION_PROFESION);
+        });
+        ["pointerup", "pointerleave", "pointercancel"].forEach(tipo => elemento.addEventListener(tipo, cancelar));
+        // En móvil la pulsación larga no debe abrir el menú del navegador
+        elemento.addEventListener("contextmenu", (e) => { if (puedeCrear()) e.preventDefault(); });
+        elemento.addEventListener("click", () => {
+            if (tiradaHecha) {
+                tiradaHecha = false;
+                return;
+            }
+            if (!puedeCrear()) return dispararTirada();
+            reproducir("click");
+            abrirCreacion();
         });
     });
 }
@@ -5405,23 +5450,28 @@ function actualizarZona() {
 function inicializarMenuInventario() {
     const ventanas = { inventario: "modalInventario", objetosClave: "modalObjetosClave", baul: "modalBaul", botin: "modalBotin", trueque: "modalTrueque" };
     const trueque = { clave: "trueque", etiqueta: "Trueque", icono: "trueque" };
+    // Modo máster: peticiones de creación de objetos sin resolver (interfazCreacion.js)
+    const creaciones = () => (MODO_MASTER && creacionesPendientes()
+        ? [{ clave: "creaciones", etiqueta: `Creaciones pendientes (${creacionesPendientes()})`, icono: "material" }] : []);
     crearMenuSao({
         boton: document.getElementById("btnInventario"),
         menu: document.getElementById("menuInventario"),
         // Los NPC solo tienen inventario (sin límite)
         // (y el trueque, si el máster se lo ha permitido)
-        opciones: () => personaje.esNpc ? [{ clave: "inventario", etiqueta: "Inventario", icono: "inventario" }, ...(personaje.permitirTrueque ? [trueque] : [])] : [
+        opciones: () => personaje.esNpc ? [{ clave: "inventario", etiqueta: "Inventario", icono: "inventario" }, ...(personaje.permitirTrueque ? [trueque] : []), ...creaciones()] : [
             { clave: "inventario", etiqueta: "Inventario", icono: "inventario" },
             { clave: "objetosClave", etiqueta: `Objetos clave (${personaje.objetosClave.length})`, icono: "llave" },
             { clave: "baul", etiqueta: "Baúl de la base", icono: "baul" },
             // Solo mientras haya botín de un NPC por recoger
             ...(personaje.botin?.length ? [{ clave: "botin", etiqueta: `Botín (${personaje.botin.length})`, icono: "cor" }] : []),
-            trueque
+            trueque,
+            ...creaciones()
         ],
         alElegir: (clave, menu) => {
             // Al elegir solo suena el click: ni el cierre del menú ni la apertura de la ventana
             reproducir("click");
             menu.cerrar({ sonido: false });
+            if (clave === "creaciones") return abrirCreacionesMaster();
             const ventana = document.getElementById(ventanas[clave]);
             ventana.dataset.sinSonidoAbrir = "1";
             bootstrap.Modal.getOrCreateInstance(ventana).show();
@@ -6500,6 +6550,13 @@ const opcionesPersonaje = () => [
     { clave: "nueva", etiqueta: "Nueva ficha", icono: "nuevaFicha" }
 ];
 
+/* Submenú Historial de creaciones (solo máster, interfazCreacion.js): ver, exportar e importar */
+const opcionesHistorialCreaciones = () => [
+    { clave: "verHistorialCreaciones", etiqueta: "Ver historial", icono: "historial" },
+    { clave: "exportarHistorialCreaciones", etiqueta: "Exportar historial", icono: "guardar" },
+    { clave: "importarHistorialCreaciones", etiqueta: "Importar historial", icono: "cargar" }
+];
+
 /* Submenú Online: según haya sesión y sala (interfazOnline.js) */
 function opcionesOnline() {
     const { usuario, sala } = getEstadoOnline();
@@ -6522,6 +6579,7 @@ function inicializarOpciones() {
         opciones: () => [
             { clave: "personaje", etiqueta: "Personaje", icono: "personaje", submenu: opcionesPersonaje },
             { clave: "online", etiqueta: "Online", icono: "online", submenu: opcionesOnline },
+            ...(MODO_MASTER ? [{ clave: "historialCreaciones", etiqueta: "Historial de creaciones", icono: "material", submenu: opcionesHistorialCreaciones }] : []),
             { clave: "historial", etiqueta: "Historial de avisos", icono: "historial" },
             estaSilenciado()
                 ? { clave: "sonido", etiqueta: "Activar audio", icono: "silencio" }
@@ -6570,6 +6628,19 @@ function inicializarOpciones() {
                     setIdPersonajeNube(null);
                     break;
                 }
+                case "verHistorialCreaciones":
+                case "exportarHistorialCreaciones":
+                    reproducir("click");
+                    menu.cerrar({ sonido: false });
+                    if (clave === "verHistorialCreaciones") abrirHistorialCreaciones();
+                    else exportarHistorialCreaciones();
+                    break;
+                case "importarHistorialCreaciones":
+                    // El selector de fichero tiene que abrirse dentro del clic
+                    reproducir("click");
+                    menu.cerrar({ sonido: false });
+                    document.getElementById("fileHistorialCreaciones").click();
+                    break;
                 case "historial": {
                     reproducir("click");
                     menu.cerrar({ sonido: false });
@@ -8381,6 +8452,28 @@ document.addEventListener("DOMContentLoaded", () => {
         conPersonaje: conPersonajeDeInstancia,
         // Lo recibido va al botín: se abre si es el personaje de la ficha (cuando se cierre la ventana del trueque)
         abrirBotin: abrirBotinDe
+    });
+    // Creación de objetos por profesión (interfazCreacion.js): el jugador pide, el máster crea y envía
+    inicializarCreacion({
+        esMaster: MODO_MASTER,
+        personaje: () => personaje,
+        enLectura: () => Boolean(lectura),
+        aviso: (titulo, lineas) => mostrarPopupInfo(escaparHtml(titulo), lineas.map(escaparHtml)),
+        iconoObjeto,
+        detalleObjeto: (objeto) => `${TIPOS_OBJETO[objeto.tipo]?.etiqueta ?? ""} · ${detalleObjeto(objeto)}`,
+        leerPersonaje: leerPersonajeDeInstancia,
+        conPersonaje: conPersonajeDeInstancia,
+        abrirBotin: abrirBotinDe,
+        abrirEditorObjeto: (...args) => abrirEditorObjeto(...args),
+        abrirCrearObjeto: (...args) => abrirCrearObjetoEn(...args),
+        confirmar: confirmarSao,
+        crearVentanaHija,
+        // Tirada de creación con el panel de tiradas; null si falla por embriaguez
+        tirar: (opciones) => {
+            if (fallaPorEmbriaguez(opciones.nombreAccion)) return null;
+            const { modos, criticoFacil } = obtenerConfiguracionTirada();
+            return ejecutarTirada({ ...opciones, criticoFacil, ...resolverModoTirada(modos) });
+        }
     });
     actualizarTodo();
     // Compendio de objetos comunes (interfazCompendioObjetos.js): todos añaden; el máster además lo edita

@@ -179,4 +179,24 @@
     }
 }
 
+/* Profesión (enlazarProfesion en interfaz.js): en zona segura un clic abre la creación de objetos y mantener
+   pulsado 2 s tira; mientras se mantiene, un anillo dorado se va llenando alrededor del icono */
+#habilidadesDiv > div.hab-profesion img,
+#habilidadesDiv > div.hab-profesion h3 {
+    -webkit-touch-callout: none;
+    user-select: none;
+    touch-action: manipulation;
+}
 
+#habilidadesDiv > div.hab-profesion img {
+    border-radius: 50%;
+}
+
+#habilidadesDiv > div.pulsando img {
+    animation: pulsacion-profesion 2s linear forwards;
+}
+
+@keyframes pulsacion-profesion {
+    from { box-shadow: 0 0 0 0 rgba(235, 166, 1, 0.2); }
+    to { box-shadow: 0 0 0 6px #EBA601; }
+}

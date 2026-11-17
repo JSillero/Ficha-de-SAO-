@@ -834,6 +834,105 @@
         </div>
     </div>
 
+    <!-- Creación de objetos por profesión (interfazCreacion.js): pulsar Profesión en zona segura o en la base.
+         Elegir tipo, materiales y descripción; mientras el máster decide, se ve la tirada y se puede cancelar -->
+    <div class="modal fade modal-sao" id="modalCreacion" tabindex="-1" aria-labelledby="modalCreacionLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalCreacionLabel">Crear objeto</h5>
+                </div>
+                <div class="modal-body">
+                    <p id="avisoCreacion" class="aviso-zona" hidden></p>
+                    <form id="formCreacion" class="form-objeto form-sao" novalidate>
+                        <div id="vistaElegirCreacion">
+                            <h6 class="titulo-ranuras">Qué quieres crear</h6>
+                            <div id="tiposCreacion" class="fichas-sao grandes" role="radiogroup" aria-label="Tipo de objeto"></div>
+                            <h6 class="titulo-ranuras">Materiales <small id="resumenMaterialesCreacion" class="resumen-creacion"></small></h6>
+                            <div id="listaMaterialesCreacion" class="lista-objetos"></div>
+                            <div class="ranura ranura-alta">
+                                <span class="ranura-icono" data-icono="diario"></span>
+                                <label class="ranura-etiqueta" for="descripcionCreacion">Qué quieres hacer</label>
+                                <textarea id="descripcionCreacion" rows="4" maxlength="1000"></textarea>
+                            </div>
+                        </div>
+                        <div id="vistaEsperaCreacion" hidden>
+                            <p class="texto-esperando-trueque">Esperando la decisión del máster…</p>
+                            <div id="detalleEsperaCreacion" class="detalle-creacion"></div>
+                            <div class="botones-ranura">
+                                <button type="button" class="btn-pastilla-sao" id="btnCancelarCreacion">Cancelar creación</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                    <button type="button" class="btn-modal-sao aceptar" id="btnCrearCreacion" title="Crear" aria-label="Crear"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Máster: petición de creación de un jugador (interfazCreacion.js). Objetos que recibe a la izquierda; tirada,
+         dificultad, sugerencia, materiales y descripción a la derecha (pintarPanelCreacion). Cerrar la deja pendiente -->
+    <div class="modal fade modal-sao" id="modalCreacionMaster" tabindex="-1" aria-labelledby="modalCreacionMasterLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalCreacionMasterLabel">Creación <span id="contadorCreacionMaster" class="contador-objetos"></span></h5>
+                    <button type="button" class="btn-crear-objeto" id="btnHistorialCreacion">Historial</button>
+                </div>
+                <div class="modal-body creacion-master-cuerpo">
+                    <div class="creacion-master-principal form-sao">
+                        <p id="textoCreacionMaster" class="texto-esperando-trueque"></p>
+                        <h6 class="titulo-ranuras">Objetos que recibe</h6>
+                        <div id="listaObjetosCreacionMaster" class="lista-objetos"></div>
+                        <div class="ranura" id="ranuraSobrescribirCreacion" hidden title="Los objetos no son los del historial para esta receta: enciéndelo para guardar estos en su lugar">
+                            <span class="ranura-icono" data-icono="historial"></span>
+                            <label class="ranura-etiqueta" for="sobrescribirHistorialCreacion">Sobrescribir en el historial</label>
+                            <input type="checkbox" id="sobrescribirHistorialCreacion">
+                        </div>
+                        <div class="botones-ranura">
+                            <button type="button" class="btn-pastilla-sao" id="btnNuevoObjetoCreacion">+ Crear objeto</button>
+                            <button type="button" class="btn-pastilla-sao" id="btnPerderCreacion">Se pierden los materiales</button>
+                            <button type="button" class="btn-pastilla-sao" id="btnDevolverCreacion">Devolver materiales</button>
+                            <button type="button" class="btn-pastilla-sao" id="btnSiguienteCreacion" hidden>Siguiente petición</button>
+                        </div>
+                    </div>
+                    <aside id="panelCreacionMaster" class="panel-protagonistas panel-creacion" aria-label="Petición"></aside>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar (se pierden los materiales)" aria-label="Cerrar (se pierden los materiales)"></button>
+                    <button type="button" class="btn-modal-sao aceptar" id="btnEnviarCreacion" title="Enviar objetos" aria-label="Enviar objetos"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modo máster: historial de creaciones (interfazCreacion.js, datos en historialCreaciones.js). Recetas enviadas:
+         tipo + materiales → objetos; se editan los objetos o se borra la receta. Exportar e importar en el menú de opciones -->
+    <div class="modal fade modal-sao" id="modalHistorialCreaciones" tabindex="-1" aria-labelledby="modalHistorialCreacionesLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalHistorialCreacionesLabel">Historial de creaciones</h5>
+                </div>
+                <div class="modal-body">
+                    <p id="estadoHistorialCreaciones" class="aviso-zona" role="status" hidden></p>
+                    <div class="fila-campos filtros-compendio">
+                        <label>Tipo <select id="filtroTipoHistorialCreaciones"></select></label>
+                        <label class="buscar-compendio">Buscar <input type="search" id="buscarHistorialCreaciones" maxlength="60"></label>
+                    </div>
+                    <div id="listaHistorialCreaciones" class="lista-compendio"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <input type="file" id="fileHistorialCreaciones" accept=".json" hidden>
+
     <div class="modal fade modal-sao" id="modalBaul" tabindex="-1" aria-labelledby="modalBaulLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
             <div class="modal-content">

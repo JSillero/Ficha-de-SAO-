@@ -314,6 +314,25 @@ export async function anadirAlCompendio(objeto) {
     return true;
 }
 
+/**
+ * Añade sin preguntar los objetos que aún no están en el compendio (por nombre, sin distinguir mayúsculas), sin piso.
+ * Los que ya hay no se tocan. Lo usa la creación por profesión con los materiales usados (interfazCreacion.js).
+ * @returns {string[]} nombres de los añadidos
+ */
+export function anadirNuevosAlCompendio(objetos) {
+    if (!ctx?.esMaster) return [];
+    const anadidos = [];
+    (objetos ?? []).forEach(objeto => {
+        if (!objeto?.nombre?.trim() || compendio.idPorNombre(objeto.nombre)) return;
+        if (compendio.anadirObjeto(objeto, null)) anadidos.push(objeto.nombre);
+    });
+    if (anadidos.length) {
+        pintarSiAbierto();
+        subirCambios();
+    }
+    return anadidos;
+}
+
 /* Editar o crear con el formulario de objetos: un pj falso con el objeto en el baúl; al terminar se guarda */
 function abrirFormulario(id = null) {
     const objeto = id ? compendio.objetoDe(id) : null;

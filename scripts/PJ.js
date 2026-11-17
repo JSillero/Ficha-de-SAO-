@@ -6,6 +6,7 @@ import { cargarArtes, modificadorArtes } from "./artes.js";
 import { modificadorEfectosEquipo } from "./efectosEquipo.js";
 import { cargarDiario } from "./diario.js";
 import { cargarTrueque } from "./trueque.js";
+import { cargarCreacion } from "./creacion.js";
 import { crearNpc, cargarNpc, equiposDePartes, DEFENSA_MINIMA_NPC, defensaParalisisNpc } from "./npc.js";
 import { guardarFaseActiva, convertirEnJefe } from "./jefes.js";
 
@@ -150,6 +151,7 @@ export default class PJ {
         this.armasLanzadas = []; // [{ mano, equipo }]: lanzas y cuchillos lanzados sin recoger (objetos.js)
         this.botin = []; // objetos de la recompensa de un NPC por recoger (ventana de botín; sin límite)
         this.trueque = null; // trueque en curso con lo apartado (trueque.js)
+        this.creacion = null; // objeto pedido al máster con los materiales apartados (creacion.js)
         this.ultimoGolpe = null; // { instancia, jugador, nombre } de quien dio el último golpe (desde un pop-up), o null
         this.permitirTrueque = false; // NPC: puede hacer trueques (los personajes siempre pueden)
         this.neutral = false; // NPC neutral (franja amarilla) hasta que un jugador lo golpea
@@ -598,6 +600,9 @@ export default class PJ {
         /* Trueque en curso, con lo apartado (si se cerró a medias, la interfaz lo devuelve) */
         this.trueque = cargarTrueque(jsonObject.trueque);
 
+        /* Creación de objeto en espera del máster, con los materiales apartados */
+        this.creacion = cargarCreacion(jsonObject.creacion);
+
         /* Quién dio el último golpe (para la muerte del personaje) */
         const golpe = jsonObject.ultimoGolpe;
         this.ultimoGolpe = golpe?.instancia ? {
@@ -685,6 +690,7 @@ export default class PJ {
             armasLanzadas: this.armasLanzadas,
             botin: this.botin,
             trueque: this.trueque,
+            creacion: this.creacion,
             ultimoGolpe: this.ultimoGolpe,
 
             /* Equipo */

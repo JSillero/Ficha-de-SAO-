@@ -31,6 +31,8 @@
  *   compendios/{uid}/paginas/{n}: { plantillas }                   índice y páginas de < 1 MB (texto JSON)
  * - compendiosObjetos/{uid}: { paginas, actualizado }              objetos comunes del máster (compendioObjetos.js):
  *   compendiosObjetos/{uid}/paginas/{n}: { objetos }               lo escribe su dueño; lo lee cualquiera con sesión
+ * - historialesCreacion/{uid}: { paginas, actualizado }            historial de creaciones del máster
+ *   historialesCreacion/{uid}/paginas/{n}: { recetas }             (historialCreaciones.js); solo su dueño
  *
  * Plan gratuito de Firebase: peticiones al mínimo. Personajes, ocultos y expulsados van en el documento de
  * la sala, que ya se escucha (sin listeners ni colecciones extra); nada es periódico; los nombres de usuario
@@ -1383,7 +1385,8 @@ export async function borrarPersonaje(id) {
 /* Los dos compendios: colección y campo de texto de cada página */
 const COMPENDIOS = {
     npc: { coleccion: "compendios", campo: "plantillas" },
-    objetos: { coleccion: "compendiosObjetos", campo: "objetos" }
+    objetos: { coleccion: "compendiosObjetos", campo: "objetos" },
+    creaciones: { coleccion: "historialesCreacion", campo: "recetas" }
 };
 
 /** Solo el índice: { actualizado, total }, o null si no hay compendio en la nube (1 lectura) */

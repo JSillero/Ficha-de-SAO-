@@ -68,6 +68,13 @@ const el = (id) => document.getElementById(id);
 const formatoFecha = new Intl.DateTimeFormat("es-ES", { dateStyle: "short", timeStyle: "short" });
 
 export const getEstadoOnline = () => servicio.getEstado();
+/** ¿Esta sesión es la del máster de la sala en la que está? */
+export const soyMasterDeSala = () => servicio.soyMasterSala();
+/** ¿El evento lo ha enviado el máster de la sala? (p. ej. el resultado de una creación de objeto) */
+export function esDelMasterDeSala(evento) {
+    const sala = servicio.getEstado().sala;
+    return Boolean(sala?.master) && evento?.jugador === sala.master;
+}
 /** Personajes de la sala a los que se puede ofrecer algo: [{ jugador, instancia, nombre }]
  *  (sin el de esta pestaña ni los ocultos) */
 export const getPersonajesSala = () => servicio.getPersonajesSala()
@@ -194,6 +201,9 @@ export const guardarCompendioNube = (cambios) => servicio.guardarPaginasCompendi
    su sala (siNoEs: si no ha cambiado desde la copia que tienen, solo se lee el índice) */
 export const leerObjetosComunesNube = (dueno = null, siNoEs = null) => servicio.leerCompendio("objetos", dueno, siNoEs);
 export const guardarObjetosComunesNube = (cambios) => servicio.guardarPaginasCompendio(cambios, "objetos");
+/* Historial de creaciones del máster (interfazCreacion.js con historialCreaciones.js): solo lo lee y escribe él */
+export const leerHistorialCreacionesNube = (siNoEs = null) => servicio.leerCompendio("creaciones", null, siNoEs);
+export const guardarHistorialCreacionesNube = (cambios) => servicio.guardarPaginasCompendio(cambios, "creaciones");
 /** uid del máster de la sala en la que estás (null sin sala) */
 export const masterDeLaSala = () => servicio.getEstado().sala?.master ?? null;
 export const usuarioOnline = () => servicio.getEstado().usuario?.uid ?? null;
