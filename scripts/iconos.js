@@ -29,6 +29,16 @@ function poligonoEstrella(cx, cy, r, rInterior, puntas, clase = "p") {
     return `<polygon class="${clase}" points="${puntos.join(" ")}"/>`;
 }
 
+/* Silueta (cabeza y hombros) centrada en x; clase "d" = atenuada (tú, en las modalidades de la transfusión) */
+const silueta = (x, clase = "p") => `
+        <circle class="${clase}" cx="${x}" cy="40" r="9"/>
+        <path class="${clase}" d="M${x - 12} 72C${x - 12} 60 ${x - 7} 53 ${x} 53C${x + 7} 53 ${x + 12} 60 ${x + 12} 72Z"/>`;
+/* Flecha horizontal de x1 a x2 (punta en x2) */
+const flecha = (x1, x2) => {
+    const d = x2 > x1 ? -1 : 1;
+    return `<path class="t" style="stroke-width:5" d="M${x1} 52H${x2}M${x2 + 7 * d} 45L${x2} 52L${x2 + 7 * d} 59"/>`;
+};
+
 /* Las armas se dibujan en vertical (punta arriba) y se giran 45° como el icono de Combate */
 const enDiagonal = (contenido) => `<g transform="rotate(45 50 50)">${contenido}</g>`;
 
@@ -339,11 +349,17 @@ const GLIFOS = {
         <g transform="translate(30 90) scale(0.0046875 -0.0046875)"><path class="p" d="${SENALAR_D}"/></g>
         ${poligonoEstrella(44.5, 30, 9, 3.5, 4, "p")}`,
     // Transfusión de sangre (13-sacro.md §9): dos gotas con una flecha de una a otra
+    // Transfusión (imgs/transfusion.svg): bolsa de sangre arriba a la derecha y su tubo hasta un corazón
     transfusion: `
-        <path class="p" d="M28 22C28 22 12 44 12 54A16 16 0 0 0 44 54C44 44 28 22 28 22Z"/>
-        <path class="s" d="M72 46C72 46 56 68 56 78A16 16 0 0 0 88 78C88 68 72 46 72 46Z"/>
-        <path class="t" d="M46 28Q64 24 70 38"/>
-        <path class="t" d="M62 36L70 40L72 31"/>`,
+        <rect class="s" x="54" y="13" width="20" height="7" rx="2"/>
+        <rect class="s" x="48" y="18" width="32" height="38" rx="7"/>
+        <path class="p" d="M48 36H80V49A7 7 0 0 1 73 56H55A7 7 0 0 1 48 49Z"/>
+        <path class="t" style="stroke-width:5" d="M64 56V62Q64 70 56 70H50"/>
+        <path class="p" d="M31 64C27 56 13 56 13 68C13 76 23 82 31 87C39 82 49 76 49 68C49 56 35 56 31 64Z"/>`,
+    // Modalidades de la transfusión (#modalTransfusion): tú en gris (atenuado), los demás en sólido
+    transfusionDar: `${silueta(24, "d")}${flecha(40, 60)}${silueta(76)}`,
+    transfusionQuitar: `${silueta(24, "d")}${flecha(60, 40)}${silueta(76)}`,
+    transfusionOtro: `${silueta(24)}${flecha(40, 60)}${silueta(76)}`,
     // Akva (elemento de Sacro, agua): una gota con su brillo
     akva: `
         <path class="p" d="M50 12C50 12 24 46 24 63A26 26 0 0 0 76 63C76 46 50 12 50 12Z"/>

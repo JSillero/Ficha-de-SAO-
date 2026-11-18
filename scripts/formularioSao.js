@@ -47,7 +47,30 @@ export function mejorarNumero(input) {
         return b;
     };
     envoltorio.append(boton("-1", "−"), input, boton("1", "+"));
+    actualizarPaso(input);
 }
+
+/** Desactiva el − / el + cuando el valor ya está en el mínimo / máximo (o el campo está desactivado). Se llama sola
+    al cambiar el campo y al pasar el ratón; tras cambiar valor, min o max desde el código conviene llamarla. */
+export function actualizarPaso(input) {
+    const envoltorio = input?.closest(".paso");
+    if (!envoltorio) return;
+    const valor = Number(input.value) || 0;
+    const bloqueado = input.disabled || input.readOnly;
+    envoltorio.querySelectorAll(".paso-boton").forEach(b => {
+        const enLimite = Number(b.dataset.signo) < 0
+            ? input.min !== "" && valor <= Number(input.min)
+            : input.max !== "" && valor >= Number(input.max);
+        b.disabled = bloqueado || enLimite;
+    });
+}
+document.addEventListener("input", (e) => { if (e.target.matches?.(".paso input")) actualizarPaso(e.target); });
+document.addEventListener("change", (e) => { if (e.target.matches?.(".paso input")) actualizarPaso(e.target); });
+// El código puede haber cambiado el valor o los límites sin avisar: al acercar el ratón se recalcula
+document.addEventListener("pointerover", (e) => {
+    const paso = e.target.closest?.(".paso");
+    if (paso) actualizarPaso(paso.querySelector("input"));
+});
 
 /* Un solo listener para todos los − / + */
 document.addEventListener("click", (e) => {

@@ -178,9 +178,10 @@ function listaSala(registro) {
     const indice = Object.fromEntries(master.todos().map(p => [p.id, p]));
     return master.idsEnSesion()
         .map(id => id === pj.idPersonaje
-            ? { id, nombre: String(pj.nombre ?? "").trim(), npc: Boolean(pj.esNpc), trueque: Boolean(pj.esNpc && pj.permitirTrueque), jefe: master.resumenDe(pj).jefe }
+            ? { id, nombre: String(pj.nombre ?? "").trim(), npc: Boolean(pj.esNpc), trueque: Boolean(pj.esNpc && pj.permitirTrueque), jefe: master.resumenDe(pj).jefe,
+                pesadilla: esPesadilla(pj) }
             : { id, nombre: indice[id]?.resumen?.nombre ?? "", npc: Boolean(indice[id]?.resumen?.npc), trueque: Boolean(indice[id]?.resumen?.trueque),
-                jefe: indice[id]?.resumen?.jefe ?? null })
+                jefe: indice[id]?.resumen?.jefe ?? null, pesadilla: Boolean(indice[id]?.resumen?.pesadilla) })
         // Jefe: con la hora de su turno (t), para que parpadee en la cabecera de los jugadores
         .map(p => (p.jefe ? { ...p, jefe: { ...p.jefe, t: ctx.turnoDe(p.id) || 0 } } : p))
         .filter(p => {
@@ -385,7 +386,7 @@ export function alIniciarTurno(hora, iniciativa, quien) {
         const resumen = iniciarTurno(otro);
         master.guardar(id, { json: otro.toJSONString(), resumen: master.resumenDe(otro) });
         ctx.fijarTurno(id, hora);
-        ctx.publicarEstadoDe(id, { ...master.resumenDe(otro), turno: hora });
+        ctx.publicarEstadoDe(id, { ...master.resumenDe(otro), turno: hora, pv: otro.vida, pvMax: otro.vidaMax });
         ctx.aviso(`Inicio de turno: ${otro.nombre || "Sin nombre"}`, [`Empieza a la vez que ${quien || "otro personaje"} (misma iniciativa).`, ...resumen]);
     }
     actualizarHudMaster();
@@ -416,7 +417,7 @@ export function conPersonaje(id, fn) {
     if (pj.esNpc && vidaAntes > 0 && pj.vida <= 0) setTimeout(() => ctx.alMorirNpc?.(id), 0);
     pj.calcularCaracteristicas();
     master.guardar(id, { json: pj.toJSONString(), resumen: master.resumenDe(pj) });
-    ctx.publicarEstadoDe(id, { ...master.resumenDe(pj), turno: ctx.turnoDe(id) });
+    ctx.publicarEstadoDe(id, { ...master.resumenDe(pj), turno: ctx.turnoDe(id), pv: pj.vida, pvMax: pj.vidaMax });
     actualizarHudMaster();
     return resultado;
 }

@@ -41,11 +41,12 @@ import { escaparHtml, colorSeguro } from "./html.js";
  * - etiquetaTotal: texto junto al total (por defecto "TOTAL").
  * - calcularDanno(resultado): si se pasa, el popup añade un bloque de daño. Se llama tras tirar,
  *   porque el daño depende de si hay crítico. Debe devolver { total, desglose: string[], notas?: string[] }.
+ * - soloPara: lista de instancias; en la sala solo les sale a ellas (p. ej. la transfusión, eventos.js).
  */
 export function ejecutarTirada({ nombreAccion, valorHabilidad, valorCaracteristica, modoTirada, criticoFacil,
     bonificador = 0, etiquetaBonificador = "Bonif.",
     etiquetaHabilidad = "Hab.", etiquetaCaracteristica = "Caract.", subtitulo = "", etiquetaTotal = "TOTAL",
-    calcularDanno = null }) {
+    calcularDanno = null, soloPara = null }) {
 
     /** @type {ResultadoTirada} */
     const resultado = {
@@ -70,6 +71,7 @@ export function ejecutarTirada({ nombreAccion, valorHabilidad, valorCaracteristi
     const dado = tirarDados(resultado, criticoFacil);
     resultado.total = dado + (Number(valorHabilidad) || 0) + (Number(valorCaracteristica) || 0) + (Number(bonificador) || 0);
     if (calcularDanno) resultado.danno = calcularDanno(resultado);
+    if (Array.isArray(soloPara)) resultado.soloPara = soloPara.map(String);
 
     // El popup es un evento: se pinta aquí y se comparte en la sala (eventos.js)
     emitirEvento("tirada", structuredClone(resultado));

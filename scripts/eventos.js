@@ -63,6 +63,14 @@ export const instanciaEmisora = () => instanciaPropia();
 const esInstanciaPropia = (instancia) => Boolean(instancia) && (instancia === getInstancia() || origen.esPropia(instancia));
 /** ¿Esa instancia es de esta pestaña? (en modo máster, cualquiera de sus personajes) */
 export const esDeEstaPestana = esInstanciaPropia;
+/* Golpes con objetivo (golpe.objetivo, p. ej. la transfusión) y eventos con datos.soloPara (lista de instancias):
+   esObjetivoPropio(instancia) dice si ese personaje es de esta pestaña. La interfaz lo amplía con los personajes de
+   la sesión del máster aunque no haya sala (setObjetivoPropio) */
+let objetivoPropioExtra = () => false;
+export function setObjetivoPropio(fn) {
+    objetivoPropioExtra = fn;
+}
+const esObjetivoPropio = (instancia) => Boolean(instancia) && (esInstanciaPropia(instancia) || Boolean(objetivoPropioExtra(instancia)));
 let publicador = null;
 
 const valor = (v) => typeof v === "function" ? v() : v;
@@ -166,6 +174,8 @@ export function recibirEvento(evento) {
         }
         return;
     }
+    // Solo para los implicados (datos.soloPara): los demás ni lo ven
+    if (Array.isArray(evento.datos?.soloPara) && !evento.datos.soloPara.some(i => esObjetivoPropio(String(i)))) return;
     // Fuera de tu grupo ves el resultado, pero no cómo se ha calculado ni la vida que le queda (el máster lo ve
     // todo). De un NPC o jefe tampoco, aunque esté en tu grupo
     const completo = valor(origen.esMaster)
@@ -273,10 +283,14 @@ function hacerGolpesAplicables(popup, evento, autor, idAutorPropio = null) {
     popup.querySelectorAll?.(".popup-danno[data-golpe]").forEach(bloque => {
         const golpe = golpes[Number(bloque.dataset.golpe)];
         if (!golpe) return;
+        // Con objetivo (transfusión): solo lo recibe ese personaje, y se le aplica a él aunque no esté en pantalla
+        const objetivo = typeof golpe.objetivo === "string" && golpe.objetivo ? golpe.objetivo : null;
+        if (objetivo && !esObjetivoPropio(objetivo)) return;
         bloque.classList.add("aplicable");
         bloque.tabIndex = 0;
         bloque.setAttribute("role", "button");
-        bloque.title = idAutorPropio ? "Recibir este golpe en el personaje que tienes en pantalla" : "Recibir este golpe en tu personaje";
+        bloque.title = objetivo ? `Recibirlo en ${String(golpe.nombreObjetivo || "tu personaje")}`
+            : idAutorPropio ? "Recibir este golpe en el personaje que tienes en pantalla" : "Recibir este golpe en tu personaje";
         bloque.insertAdjacentHTML("beforeend", `<div class="popup-aplicar">Clic para recibir este golpe</div>`);
         const aplicar = (e) => {
             e.stopPropagation(); // no cierra el pop-up
@@ -286,7 +300,7 @@ function hacerGolpesAplicables(popup, evento, autor, idAutorPropio = null) {
             // origen: quién ha dado el golpe (para saber quién mata a un NPC del máster)
             // idPersonaje: en un pop-up propio del máster, su personaje que lo emitió
             const origen = { jugador: evento.jugador ?? null, instancia: evento.instancia ?? null, nombre: autor, idPersonaje: idAutorPropio };
-            if (!aplicadorDanno(golpe, { autor, titulo: evento.datos?.titulo ?? "", tirada, origen })) return;
+            if (!aplicadorDanno(golpe, { autor, titulo: evento.datos?.titulo ?? "", tirada, origen, objetivo })) return;
             bloque.classList.replace("aplicable", "aplicado");
             bloque.removeAttribute("role");
             bloque.title = "Ya has recibido este golpe";

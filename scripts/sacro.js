@@ -321,7 +321,10 @@ export const maxTransfusion = (pj) => 3 * Math.max(0, Math.floor(Number(pj?.getG
 
 /* Modalidades: quién pierde y quién recibe, y cuántas manos libres hacen falta (además de la boca) */
 export const MODOS_TRANSFUSION = {
-    aMi: { etiqueta: "Quitar PV a otro y dármelos", manos: 1 },
-    dar: { etiqueta: "Dar mis PV a otro", manos: 1 },
-    otro: { etiqueta: "Quitar PV a uno y dárselos a otro", manos: 2 }
+    aMi: { etiqueta: "Quitar PV a otro y dármelos", manos: 1, icono: "transfusionQuitar" },
+    dar: { etiqueta: "Dar mis PV a otro", manos: 1, icono: "transfusionDar" },
+    otro: { etiqueta: "Quitar PV a uno y dárselos a otro", manos: 2, icono: "transfusionOtro" }
 };
+
+/** PV por debajo de los que no deja a nadie una transfusión: 1 en zona segura o en la base (allí no se muere), 0 fuera */
+export const minimoTransfusion = (pj) => (pj?.zona === "segura" || pj?.zona === "base" ? 1 : 0);

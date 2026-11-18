@@ -14,18 +14,20 @@ import {
     ELEMENTOS_SACRO, CLAVES_ELEMENTOS_SACRO, parteDeDedo, dedosSacro, motivoDedoNoUsable, motivoNoDedos, costeGenerar,
     motivoNoGenerar, dannoElementos, partesHechizo, entradaDannoSacro, maximoPorDedo, guardarEnMano, motivoNoLlenar,
     llenarCristal, describirEnergia, puedeUsarMagia, cargarDedos, cargarAmbiente, gastarHechizo, esElementoSacro,
-    energiaDe, quitarElemento, maxTransfusion, MODOS_TRANSFUSION
+    energiaDe, quitarElemento, maxTransfusion, MODOS_TRANSFUSION, minimoTransfusion
 } from "./sacro.js";
 import { ESTADOS_INFO, noSeCura } from "./estados.js";
 import { manoVacia } from "./turno.js";
 import { caracteristicaArma } from "./ataque.js";
-import { cargarObjeto } from "./objetos.js";
+import { cargarObjeto, manoParaUsar } from "./objetos.js";
+import { TIPOS_DOS_MANOS } from "./equipamiento.js";
 import { emitirPrivado, emitirEvento, registrarManejador, PARA_TODOS } from "./eventos.js";
 import { mostrarPopupDanno } from "./dados.js";
 import { esDelMasterDeSala } from "./interfazOnline.js";
 import { MANO_D, MANO_ANCHO, MANO_ALTO, PUNTAS_MANO } from "./siluetasSacro.js";
 import { cinturonesPuestos, objetoCinturon } from "./cinturon.js";
 import { iconoSao } from "./iconos.js";
+import { prepararFormularioSao, actualizarPaso } from "./formularioSao.js";
 import { escaparHtml } from "./html.js";
 
 let ctx = null;
@@ -455,36 +457,115 @@ function quitar(dedo, f) {
  * sale un golpe que cura (efecto) para que el otro lo acepte. Boca + una mano (las dos si es de uno a otro). */
 const ventanaTransfusion = () => el("modalTransfusion");
 let manoTransfusion = "manoIzquierda";
+/* Lo elegido en la ventana (fichas): modalidad e instancias de quien pierde y quien recibe */
+const eleccionTransfusion = { modo: "aMi", de: null, para: null };
 
-function pintarTransfusion() {
+/* Ficha de una opción; si no se puede elegir sale desactivada con el motivo al pasar el ratón (aria-disabled y no
+   disabled, para que el navegador enseñe el title) */
+function fichaTransfusion({ valor, texto, icono, elegida, motivo }) {
+    return `<button type="button" class="ficha-sao" role="radio" data-valor="${escaparHtml(valor)}" aria-checked="${Boolean(elegida && !motivo)}"
+        ${motivo ? `aria-disabled="true" title="${escaparHtml(motivo)}"` : ""}>
+        <span class="ficha-icono">${iconoSao(icono)}</span><span>${escaparHtml(texto)}</span></button>`;
+}
+
+/* Mano con la que se hace la transfusión de una mano: la del botón si está vacía; con un arma a dos manos cuenta como
+   libre una de las dos, la que tenga la acción disponible (manoParaUsar, como el inventario). null si no hay */
+function manoParaTransfusion(p) {
+    if (manoVacia(p, manoTransfusion)) return manoTransfusion;
+    return MANOS.some(m => TIPOS_DOS_MANOS.includes(p[m]?.tipo)) ? manoParaUsar(p) : null;
+}
+
+/* PV que le caben a alguien (null si no se sabe: solo se conocen los personajes que se pueden leer) */
+const leCaben = (o) => (o.noSeCura ? 0 : Number.isFinite(o.vida) && Number.isFinite(o.vidaMax) ? Math.max(0, Math.floor(o.vidaMax - o.vida)) : null);
+
+/* Por qué no puede perder (rol "de") o recibir ("para") PV, o "" (las pesadillas ni salen). Su zona no se sabe: se
+   supone la tuya (en zona segura o base nadie baja de 1 PV) */
+function motivoObjetivo(o, rol) {
+    if (rol === "de" && Number.isFinite(o.vida) && o.vida <= minimoTransfusion(pj())) return "No le quedan PV que quitar";
+    if (rol === "para" && o.noSeCura) return "No puede recuperar PV";
+    if (rol === "para" && leCaben(o) === 0) return "Tiene los PV al máximo";
+    return "";
+}
+
+/* Todo lo que enseña la ventana: motivos de cada opción, lo elegido (corregido si ya no vale) y el máximo de PV */
+function estadoTransfusion() {
     const p = pj();
-    const modo = el("transfusionModo").value;
-    const otros = ctx.personajesSala();
-    const opciones = otros.map(o => `<option value="${escaparHtml(o.instancia)}">${escaparHtml(o.nombre || "Sin nombre")}${o.npc ? " (NPC)" : ""}</option>`).join("");
-    for (const id of ["transfusionDe", "transfusionPara"]) {
-        const select = el(id);
-        const antes = select.value;
-        if (select.dataset.opciones !== opciones) { select.innerHTML = opciones; select.dataset.opciones = opciones; }
-        if (antes && otros.some(o => o.instancia === antes)) select.value = antes;
+    const otros = ctx.personajesSala().filter(o => !o.pesadilla); // no se hacen transfusiones con pesadillas
+    const tope = maxTransfusion(p);
+    const manosLibres = MANOS.filter(m => manoVacia(p, m));
+    const validos = (rol, sin = null) => otros.filter(o => o.instancia !== sin && !motivoObjetivo(o, rol));
+    const libre = manoParaTransfusion(p);
+    const motivosModo = {
+        aMi: !libre ? "Esa mano no está libre"
+            : noSeCura(p) ? "No puedes recuperar PV"
+            : p.vida >= p.vidaMax ? "Tienes los PV al máximo"
+            : !validos("de").length ? "No hay nadie a quien quitar PV" : "",
+        dar: !libre ? "Esa mano no está libre"
+            : p.vida <= minimoTransfusion(p) ? "No tienes PV que dar"
+            : !validos("para").length ? "No hay nadie que pueda recibirlos" : "",
+        otro: manosLibres.length < 2 ? "Hacen falta las dos manos libres"
+            : !validos("de").some(d => validos("para", d.instancia).length) ? "Hacen falta otros dos personajes en la sala" : ""
+    };
+    // Si lo elegido ya no se puede, pasa a lo primero que se pueda
+    const e = eleccionTransfusion;
+    if (motivosModo[e.modo]) e.modo = Object.keys(MODOS_TRANSFUSION).find(m => !motivosModo[m]) ?? e.modo;
+    const usaDe = e.modo !== "dar";
+    const usaPara = e.modo !== "aMi";
+    const motivosDe = new Map(otros.map(o => [o.instancia, motivoObjetivo(o, "de")]));
+    if (usaDe && (!e.de || motivosDe.get(e.de) !== "")) {
+        e.de = validos("de").find(d => e.modo !== "otro" || validos("para", d.instancia).length)?.instancia ?? null;
     }
-    el("ranuraTransfusionDe").hidden = modo === "dar";
-    el("ranuraTransfusionPara").hidden = modo === "aMi";
-    const maximo = modo === "aMi" ? Math.min(maxTransfusion(p), Math.max(0, p.vidaMax - p.vida))
-        : modo === "dar" ? Math.min(maxTransfusion(p), Math.max(0, p.vida)) : maxTransfusion(p);
+    const motivosPara = new Map(otros.map(o => [o.instancia,
+        motivoObjetivo(o, "para") || (e.modo === "otro" && o.instancia === e.de ? "Ya es quien pierde los PV" : "")]));
+    if (usaPara && (!e.para || motivosPara.get(e.para) !== "")) e.para = otros.find(o => !motivosPara.get(o.instancia))?.instancia ?? null;
+    const de = usaDe ? otros.find(o => o.instancia === e.de) ?? null : null;
+    const para = usaPara ? otros.find(o => o.instancia === e.para) ?? null : null;
+    // Máximo (13-sacro.md §9): 3 × Sacro, lo que le falta a quien recibe y lo que tiene quien da (cuando se sabe)
+    const limites = [tope];
+    if (e.modo === "aMi") limites.push(Math.max(0, p.vidaMax - p.vida));
+    if (e.modo === "dar") limites.push(Math.max(0, p.vida - minimoTransfusion(p)));
+    if (para && leCaben(para) !== null) limites.push(leCaben(para));
+    if (de && Number.isFinite(de.vida)) limites.push(Math.max(0, de.vida - minimoTransfusion(p)));
+    const maximo = Math.max(0, Math.floor(Math.min(...limites)));
+    const motivo = !tope ? "Sin Sacro no se puede hacer una transfusión."
+        : motivosModo[e.modo] ? `${motivosModo[e.modo]}.`
+        : usaDe && !de ? "Elige quién pierde los PV."
+        : usaPara && !para ? "Elige quién los recibe."
+        : maximo <= 0 ? "No se puede transferir ningún PV." : "";
+    return { otros, tope, motivosModo, motivosDe, motivosPara, de, para, maximo, motivo, usaDe, usaPara };
+}
+
+/* alMaximo: pone los PV al máximo (al abrir y al cambiar de opción) */
+function pintarTransfusion({ alMaximo = false } = {}) {
+    const s = estadoTransfusion();
+    const e = eleccionTransfusion;
+    el("transfusionModo").innerHTML = Object.entries(MODOS_TRANSFUSION).map(([valor, m]) => fichaTransfusion({
+        valor, texto: m.etiqueta, icono: m.icono, elegida: e.modo === valor, motivo: s.motivosModo[valor]
+    })).join("");
+    const objetivos = (motivos, elegida) => s.otros.length
+        ? s.otros.map(o => fichaTransfusion({
+            valor: o.instancia, texto: `${o.nombre || "Sin nombre"}${o.npc ? " (NPC)" : ""}`, icono: "personaje",
+            elegida: elegida === o.instancia, motivo: motivos.get(o.instancia)
+        })).join("")
+        : `<span class="lista-vacia">No hay nadie más en la sala</span>`;
+    el("transfusionDe").innerHTML = objetivos(s.motivosDe, e.de);
+    el("transfusionPara").innerHTML = objetivos(s.motivosPara, e.para);
+    el("ranuraTransfusionDe").hidden = !s.usaDe;
+    el("ranuraTransfusionPara").hidden = !s.usaPara;
+    // PV de 1 en 1, entre 1 y el máximo
     const cantidad = el("transfusionCantidad");
-    cantidad.max = String(maximo);
-    if (Number(cantidad.value) > maximo) cantidad.value = String(maximo);
-    const manos = MODOS_TRANSFUSION[modo].manos;
-    const manosLibres = ["manoIzquierda", "manoDerecha"].filter(m => manoVacia(p, m));
-    const motivo = !otros.length ? "No hay nadie más en la sala."
-        : manos === 2 && manosLibres.length < 2 ? "Hacen falta las dos manos libres (sin nada equipado ni energía)."
-        : !manoVacia(p, manoTransfusion) ? "Esa mano no está libre."
-        : modo === "otro" && el("transfusionDe").value === el("transfusionPara").value ? "Quien pierde y quien recibe tienen que ser distintos."
-        : maximo <= 0 ? (modo === "aMi" ? "Tienes los PV al máximo." : "No tienes PV que dar.") : "";
-    el("textoTransfusion").textContent = `Hasta ${maximo} PV (3 × Sacro = ${maxTransfusion(p)}). Gasta la boca y ${manos === 2 ? "las dos manos" : "una mano"}.`
-        + (modo === "dar" ? " Sin tirada: pierdes los PV ahora." : " Tirada contra la Defensa de quien pierde los PV.");
-    el("avisoTransfusion").textContent = motivo;
-    el("btnAceptarTransfusion").disabled = Boolean(motivo);
+    cantidad.max = String(Math.max(1, s.maximo));
+    cantidad.disabled = s.maximo <= 0;
+    cantidad.value = String(s.maximo <= 0 ? 0 : alMaximo ? s.maximo : Math.max(1, Math.min(s.maximo, entero(cantidad.value))));
+    actualizarPaso(cantidad); // − / + desactivados en los límites
+    const manos = MODOS_TRANSFUSION[e.modo].manos;
+    el("textoTransfusion").textContent = `Hasta ${s.maximo} PV (3 × Sacro = ${s.tope}). Gasta la boca y ${manos === 2 ? "las dos manos" : "una mano"}.`
+        + (e.modo === "dar" ? " Sin tirada: pierdes los PV ahora." : " Tirada contra la Defensa de quien pierde los PV.");
+    el("avisoTransfusion").textContent = s.motivo;
+    const boton = el("btnAceptarTransfusion");
+    boton.disabled = Boolean(s.motivo);
+    boton.title = s.motivo || "Hacer la transfusión";
+    return s;
 }
 
 /** Abre la ventana de transfusión desde el botón de una mano */
@@ -492,34 +573,35 @@ export function abrirTransfusion(mano) {
     if (!puedeUsarMagia(pj())) return ctx.aviso("Transfusión", ["Solo los personajes del Underworld pueden usar la magia."]);
     if (!ctx.enSala() && !ctx.esMaster) return ctx.aviso("Transfusión", ["Solo en una sala: hace falta alguien a quien quitar o dar PV."]);
     manoTransfusion = mano;
-    el("transfusionCantidad").value = String(maxTransfusion(pj()));
-    pintarTransfusion();
+    pintarTransfusion({ alMaximo: true });
     bootstrap.Modal.getOrCreateInstance(ventanaTransfusion()).show();
 }
 
 function ejecutarTransfusion() {
     const p = pj();
-    const modo = el("transfusionModo").value;
-    pintarTransfusion();
-    if (el("btnAceptarTransfusion").disabled) return;
-    const n = Math.min(entero(el("transfusionCantidad").value), Number(el("transfusionCantidad").max) || 0);
+    const s = pintarTransfusion();
+    if (s.motivo) return;
+    const modo = eleccionTransfusion.modo;
+    const n = Math.min(entero(el("transfusionCantidad").value), s.maximo);
     if (n <= 0) return;
-    const otros = ctx.personajesSala();
-    const de = otros.find(o => o.instancia === el("transfusionDe").value);
-    const para = otros.find(o => o.instancia === el("transfusionPara").value);
-    const partes = MODOS_TRANSFUSION[modo].manos === 2 ? ["cabeza", "izquierda", "derecha"] : ["cabeza", manoTransfusion === "manoIzquierda" ? "izquierda" : "derecha"];
+    const { de, para } = s;
+    // Una mano: la del botón o, con un arma a dos manos, la de las dos que tenga la acción (manoParaTransfusion)
+    const partes = MODOS_TRANSFUSION[modo].manos === 2 ? ["cabeza", "izquierda", "derecha"]
+        : ["cabeza", manoParaTransfusion(p) === "manoIzquierda" ? "izquierda" : "derecha"];
     const { resultado: gastado, fallo } = ctx.conEmbriaguez("arte", () => ctx.gastar(partes, "Transfusión"));
     bootstrap.Modal.getInstance(ventanaTransfusion())?.hide();
     if (fallo || !gastado) return ctx.actualizarTodo();
     ctx.reproducir("click");
     const nombre = p.nombre || "Sin nombre";
     if (modo === "dar") {
-        const dado = Math.min(n, Math.max(0, p.vida));
+        const dado = Math.min(n, Math.max(0, p.vida - minimoTransfusion(p)));
         p.vida -= dado;
         mostrarPopupDanno({
             titulo: `${nombre}: transfusión`, subtitulo: `Da ${dado} PV a ${para.nombre || "alguien"}`,
             descripcion: `${para.nombre || "Quien la recibe"} la acepta pulsando el bloque.`,
+            soloPara: [para.instancia], // solo le sale a quien la recibe, y solo él la puede aceptar (objetivo)
             golpes: [{ etiqueta: `Transfusión para ${para.nombre || "alguien"}`, total: 0, magia: true, efecto: { nombre: "Transfusión", pv: dado }, notas: [],
+                objetivo: para.instancia, nombreObjetivo: para.nombre || "Sin nombre", esTransfusion: true,
                 // Solo se ve (recibirGolpe no aplica este tipo): la cura va en el efecto
                 elemental: [{ tipo: "transfusion", cantidad: dado, etiqueta: "PV · cura", color: "#E05583", colorTexto: "#FBFBFB" }] }]
         });
@@ -532,6 +614,8 @@ function ejecutarTransfusion() {
         // Solo se ve (recibirGolpe no aplica este tipo): lo que se quita va en transfusion
         elemental: [{ tipo: "transfusion", cantidad: n, etiqueta: "PV · transfusión", color: "#B0172B", colorTexto: "#FBFBFB" }],
         transfusion: { pv: n, para: recibe.instancia, nombre: recibe.nombre || "alguien" },
+        objetivo: de.instancia, nombreObjetivo: de.nombre || "Sin nombre", // solo lo acepta quien pierde los PV
+        esTransfusion: true, // se puede recibir en zona segura (sin bajar de 1 PV)
         notas: [`Los recibe ${recibe.nombre || "alguien"} (lo que quepa). Quien los pierde lo acepta pulsando el bloque.`]
     };
     const caracteristica = caracteristicaArma(p, "otros"); // la más alta entre Reflejos y Fortaleza
@@ -544,6 +628,8 @@ function ejecutarTransfusion() {
         etiquetaCaracteristica: caracteristica.etiqueta,
         modoTirada: 1,
         etiquetaTotal: "ATAQUE",
+        // Solo les sale a los implicados: quien pierde y, de uno a otro, quien recibe
+        soloPara: modo === "otro" ? [de.instancia, para.instancia] : [de.instancia],
         calcularDanno: () => golpe
     });
     ctx.actualizarTodo();
@@ -764,7 +850,14 @@ export function inicializarSacro(contexto) {
     });
     registrarManejador("transfusion", (evento) => recibirTransfusion(evento.datos?.para, evento.datos?.pv, String(evento.personaje || evento.datos?.de || "alguien")));
     // Ventana de transfusión
-    el("transfusionModo")?.addEventListener("change", pintarTransfusion);
-    ["transfusionDe", "transfusionPara", "transfusionCantidad"].forEach(id => el(id)?.addEventListener("input", pintarTransfusion));
+    // Fichas de la transfusión: modalidad, quien pierde y quien recibe (las desactivadas no responden)
+    [["transfusionModo", "modo"], ["transfusionDe", "de"], ["transfusionPara", "para"]].forEach(([id, campo]) => el(id)?.addEventListener("click", (e) => {
+        const ficha = e.target.closest(".ficha-sao");
+        if (!ficha || ficha.getAttribute("aria-disabled") === "true") return;
+        eleccionTransfusion[campo] = ficha.dataset.valor;
+        pintarTransfusion({ alMaximo: true });
+    }));
+    el("transfusionCantidad")?.addEventListener("change", pintarTransfusion);
+    if (el("formTransfusion")) prepararFormularioSao(el("formTransfusion")); // iconos de las ranuras y − / + de los PV
     el("btnAceptarTransfusion")?.addEventListener("click", ejecutarTransfusion);
 }

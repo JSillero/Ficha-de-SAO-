@@ -1022,6 +1022,7 @@
 .icono-sao .s { fill: var(--glifo); opacity: 0.71; }
 .icono-sao .f { fill: var(--fondo); }
 .icono-sao .o { opacity: 0.71; }
+.icono-sao .d { fill: var(--glifo); opacity: 0.4; } /* atenuado (silueta propia de la transfusión) */
 .icono-sao .t {
     fill: none;
     stroke: var(--glifo);
@@ -4223,6 +4224,16 @@ body:not(.modo-master) .solo-master {
     cursor: not-allowed;
 }
 
+/* − / + en el mínimo o el máximo (actualizarPaso en formularioSao.js) */
+.form-sao .paso-boton:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    background: #4D4D4D;
+    color: #FBFBFB;
+    box-shadow: none;
+    transform: none;
+}
+
 /* En los valores elementales los números van más apretados */
 /* Valores elementales: sin − / +, un número corto en blanco junto a su icono */
 .form-objeto.form-sao .campo-elemental input[type="number"] {
@@ -6222,6 +6233,13 @@ body.modo-lectura #divEquipamiento .btn-extras-equipo {
 .aviso-sacro:empty { display: none; }
 .esperando-sacro { grid-column: 1 / -1; text-align: center; padding: 30px 10px; background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); }
 .esperando-sacro p { color: #5a5a5a; }
+
+/* Transfusión (#modalTransfusion, pintarTransfusion en interfazSacro.js): fichas de modalidad y de personajes; una
+   ficha que no se puede elegir sale desactivada (aria-disabled) con el motivo en su title */
+.form-sao .fichas-transfusion { flex: 1 1 100%; }
+.form-sao .fichas-transfusion .ficha-sao[aria-disabled="true"] { opacity: 0.35; cursor: not-allowed; transform: none; }
+.form-sao .fichas-transfusion .lista-vacia { font-size: 13px; }
+#formTransfusion .aviso-sacro { margin-bottom: 4px; }
 
 
 /* Un poco más grande que modal-xl, y el resto del texto de la ventana más grande (la forma se queda como está) */

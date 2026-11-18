@@ -990,6 +990,10 @@ export async function crearGrupo() {
         ctx.aviso("Grupo", [AVISO_SIN_SALA]);
         return;
     }
+    if (ctx.personaje().esNpc && ctx.personaje().esPesadilla) {
+        ctx.aviso("Grupo", ["Las pesadillas no pueden estar en un grupo."]);
+        return;
+    }
     try {
         await servicio.crearGrupo();
         ctx.aviso("Grupo", ["Grupo creado. Invita a otros personajes desde Social → Grupo → Invitar."]);
@@ -1058,7 +1062,7 @@ function pintarGrupo() {
             </div>`;
     }).join("") + `<p class="texto-online-secundario">${grupo.miembros.length} / 6 integrantes</p>`;
 
-    // Invitar (solo el líder): personajes visibles de la sala que no están en ningún grupo
+    // Invitar (solo el líder): personajes visibles de la sala que no están en ningún grupo (las pesadillas no salen)
     el("tituloInvitarGrupo").hidden = !grupo.soyLider;
     if (!grupo.soyLider) {
         el("listaInvitarGrupo").innerHTML = "";
@@ -1066,7 +1070,7 @@ function pintarGrupo() {
     }
     const lleno = grupo.miembros.length >= 6;
     const candidatos = servicio.getPersonajesSala()
-        .filter(p => p.instancia !== servicio.instanciaActual() && p.instancia !== getInstancia() && !p.oculto && !p.grupo && p.nombre);
+        .filter(p => p.instancia !== servicio.instanciaActual() && p.instancia !== getInstancia() && !p.oculto && !p.grupo && p.nombre && !p.pesadilla);
     el("listaInvitarGrupo").innerHTML = lleno
         ? `<p class="lista-vacia">El grupo está lleno.</p>`
         : candidatos.length ? candidatos.map(p => `

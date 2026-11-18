@@ -21,7 +21,7 @@ import {
 } from "./sacro.js";
 import { inicializarSacro, abrirSacro, actualizarSacro, aplicarResultadoHechizo, aplicarAmbienteSacro, abrirTransfusion, recibirTransfusion } from "./interfazSacro.js";
 import { idsEnSesion } from "./personajesMaster.js";
-import { puedeUsarMagia } from "./sacro.js";
+import { puedeUsarMagia, minimoTransfusion } from "./sacro.js";
 import { inicializarSacroMaster, abrirHechizosMaster, hechizosPendientes, encolarHechizoLocal, cancelarHechizoLocal, pedirAmbienteLocal } from "./interfazSacroMaster.js";
 import { cinturonesPuestos, huecosCinturon, motivoNoCinturon, meterEnCinturon, sacarDeCinturon, descartarDeCinturon, anadirACinturon, objetoCinturon, destinoSacar } from "./cinturon.js";
 import { sanearHtmlDiario, paginaLlena, anadirPagina, borrarPagina, motivoNoAnadirPagina, MAX_CARACTERES_PAGINA, ETIQUETA_TITULO_DIARIO } from "./diario.js";
@@ -43,11 +43,11 @@ import {
     correr, puedeCorrer, puedeMoverse, velocidadMovimiento, velocidadCorrer,
     modoSigiloPorArmadura, puedeEntrarEnSigilo, entrarEnSigilo, salirDeSigilo, dannoHemorragia, parteDisponible, sinEquipo, manoVacia
 } from "./turno.js";
-import { ESTADOS_INFO, TIPOS_DANNO, aplicarDanno, activarEstado, quitarEstado, estaActivo, estiloColor, CURAR_NEGATIVOS } from "./estados.js";
+import { ESTADOS_INFO, TIPOS_DANNO, aplicarDanno, activarEstado, quitarEstado, estaActivo, estiloColor, CURAR_NEGATIVOS, noSeCura } from "./estados.js";
 import { cargarEstadoAlAcertar, cargarEstadosAlAcertar, describirEstadosAlAcertar, MAX_ESTADOS_AL_ACERTAR } from "./estadosAlAcertar.js";
 import { iconoSao, tieneIconoSao } from "./iconos.js";
 import { mostrarPopup, getHistorialPopups, vaciarHistorialPopups } from "./popups.js";
-import { emitirEvento, emitirEventoYEsperar, emitirPrivado, registrarManejador, PARA_TODOS, configurarOrigen, setAplicadorDanno, setConsumidorOferta, setBloqueoEmision, setGolpesPropiosAplicables, registrarAlRecibir, esDeEstaPestana, instanciaEmisora } from "./eventos.js";
+import { emitirEvento, emitirEventoYEsperar, emitirPrivado, registrarManejador, PARA_TODOS, configurarOrigen, setAplicadorDanno, setConsumidorOferta, setBloqueoEmision, setGolpesPropiosAplicables, setObjetivoPropio, registrarAlRecibir, esDeEstaPestana, instanciaEmisora } from "./eventos.js";
 import { escaparHtml } from "./html.js";
 import { getInstancia } from "./instancia.js";
 import { inicializarVentanas, abrirCapa, cerrarCapa } from "./ventanas.js";
@@ -472,6 +472,7 @@ function actualizarTodo() {
     // En un grupo, tus compañeros ven tu vida, PA (sin números), nivel y estados (solo se envía si cambia)
     avisarEstadoGrupo({
         vida: personaje.vidaMax > 0 ? personaje.vida / personaje.vidaMax : 0,
+        pv: personaje.vida, pvMax: personaje.vidaMax, // en números, para la transfusión de los compañeros
         pa: personaje.puntosArteMax > 0 ? personaje.puntosArte / personaje.puntosArteMax : 0,
         nivel: personaje.nivel,
         iniciativa: personaje.iniciativa, // para el orden en la cabecera del máster
@@ -3400,11 +3401,13 @@ function pintarEnergiaMano(bloque, mano) {
         + botonObjeto("ofrecerEnergia", "aligi", "Aligi");
 }
 
-/* Transfusión de sangre (13-sacro.md §9): botón en la tarjeta de una mano libre (sin nada equipado ni energía), solo
-   para personajes del Underworld; abre #modalTransfusion (interfazSacro.js) */
+/* Transfusión de sangre (13-sacro.md §9): botón en la tarjeta de una mano libre (sin nada equipado ni energía) o de la
+   que lleva un arma a dos manos (gasta una de las dos, como el inventario), solo para personajes del Underworld; abre
+   #modalTransfusion (interfazSacro.js) */
 function pintarBotonTransfusion(boton, mano) {
     if (!boton) return;
-    boton.hidden = personaje.esNpc || !puedeUsarMagia(personaje) || !manoVacia(personaje, mano);
+    const conDosManos = TIPOS_DOS_MANOS.includes(personaje[mano]?.tipo);
+    boton.hidden = personaje.esNpc || !puedeUsarMagia(personaje) || !(manoVacia(personaje, mano) || conDosManos);
     if (boton.hidden) return;
     if (!boton.dataset.icono) {
         boton.dataset.icono = "transfusion";
@@ -5208,7 +5211,10 @@ const ELEMENTOS_DANNO = ["fuego", "electricidad", "hielo", "luz", "oscuridad"];
 
 /* Golpe de otro jugador recibido al pulsar su pop-up (eventos.js). Cada golpe va por separado: el físico
    resta la armadura y cada elemento su resistencia, igual que con el botón Daño. Devuelve si se aplicó. */
-function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null }) {
+function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null, objetivo = null }) {
+    // Golpe con objetivo (transfusión) para otro personaje del máster que no está en la ficha: se le aplica a él
+    const idObjetivo = idDeInstancia(objetivo);
+    if (idObjetivo && !esElDeLaFicha(idObjetivo)) return recibirTransfusionFuera(golpe, objetivo, { autor, titulo, tirada, origen });
     // Modo máster: su propio golpe se recibe en otro de sus personajes, no en el que lo ha dado
     if (lectura) {
         mostrarPopupInfo("No se puede", ["Estás viendo la ficha de un jugador: vuelve a uno de tus personajes."]);
@@ -5218,7 +5224,8 @@ function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null }) {
         mostrarPopupInfo("No se puede", [escaparHtml(`Este golpe lo ha dado ${autor}, que es el personaje que tienes en pantalla. Cambia al que lo recibe.`)]);
         return false;
     }
-    if (!puedeRecibirDanno(personaje)) {
+    // La transfusión sí se puede hacer en zona segura o en la base (deja al menos 1 PV, minimoTransfusion)
+    if (!puedeRecibirDanno(personaje) && golpe.esTransfusion !== true) {
         mostrarPopupInfo("No puedes recibir daño", [escaparHtml(MOTIVOS_ZONA.danno)]);
         return false;
     }
@@ -5264,18 +5271,11 @@ function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null }) {
     }
     if (transfusion) {
         const pedidos = Math.max(0, Math.min(999, Math.floor(Number(transfusion.pv) || 0)));
-        const perdidos = Math.min(pedidos, Math.max(0, personaje.vida));
+        const perdidos = Math.min(pedidos, Math.max(0, personaje.vida - minimoTransfusion(personaje)));
         const antes = personaje.vida;
         personaje.vida -= perdidos;
         lineas.push(`Transfusión: pierde ${perdidos} PV (PV: ${antes} → ${personaje.vida})`);
-        const para = String(transfusion.para);
-        if (perdidos > 0) {
-            const quien = personaje.nombre || "Alguien";
-            // De esta pestaña (también los personajes de la sesión del máster sin sala): se aplica aquí
-            const propia = esDeEstaPestana(para) || para === instanciaEmisora() || (MODO_MASTER && idsEnSesion().some(id => `m-${id}` === para));
-            if (propia) setTimeout(() => recibirTransfusion(para, perdidos, quien), 0);
-            else emitirPrivado("transfusion", { para, pv: perdidos, de: quien }).catch(error => console.warn("No se pudo enviar la transfusión", error));
-        }
+        if (perdidos > 0) avisarTransfusion(String(transfusion.para), perdidos, personaje.nombre || "Alguien");
     }
     // Arma de fuego (armasFuego.js): el golpe no cuenta para la notoriedad ni quita la neutralidad, y si mata nadie
     // recibe recompensa
@@ -5310,6 +5310,73 @@ function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null }) {
     return true;
 }
 setAplicadorDanno(recibirGolpe);
+setObjetivoPropio(esObjetivoPropio);
+
+/* ¿Ese personaje es de esta pestaña? (también los de la sesión del máster aunque no haya sala) */
+function esObjetivoPropio(instancia) {
+    return esDeEstaPestana(instancia) || instancia === instanciaEmisora() || (MODO_MASTER && idsEnSesion().some(id => `m-${id}` === instancia));
+}
+
+/* Lo que pierde alguien en una transfusión va a quien la recibe: aquí si es de esta pestaña, si no por privado */
+function avisarTransfusion(para, perdidos, quien) {
+    if (esObjetivoPropio(para)) setTimeout(() => recibirTransfusion(para, perdidos, quien), 0);
+    else emitirPrivado("transfusion", { para, pv: perdidos, de: quien }).catch(error => console.warn("No se pudo enviar la transfusión", error));
+}
+
+/* Modo máster: transfusión (quitar PV o la cura de "dar") recibida por uno de sus personajes que no está en la ficha.
+   Mismas comprobaciones que recibirGolpe, pero sobre ese personaje (conPersonajeDeInstancia lo guarda y publica) */
+function recibirTransfusionFuera(golpe, instancia, { autor, titulo, tirada, origen }) {
+    const pj = leerPersonajeDeInstancia(instancia);
+    if (!pj || pj === personaje) {
+        mostrarPopupInfo("No se puede", ["No se encuentra el personaje que lo recibe."]);
+        return false;
+    }
+    const nombre = String(pj.nombre ?? "").trim() || "Tu personaje";
+    if (!puedeRecibirDanno(pj) && golpe.esTransfusion !== true) {
+        mostrarPopupInfo("No puede recibir daño", [escaparHtml(MOTIVOS_ZONA.danno)]);
+        return false;
+    }
+    const defensa = Number(pj.defensa) || 0;
+    if (tirada !== null && tirada < defensa
+        && !confirm(`La tirada de ${autor} (${tirada}) no llega a la Defensa de ${nombre} (${defensa}): no debería darle.
+
+¿Recibirlo igualmente?`)) {
+        return false;
+    }
+    const efecto = golpe.efecto && typeof golpe.efecto === "object" ? golpe.efecto : null;
+    const transfusion = golpe.transfusion && typeof golpe.transfusion === "object" && golpe.transfusion.para ? golpe.transfusion : null;
+    if (transfusion && esPesadilla(pj)) {
+        mostrarPopupInfo("No se puede", ["A las pesadillas no se les pueden quitar PV."]);
+        return false;
+    }
+    if (!efecto && !transfusion) return false;
+    const vidaAntes = pj.vida;
+    const lineas = [];
+    let perdidos = 0;
+    conPersonajeDeInstancia(instancia, x => {
+        if (efecto) lineas.push(...aplicarEfectoEnObjetivo(x, efecto));
+        if (transfusion) {
+            const pedidos = Math.max(0, Math.min(999, Math.floor(Number(transfusion.pv) || 0)));
+            perdidos = Math.min(pedidos, Math.max(0, x.vida - minimoTransfusion(x)));
+            const antes = x.vida;
+            x.vida -= perdidos;
+            lineas.push(`Transfusión: pierde ${perdidos} PV (PV: ${antes} → ${x.vida})`);
+        }
+        x.ultimoGolpe = origen?.instancia
+            ? { instancia: origen.instancia, jugador: origen.jugador ?? null, nombre: String(origen.nombre ?? autor).slice(0, 60), armaFuego: false, magia: golpe.magia === true }
+            : null;
+    });
+    if (transfusion && perdidos > 0) avisarTransfusion(String(transfusion.para), perdidos, nombre);
+    const despues = leerPersonajeDeInstancia(instancia)?.vida ?? vidaAntes;
+    const golpeTexto = golpe.etiqueta ? ` (${golpe.etiqueta})` : "";
+    emitirEvento("recibido", {
+        titulo: vidaAntes - despues > 0 ? `${nombre} recibe ${vidaAntes - despues} de daño` : `${nombre} recibe el golpe`,
+        subtitulo: `${titulo}${golpeTexto} · de ${autor}`,
+        lineas
+    }, { instancia, personaje: nombre });
+    actualizarTodo();
+    return true;
+}
 // Modo máster: sus pop-ups también se pueden recibir, en el personaje que tenga en pantalla
 setGolpesPropiosAplicables(() => MODO_MASTER);
 
@@ -9001,14 +9068,26 @@ document.addEventListener("DOMContentLoaded", () => {
         pedirAmbienteLocal,
         // Personajes de esta pestaña (el del jugador, o los de la sesión del máster) y los demás que se pueden elegir
         personajesPropios: () => (MODO_MASTER ? idsEnSesion().map(id => `m-${id}`) : [instanciaEmisora()]),
+        // pesadilla (del registro de la sala) y, para los máximos de la transfusión, vida y vidaMax de los del máster
+        // (con noSeCura) y de los compañeros de grupo (los publican en su entrada del grupo)
         personajesSala: () => {
             const propia = MODO_MASTER ? `m-${personaje.idPersonaje}` : instanciaEmisora();
-            const deSala = getEstadoOnline().sala ? getTodosPersonajesSala().map(p => ({ instancia: p.instancia, nombre: p.nombre, npc: Boolean(p.npc) })) : [];
-            const propios = MODO_MASTER ? idsEnSesion().map(id => `m-${id}`).filter(i => !deSala.some(p => p.instancia === i)).map(i => {
-                const x = leerPersonajeDeInstancia(i);
-                return x ? { instancia: i, nombre: x.nombre, npc: Boolean(x.esNpc) } : null;
-            }).filter(Boolean) : [];
-            return [...deSala, ...propios].filter(p => p.instancia && p.instancia !== propia);
+            const sesion = MODO_MASTER ? idsEnSesion().map(id => `m-${id}`) : [];
+            const deSala = getEstadoOnline().sala
+                ? getTodosPersonajesSala().map(p => ({ instancia: p.instancia, nombre: p.nombre, npc: Boolean(p.npc), pesadilla: Boolean(p.pesadilla) })) : [];
+            const todos = [...deSala, ...sesion.filter(i => !deSala.some(p => p.instancia === i)).map(i => ({ instancia: i }))];
+            const grupo = getGrupoSala()?.miembros ?? [];
+            return todos.filter(p => p.instancia && p.instancia !== propia).map(p => {
+                if (!sesion.includes(p.instancia)) {
+                    const companero = grupo.find(m => m.instancia === p.instancia && m.pvMax !== null && m.pvMax !== undefined);
+                    return companero ? { ...p, vida: companero.pv, vidaMax: companero.pvMax, pesadilla: p.pesadilla || companero.pesadilla } : p;
+                }
+                const x = leerPersonajeDeInstancia(p.instancia);
+                return x ? {
+                    ...p, nombre: p.nombre || x.nombre, npc: Boolean(x.esNpc), pesadilla: esPesadilla(x), noSeCura: noSeCura(x),
+                    vida: Number(x.vida) || 0, vidaMax: Number(x.vidaMax) || 0
+                } : null;
+            }).filter(Boolean);
         }
     });
     if (MODO_MASTER) inicializarSacroMaster({

@@ -463,10 +463,13 @@ function cambiosMaster(f, uid, lista, datos) {
         // nivel, estados y franja (lo ven todos los jugadores a la derecha de la cabecera)
         const trueque = Boolean(p.npc && p.trueque);
         const jefe = p.npc && p.jefe ? p.jefe : null;
+        // Pesadilla: no se le puede invitar a un grupo ni hacer transfusiones
+        const pesadilla = Boolean(p.npc && p.pesadilla);
         if (registro[p.id]?.nombre !== p.nombre || Boolean(registro[p.id]?.npc) !== Boolean(p.npc)
-            || Boolean(registro[p.id]?.trueque) !== trueque || !mismoJefe(registro[p.id]?.jefe, jefe)) {
+            || Boolean(registro[p.id]?.trueque) !== trueque || !mismoJefe(registro[p.id]?.jefe, jefe)
+            || Boolean(registro[p.id]?.pesadilla) !== pesadilla) {
             cambios[`registro.${uid}.${p.id}`] = p.npc
-                ? { nombre: p.nombre, npc: true, ...(trueque ? { trueque } : {}), ...(jefe ? { jefe } : {}) }
+                ? { nombre: p.nombre, npc: true, ...(trueque ? { trueque } : {}), ...(jefe ? { jefe } : {}), ...(pesadilla ? { pesadilla } : {}) }
                 : { nombre: p.nombre };
             // Un jefe entra en la sala oculto (en la misma escritura): al mostrarlo, los jugadores ven el aviso
             if (jefe && !registro[p.id]) ocultar.push(claveOculto(uid, p.nombre));
@@ -886,7 +889,8 @@ function leerPersonajes(datos) {
                 const registro = p?.id ? datos.registro?.[jugador]?.[p.id] : null;
                 return {
                     jugador, instancia, nombre, oculto: ocultos.includes(claveOculto(jugador, nombre)), grupo: p?.grupo ?? null,
-                    id: p?.id ?? null, npc: Boolean(registro?.npc), trueque: Boolean(registro?.npc && registro?.trueque)
+                    id: p?.id ?? null, npc: Boolean(registro?.npc), trueque: Boolean(registro?.npc && registro?.trueque),
+                    pesadilla: Boolean(registro?.npc && registro?.pesadilla)
                 };
             }))
         .sort((x, y) => x.nombre.localeCompare(y.nombre));
@@ -1049,7 +1053,8 @@ const estadosGrupo = new Map();
 /* Entero ≥ 0 acotado (notoriedad, alerta del sistema): viene de otro jugador */
 const enteroPositivo = (valor) => Math.max(0, Math.min(9999, Math.trunc(Number(valor) || 0)));
 
-function normalizarEstadoGrupo({ vida, pa, nivel, estados, iniciativa, turno, notoriedad, pesadilla } = {}) {
+const enteroPv = (v) => Math.max(-99999, Math.min(99999, Math.floor(Number(v) || 0)));
+function normalizarEstadoGrupo({ vida, pa, nivel, estados, iniciativa, turno, notoriedad, pesadilla, pv, pvMax } = {}) {
     const fraccion = (v) => Math.round(Math.min(1, Math.max(0, Number(v) || 0)) * 100) / 100;
     return {
         // Notoriedad: la franja de color que ven los compañeros (la alerta del sistema no va al grupo)
@@ -1060,6 +1065,8 @@ function normalizarEstadoGrupo({ vida, pa, nivel, estados, iniciativa, turno, no
         estados: (Array.isArray(estados) ? estados : []).map(String).slice(0, 20),
         iniciativa: Math.round((Number(iniciativa) || 0) * 10) / 10,
         turno: Math.max(0, Math.trunc(Number(turno) || 0)),
+        // PV y PV máximos en números: los compañeros calculan cuánto se les puede quitar o dar en una transfusión
+        ...(pvMax !== undefined && pvMax !== null ? { pv: enteroPv(pv), pvMax: Math.max(0, enteroPv(pvMax)) } : {}),
         // Pesadilla del máster en un grupo: su fila no lleva franja (solo se envía si lo es; al final, por el
         // orden de la comparación de sincronizarEntrada)
         ...(pesadilla === true ? { pesadilla: true } : {})
@@ -1082,6 +1089,9 @@ function grupoPublico(id, datos, instancia) {
         estados: Array.isArray(m?.estados) ? m.estados.map(String) : [],
         iniciativa: Number(m?.iniciativa) || 0,
         turno: Number(m?.turno) || 0,
+        // PV en números (null si el compañero usa una versión anterior)
+        pv: m?.pvMax !== undefined && m?.pvMax !== null ? enteroPv(m.pv) : null,
+        pvMax: m?.pvMax !== undefined && m?.pvMax !== null ? Math.max(0, enteroPv(m.pvMax)) : null,
         notoriedad: enteroPositivo(m?.notoriedad),
         pesadilla: m?.pesadilla === true,
         orden: Number(m?.orden) || 0,
@@ -1180,6 +1190,7 @@ export async function invitarAGrupo(otra) {
     const g = grupos.get(instanciaActual());
     if (!g?.datos?.soyLider) throw new Error("Solo el líder del grupo puede invitar");
     if (g.datos.miembros.length >= MAX_GRUPO) throw new Error(`El grupo ya tiene ${MAX_GRUPO} integrantes`);
+    if (personajesSala.some(p => p.instancia === otra && p.pesadilla)) throw new Error("Las pesadillas no pueden estar en un grupo");
     await f.updateDoc(refGrupo(f, db, g.id), { [`invitados.${otra}`]: true });
     return g.id;
 }
@@ -1276,6 +1287,7 @@ async function sincronizarEntrada(instancia) {
     const deseado = entradaDe(instancia);
     const actual = { jugador: propio.jugador, nombre: propio.nombre, notoriedad: propio.notoriedad, vida: propio.vida, pa: propio.pa,
         nivel: propio.nivel, estados: propio.estados, iniciativa: propio.iniciativa, turno: propio.turno,
+        ...(propio.pvMax !== null ? { pv: propio.pv, pvMax: propio.pvMax } : {}),
         ...(propio.pesadilla ? { pesadilla: true } : {}) };
     if (JSON.stringify(actual) === JSON.stringify(deseado)) return;
     const { db, f } = sdk;

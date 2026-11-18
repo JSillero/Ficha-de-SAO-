@@ -1008,24 +1008,22 @@
                 </div>
                 <div class="modal-body">
                     <div class="form-objeto form-sao" id="formTransfusion">
+                        <p id="avisoTransfusion" class="aviso-zona aviso-sacro"></p>
+                        <!-- Fichas (pintarTransfusion): las que no se pueden elegir salen desactivadas con el motivo debajo -->
                         <div class="ranura ranura-fichas">
                             <span class="ranura-icono" data-icono="transfusion"></span>
                             <span class="ranura-etiqueta">Qué hacer</span>
-                            <select id="transfusionModo" aria-label="Modalidad">
-                                <option value="aMi">Quitar PV a otro y dármelos</option>
-                                <option value="dar">Dar mis PV a otro</option>
-                                <option value="otro">Quitar PV a uno y dárselos a otro</option>
-                            </select>
+                            <div class="fichas-sao fichas-transfusion" id="transfusionModo" role="radiogroup" aria-label="Modalidad"></div>
                         </div>
-                        <div class="ranura" id="ranuraTransfusionDe">
+                        <div class="ranura ranura-fichas" id="ranuraTransfusionDe">
                             <span class="ranura-icono" data-icono="hemorragia"></span>
-                            <label class="ranura-etiqueta" for="transfusionDe">Pierde los PV</label>
-                            <select id="transfusionDe"></select>
+                            <span class="ranura-etiqueta">Pierde los PV</span>
+                            <div class="fichas-sao fichas-transfusion" id="transfusionDe" role="radiogroup" aria-label="Pierde los PV"></div>
                         </div>
-                        <div class="ranura" id="ranuraTransfusionPara">
+                        <div class="ranura ranura-fichas" id="ranuraTransfusionPara">
                             <span class="ranura-icono" data-icono="regeneracion"></span>
-                            <label class="ranura-etiqueta" for="transfusionPara">Los recibe</label>
-                            <select id="transfusionPara"></select>
+                            <span class="ranura-etiqueta">Los recibe</span>
+                            <div class="fichas-sao fichas-transfusion" id="transfusionPara" role="radiogroup" aria-label="Los recibe"></div>
                         </div>
                         <div class="ranura">
                             <span class="ranura-icono" data-icono="aguante"></span>
@@ -1033,7 +1031,6 @@
                             <input type="number" id="transfusionCantidad" min="1" value="1">
                         </div>
                         <p id="textoTransfusion" class="texto-esperando-trueque"></p>
-                        <p id="avisoTransfusion" class="aviso-zona aviso-sacro"></p>
                     </div>
                 </div>
                 <div class="modal-footer">
