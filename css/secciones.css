@@ -6213,22 +6213,49 @@ body.modo-lectura #divEquipamiento .btn-extras-equipo {
 .dedo-sacro .anillo { fill: #FBFBFB; stroke: #b3b3b3; stroke-width: 2; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
 .dedo-sacro:hover .anillo, .dedo-sacro.diana .anillo { stroke: #EBA601; stroke-dasharray: none; stroke-width: 3; }
 .dedo-sacro.lleno .anillo { stroke: none; }
+.dedo-sacro.lleno { cursor: grab; touch-action: none; } /* se arrastra a otro dedo o fuera (alApretar) */
 .dedo-sacro.bloqueado { cursor: not-allowed; opacity: 0.4; }
 .dedo-sacro.sin-dedos .anillo { stroke: #c9c9c9; }
 .pies-sacro { margin-top: 4px; text-align: center; font-size: 14px; color: #888; }
 .pies-sacro svg { width: 100%; max-width: 480px; height: auto; }
 
 /* Resumen y acciones */
-.sacro-resumen { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.dato-sacro { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); padding: 8px; font-size: 15px; color: #5a5a5a; }
-.dato-sacro b { display: block; font-size: 14px; color: #888; font-weight: normal; }
-.dato-sacro .valor { font-size: 20px; color: #4D4D4D; }
+/* Resumen en una barra (coste, acciones, daño por dedo y Quitar todo a la derecha) */
+.sacro-resumen { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; background: #fff; border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); padding: 6px 10px; }
+.dato-sacro { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px; font-size: 14px; color: #5a5a5a; }
+.dato-sacro b { font-size: 13px; color: #888; font-weight: normal; }
+.dato-sacro .valor { font-size: 18px; color: #4D4D4D; }
 .dato-sacro .valor.negativo { color: #c0392b; }
-.danno-sacro { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
-.danno-sacro .popup-elemento { background: var(--color); color: var(--color-texto); border-radius: 999px; padding: 1px 9px; font-size: 14px; }
-.sacro-forma { grid-column: 1 / -1; flex-wrap: wrap; }
-.sacro-forma textarea { flex: 1 1 100%; width: 100%; min-height: 44px; }
-.sacro-botones { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.sacro-resumen > .btn-pastilla-sao { margin-left: auto; }
+.danno-sacro { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.danno-sacro .popup-elemento, .resumen-golpes .popup-elemento { background: var(--color); color: var(--color-texto); border-radius: 999px; padding: 0 8px; font-size: 13px; }
+
+/* Final de la ventana: "Usar ahora" (sin el máster: guardar en una mano, llenar un cristal) y "Pedir al máster" (qué
+   quiero hacer, el tipo en fichas pequeñas en la misma fila y Enviar) */
+.sacro-acciones { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 10px; align-items: stretch; }
+.tarjeta-accion-sacro { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; }
+.tarjeta-accion-sacro h3 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 16px; color: #5a5a5a; font-weight: normal; }
+.tarjeta-accion-sacro h3 .icono-sao { width: 24px; height: 24px; }
+.tarjeta-accion-sacro h3 small { margin-left: auto; font-size: 12px; color: #888; }
+.botones-usar { display: flex; flex-direction: column; gap: 6px; }
+.botones-usar .btn-pastilla-sao { width: 100%; }
+.cabecera-pedir { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.cabecera-pedir label { font-size: 14px; color: #666; }
+.cabecera-pedir label small { color: #888; }
+.tipos-sacro { display: inline-flex; flex-wrap: wrap; margin-left: auto; padding: 2px; border-radius: 999px; background: #f4f4f4; }
+.tipo-sacro { display: inline-flex; align-items: center; gap: 3px; border: none; background: none; padding: 2px 9px 2px 3px; border-radius: 999px;
+    font-size: 13px; color: #4D4D4D; cursor: pointer; transition: background 0.15s, color 0.15s; }
+.tipo-sacro .icono-sao { width: 22px; height: 22px; }
+.tipo-sacro:hover { color: #EBA601; }
+.tipo-sacro[aria-checked="true"] { background: #4D4D4D; color: #FBFBFB; }
+.tipo-sacro[aria-checked="true"] .icono-sao { --glifo: #EBA601; }
+.form-sao .tarjeta-accion-sacro textarea { width: 100%; min-height: 48px; resize: vertical; border: none; border-bottom: 1px solid #c9c9c9;
+    border-radius: 4px 4px 0 0; background: #f4f4f4; padding: 6px 8px; font-size: 14px; }
+.form-sao .tarjeta-accion-sacro textarea:focus { outline: none; border-bottom-color: #EBA601; }
+.pie-pedir { display: flex; align-items: center; gap: 8px; }
+.pie-pedir .pista { font-size: 13px; color: #888; }
+.pie-pedir .btn-eleccion { margin-left: auto; }
 .aviso-sacro { grid-column: 1 / -1; margin: 0; }
 .aviso-sacro:empty { display: none; }
 .esperando-sacro { grid-column: 1 / -1; text-align: center; padding: 30px 10px; background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); }
@@ -6245,8 +6272,7 @@ body.modo-lectura #divEquipamiento .btn-extras-equipo {
 /* Un poco más grande que modal-xl, y el resto del texto de la ventana más grande (la forma se queda como está) */
 #modalSacro .modal-dialog { max-width: min(1320px, 96vw); }
 #modalSacro .aviso-sacro { font-size: 15px; }
-#modalSacro .sacro-forma .ranura-etiqueta { font-size: 16px; }
-#modalSacro .sacro-botones .btn-pastilla-sao { font-size: 15px; padding: 5px 14px; }
+#modalSacro .botones-usar .btn-pastilla-sao { font-size: 15px; padding: 5px 14px; }
 #modalSacro .sacro-fuente h3 .btn-pastilla-sao { font-size: 14px; padding: 3px 12px; }
 #modalSacro .modal-title .contador-objetos { font-size: 18px; }
 
@@ -6257,29 +6283,65 @@ body.modo-lectura #divEquipamiento .btn-extras-equipo {
 }
 @media (max-width: 600px) {
     .sacro-manos-fila { gap: 2px; }
-    .sacro-resumen { grid-template-columns: 1fr; }
+    .sacro-acciones { grid-template-columns: 1fr; }
 }
 
 /* Máster: resolver la magia (#modalSacroMaster) y el ambiente (#modalAmbienteMaster), interfazSacroMaster.js */
-.pedido-sacro-forma {
-    margin: 0 0 6px;
-    font-size: 16px;
-    color: #4D4D4D;
-}
+/* Lo que ha pedido el jugador (pintar): tarjeta con quién, su texto, los elementos por origen y lo que gasta */
+.pedido-sacro { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.pedido-sacro-quien { font-size: 13px; color: #888; margin: 0; }
+.pedido-sacro-forma { margin: 0; padding: 6px 10px; border-radius: 6px; background: #f4f4f4; font-size: 16px; color: #4D4D4D; }
+.pedido-sacro-forma.vacia { color: #888; font-style: italic; font-size: 14px; }
+.pedido-sacro-dedos { display: flex; flex-wrap: wrap; gap: 6px; }
+.pedido-sacro .energia-elemento { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 2px; border-radius: 999px; background: #f4f4f4; font-size: 13px; color: #4D4D4D; }
+.pedido-sacro .energia-elemento .icono-sao { width: 22px; height: 22px; }
+.pedido-sacro .energia-elemento small { color: #888; }
+.pedido-sacro-coste { font-size: 13px; color: #5a5a5a; margin: 0; }
 
-.pedido-sacro-dedos {
-    margin-bottom: 8px;
-}
+/* Flechas para pasar de una petición pendiente a otra (cabecera) */
+.navegar-peticiones { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; color: #5a5a5a; }
+.navegar-peticiones[hidden] { display: none; }
+.navegar-peticiones .btn-objeto { width: 28px; height: 28px; }
 
-.fila-danno-sacro .ranura-etiqueta small {
-    color: #888;
+/* Golpes (pintarFilas): una fila de lista por golpe, ordenables arrastrando (hacerOrdenable): número, elemento (al
+   pulsarlo se despliega la rejilla de los siete dentro de la fila), daño con − / +, estados sí / no y quitar */
+.lista-golpes { display: flex; flex-direction: column; gap: 6px; }
+.fila-objeto.fila-golpe { gap: 8px; padding: 4px 8px 4px 6px; font-size: 14px; color: #4D4D4D; }
+.fila-golpe .num-golpe { display: grid; place-items: center; flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+    background: #f4f4f4; color: #5a5a5a; font-size: 12px; }
+.fila-golpe .elegir-elemento { display: inline-flex; align-items: center; gap: 6px; min-width: 0; border: none; background: none;
+    padding: 2px 10px 2px 2px; color: inherit; font-size: 14px; cursor: pointer; border-radius: 999px; transition: box-shadow 0.15s; }
+.fila-golpe .elegir-elemento:hover, .fila-golpe .elegir-elemento[aria-expanded="true"] { box-shadow: 0 0 0 2px #EBA601; }
+.fila-golpe .elegir-elemento .icono-sao { width: 28px; height: 28px; flex-shrink: 0; }
+.fila-golpe .elegir-elemento small { color: #888; font-size: 12px; }
+.fila-golpe .paso { margin-left: auto; }
+.fila-golpe .paso input { width: 4.5em; } /* caben los decimales */
+.fila-golpe .acciones-golpe { display: inline-flex; gap: 4px; }
+.fila-golpe .btn-objeto { width: 30px; height: 30px; flex-shrink: 0; }
+.fila-golpe .btn-estados-golpe:not(.activo) .icono-sao { opacity: 0.45; }
+.fila-golpe .btn-estados-golpe.activo .icono-sao { --fondo: #FBFBFB; --glifo: #EBA601; }
+.fila-golpe .btn-estados-golpe:disabled { cursor: not-allowed; opacity: 0.35; }
+.fila-golpe .rejilla-elementos { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 0 2px 30px; border-top: 1px solid #f4f4f4; }
+.lista-golpes .lista-vacia { margin: 0; text-align: center; }
+#btnAnadirGolpeSacro[hidden] { display: none; }
+/* Lanzar la magia golpe a golpe (#modalGolpesMagia, pintarGolpes en interfazSacro.js): el siguiente resaltado, los
+   lanzados atenuados */
+#listaGolpesMagia .fichas-golpe { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; flex: 1 1 auto; min-width: 0; }
+#listaGolpesMagia .popup-elemento { background: var(--color); color: var(--color-texto); border-radius: 999px; padding: 0 8px; font-size: 13px; }
+#listaGolpesMagia .marca-estados .icono-sao { width: 20px; height: 20px; }
+#listaGolpesMagia .fila-golpe.siguiente { box-shadow: 0 0 0 2px #EBA601; }
+#listaGolpesMagia .fila-golpe.lanzado { opacity: 0.5; }
+#listaGolpesMagia .estado-golpe { font-size: 13px; color: #888; }
+#listaGolpesMagia .btn-eleccion { margin-left: auto; }
+@media (max-width: 600px) {
+    .fila-golpe .elegir-elemento small { display: none; }
 }
-
-.fila-danno-sacro .final-danno-sacro {
-    min-width: 40px;
-    font-size: 13px;
-    color: #8a6d2a;
-}
+.opciones-golpes { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.resumen-golpes { font-size: 13px; color: #8a6d2a; text-align: center; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 10px; justify-content: center; align-items: center; }
+.golpe-resumen { display: inline-flex; gap: 3px; align-items: center; }
+.golpe-resumen .marca-estados .icono-sao { width: 18px; height: 18px; }
+#formSacroMaster .bloque-sacro-master { display: flex; flex-direction: column; gap: 10px; }
+#formSacroMaster .bloque-sacro-master[hidden] { display: none; }
 
 /* Ambiente: una ranura por elemento (icono de su color, nombre y − / +), en dos columnas con aire entre ellas */
 .lista-ambiente-sacro {
@@ -6318,5 +6380,4 @@ body.modo-lectura #divEquipamiento .btn-extras-equipo {
 #dannoSacroMaster {
     display: flex;
     flex-direction: column;
-    gap: 8px;
 }

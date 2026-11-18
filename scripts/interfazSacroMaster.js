@@ -2,23 +2,31 @@
 // Máster: resolver la magia de los jugadores (13-sacro.md §6.4) y decir qué hay en el ambiente (§3.2). Solo DOM y
 // eventos; las reglas están en sacro.js. inicializarSacroMaster(ctx) desde interfaz.js (solo en modo máster).
 // - Peticiones de hechizo: evento privado "hechizo" (para: PARA_TODOS; solo lo atiende el máster de la sala) o, de un
-//   personaje del propio máster, encolarHechizoLocal. Cola en localStorage (fichaSAO.hechizosMaster) y #modalSacroMaster:
-//   daño por elemento (la sugerencia del jugador, editable; "Juntar por tipo"), radio, tirada y dado, un estado,
-//   objetos que se crean (al botín) y una nota. Resolver → "hechizoResultado" a su pestaña (o en local); Rechazar →
-//   lo mismo con rechazado. "hechizoCancelado" lo quita de la cola.
+//   personaje del propio máster, encolarHechizoLocal. Cola en localStorage (fichaSAO.hechizosMaster) y #modalSacroMaster,
+//   que cambia según el tipo (TIPOS_HECHIZO):
+//   · Daño: un golpe por fila (la sugerencia del jugador, un dedo por fila; se añaden y quitan), "Juntar por tipo" y "Un
+//     único golpe" (interruptores, golpesDeFilas), radio, tirada y dado, y estados (el editor de los objetos, sin
+//     permanente) con un interruptor por golpe que dice si los lleva.
+//   · Crear objeto: objetos (la propuesta, editable) que van al botín.
+//   · Escenario: nota y tirada opcional.
+//   Resolver → "hechizoResultado" a su pestaña (o en local). Cerrar la ventana = cancelar (con confirmación): lo mismo
+//   con rechazado. "hechizoCancelado" lo quita de la cola.
 // - Ambiente: "peticionAmbiente" → #modalAmbienteMaster con los dedos de cada elemento (por defecto lo último que se
 //   envió menos lo usado, fichaSAO.ambienteMaster) → "ambiente" a su pestaña.
 
 import {
-    ELEMENTOS_SACRO, CLAVES_ELEMENTOS_SACRO, factorRadio, cargarHechizo, cargarAmbiente, entradaDannoSacro, describirEnergia
+    ELEMENTOS_SACRO, CLAVES_ELEMENTOS_SACRO, factorRadio, cargarHechizo, cargarAmbiente, entradaDannoSacro, describirEnergia,
+    DANNO_FISICO, infoDannoMagia,
+    golpesDeFilas, partesHechizo, TIPOS_HECHIZO
 } from "./sacro.js";
-import { ESTADOS_INFO } from "./estados.js";
 import { cargarObjeto } from "./objetos.js";
 import { soyMasterDeSala } from "./interfazOnline.js";
 import { emitirPrivado, registrarManejador } from "./eventos.js";
 import { iconoSao } from "./iconos.js";
 import { escaparHtml } from "./html.js";
-import { prepararFormularioSao, crearFichas } from "./formularioSao.js";
+import { prepararFormularioSao, crearFichas, ponerResumen } from "./formularioSao.js";
+import { hacerOrdenable } from "./ordenar.js";
+import { fichaDannoMagia } from "./elementosSacro.js";
 
 let ctx = null;
 const el = (id) => document.getElementById(id);
@@ -26,6 +34,12 @@ const ventana = () => el("modalSacroMaster");
 const ventanaAmbiente = () => el("modalAmbienteMaster");
 const entero = (v, max = 999) => Math.max(0, Math.min(max, Math.floor(Number(v) || 0)));
 const nombreDe = (texto) => String(texto ?? "").trim().slice(0, 60) || "Alguien";
+const conColor = (c) => `--color:${infoDannoMagia(c).color};--color-glifo:${infoDannoMagia(c).colorGlifo ?? "#FBFBFB"}`;
+const iconoElemento = (c) => `<span class="icono-activo" style="${conColor(c)}">${iconoSao(infoDannoMagia(c).icono)}</span>`;
+/* Lo que se puede poner en un golpe: los siete elementos y el daño físico normal */
+const TIPOS_GOLPE = [...CLAVES_ELEMENTOS_SACRO, DANNO_FISICO];
+/* Cantidad de una fila: con decimales (se redondea el resultado, redondearMagia) */
+const decimal = (v) => Math.max(0, Math.min(999, Math.round((Number(String(v).replace(",", ".")) || 0) * 100) / 100));
 
 /* Tiradas que puede pedir el máster (característica + habilidad); "" = sin tirada */
 export const TIRADAS_MAGIA = {
@@ -37,23 +51,34 @@ export const TIRADAS_MAGIA = {
 export const CARACTERISTICAS_MAGIA = { fortaleza: "Fortaleza", reflejos: "Reflejos", voluntad: "Voluntad", inteligencia: "Inteligencia" };
 export const HABILIDADES_MAGIA = { atletismo: "Atletismo", combate: "Combate", percepcion: "Percepción", subterfugio: "Sigilo", comunicacion: "Carisma", cultura: "Cultura" };
 const DADOS = { 0: "Bajo", 1: "Medio", 2: "Alto" };
+const NOMBRES_PARTES = { cabeza: "boca", izquierda: "brazo izq.", derecha: "brazo der.", pies: "piernas" };
+const MAX_FILAS = 20;
 
 /* Cola de peticiones _________________________________________________________ */
 const CLAVE_COLA = "fichaSAO.hechizosMaster";
-/* [{ id, hechizo, sugerencia: [{ elemento, cantidad }], de: { instancia, jugador, nombre, local }, objetos, decision }] */
+/* [{ id, hechizo, sugerencia: [{ elemento, cantidad }], de: { instancia, jugador, nombre, local }, objetos, propuesta,
+     decision }] (objetos: los que se van a dar; propuesta: los que salían por defecto, para restablecerlos) */
 let cola = [];
 let actual = 0;
+
+const cargarObjetos = (lista) => (Array.isArray(lista) ? lista : []).map(cargarObjeto).filter(Boolean).slice(0, 10);
 
 function cargarPeticion(p) {
     const hechizo = cargarHechizo(p?.hechizo);
     if (!hechizo) return null;
+    const propuesta = cargarObjetos(p.propuesta ?? p.objetos);
     return {
         id: hechizo.id, hechizo,
+        // bruto: el daño con decimales (el daño mágico los tiene); solo se redondea el resultado
         sugerencia: (Array.isArray(p.sugerencia) ? p.sugerencia : []).filter(s => ELEMENTOS_SACRO[s?.elemento])
-            .map(s => ({ elemento: s.elemento, cantidad: entero(s.cantidad) })),
+            .map(s => ({
+                elemento: s.elemento, cantidad: entero(s.cantidad),
+                ...(Number.isFinite(Number(s.bruto)) && s.bruto !== null ? { bruto: Math.max(0, Math.min(999, Number(s.bruto))) } : {})
+            })).slice(0, MAX_FILAS),
         de: { instancia: String(p.de?.instancia ?? ""), jugador: String(p.de?.jugador ?? ""), nombre: nombreDe(p.de?.nombre), local: Boolean(p.de?.local) },
-        objetos: (Array.isArray(p.objetos) ? p.objetos : []).map(cargarObjeto).filter(Boolean).slice(0, 10),
-        decision: p.decision && typeof p.decision === "object" ? p.decision : null
+        objetos: cargarObjetos(p.objetos),
+        propuesta,
+        decision: p.decision && typeof p.decision === "object" && Array.isArray(p.decision.filas) ? p.decision : null
     };
 }
 function leerCola() {
@@ -76,9 +101,9 @@ function quitarDeCola(id) {
     cola.splice(i, 1);
     if (actual >= cola.length) actual = 0;
     guardarCola();
-    if (!ventana().classList.contains("show")) return;
     if (cola.length) pintar();
-    else bootstrap.Modal.getInstance(ventana())?.hide();
+    else if (ventana().classList.contains("show")) cerrar();
+    // Si está oculta para una confirmación, al volver no se abre (show.bs.modal) sin peticiones
 }
 
 /** Peticiones de magia sin resolver (para el menú del inventario) */
@@ -88,6 +113,7 @@ export const hechizosPendientes = () => cola.length;
 export function abrirHechizosMaster() {
     if (!cola.length) return ctx.aviso("Magia", ["No hay peticiones de magia pendientes."]);
     if (actual >= cola.length) actual = 0;
+    if (ventana().classList.contains("show")) return pintar(); // ya abierta: solo cambia el contador
     mostrarCuandoSePueda(ventana());
 }
 /* Espera a que no haya otra ventana abierta */
@@ -100,66 +126,97 @@ function mostrarCuandoSePueda(modalEl) {
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
 }
 
-/* Decisión del máster sobre la petición (se guarda en la cola mientras la edita) */
+/* Cerrar la ventana. Cerrarla a mano cancela la petición (con confirmación). cerrandoPorCodigo: tras resolver; yendoAHija:
+   se oculta para el formulario de objetos (las confirmaciones marcan data-hacia-hija). */
+let cerrandoPorCodigo = false;
+let yendoAHija = false;
+function cerrar() {
+    cerrandoPorCodigo = true;
+    bootstrap.Modal.getInstance(ventana())?.hide();
+}
+function alOcultar(e) {
+    if (cerrandoPorCodigo || yendoAHija || ventana().dataset.haciaHija || !cola[actual]) return;
+    e.preventDefault();
+    const peticion = cola[actual];
+    setTimeout(async () => {
+        const ok = await ctx.confirmar({ titulo: "Cancelar la magia", texto: `¿Cancelar lo que quiere hacer ${peticion.de.nombre}? No gasta nada.` });
+        if (ok && cola.includes(peticion)) {
+            actual = cola.indexOf(peticion);
+            resolver(true);
+        }
+    }, 0);
+}
+function alOcultada() {
+    cerrandoPorCodigo = false;
+    yendoAHija = false;
+}
+
+/* Decisión del máster sobre la petición (se guarda en la cola mientras la edita). Las filas de daño: una por dedo de la
+   sugerencia; la primera lleva los estados */
 function decisionDe(peticion) {
     if (!peticion.decision) {
         peticion.decision = {
-            danno: peticion.sugerencia.map(s => ({ elemento: s.elemento, cantidad: s.cantidad })),
-            radio: 1, tirada: "intPer", caracteristica: "inteligencia", habilidad: "percepcion", dado: 1,
-            estado: "", valorEstado: 1, turnosEstado: 3, nota: ""
+            // La cantidad con los decimales del daño mágico (bruto); el resultado se redondea al resolver
+            filas: peticion.sugerencia.map((s, i) => ({ elemento: s.elemento, cantidad: s.bruto ?? s.cantidad, estados: i === 0 })),
+            juntar: false, unico: false, radio: 1,
+            tirada: peticion.hechizo.tipo === "danno" ? "intPer" : "", caracteristica: "inteligencia", habilidad: "percepcion", dado: 1,
+            estados: [], nota: ""
         };
     }
     return peticion.decision;
 }
 
 /* Pintar ________________________________________________________________________ */
+let editorEstados = null; // crearEditorEstadosAlAcertar de interfaz.js
+let filaAbierta = null; // fila con la rejilla de elementos abierta
+let peticionPintada = null; // al cambiar de petición se rellena el editor de estados
+
 function pintar() {
     const peticion = cola[actual];
     if (!peticion) return;
     const d = decisionDe(peticion);
     const { hechizo, de } = peticion;
-    el("contadorSacroMaster").textContent = cola.length > 1 ? `(${actual + 1} de ${cola.length})` : "";
-    el("btnSiguienteSacroMaster").hidden = cola.length < 2;
-    // Lo que ha pedido: dedos por elemento y de dónde salen
+    const tipo = TIPOS_HECHIZO[hechizo.tipo] ? hechizo.tipo : "danno";
+    el("modalSacroMasterLabel").textContent = `Magia · ${tipo === "objeto" ? "Crear objeto" : TIPOS_HECHIZO[tipo].etiqueta}`;
+    el("navegarSacroMaster").hidden = cola.length < 2;
+    el("contadorSacroMaster").textContent = `${actual + 1} de ${cola.length}`;
+    el("formSacroMaster").dataset.tipo = tipo;
+    el("formSacroMaster").querySelectorAll("[data-para]").forEach(n => { n.hidden = !n.dataset.para.split(" ").includes(tipo); });
+
+    // Lo que ha pedido: una tarjeta con quién, el texto, los elementos por origen y las acciones
     const porOrigen = { generar: "generado", ambiente: "del ambiente", cinturon: "de un cristal", quitado: "quitado" };
-    const filasPedido = CLAVES_ELEMENTOS_SACRO.map(clave => {
+    const chips = CLAVES_ELEMENTOS_SACRO.map(clave => {
         const suyos = hechizo.dedos.filter(dd => dd.elemento === clave);
         if (!suyos.length) return "";
         const origenes = [...new Set(suyos.map(dd => porOrigen[dd.origen]))].join(", ");
-        return `<span class="energia-elemento icono-activo" style="--color:${ELEMENTOS_SACRO[clave].color};--color-glifo:${ELEMENTOS_SACRO[clave].colorGlifo ?? "#FBFBFB"}">${iconoSao(ELEMENTOS_SACRO[clave].icono)}${escaparHtml(ELEMENTOS_SACRO[clave].etiqueta)} ×${suyos.length} <small>(${escaparHtml(origenes)})</small></span>`;
+        return `<span class="energia-elemento">${iconoElemento(clave)}${escaparHtml(ELEMENTOS_SACRO[clave].etiqueta)} ×${suyos.length} <small>${escaparHtml(origenes)}</small></span>`;
     }).join("");
-    el("pedidoSacroMaster").innerHTML = `<p class="texto-esperando-trueque">${escaparHtml(de.nombre)} quiere hacer:</p>
-        <p class="pedido-sacro-forma">«${escaparHtml(hechizo.forma)}»</p>
-        <div class="energia-mano pedido-sacro-dedos">${filasPedido}</div>`;
+    const partes = partesHechizo(hechizo.dedos).map(x => NOMBRES_PARTES[x]).join(", ");
+    el("pedidoSacroMaster").innerHTML = `<div class="pedido-sacro">
+        <p class="pedido-sacro-quien">${escaparHtml(de.nombre)} quiere hacer:</p>
+        <p class="pedido-sacro-forma${hechizo.forma ? "" : " vacia"}">${escaparHtml(hechizo.forma || "Sin descripción")}</p>
+        <div class="pedido-sacro-dedos">${chips}</div>
+        <p class="pedido-sacro-coste">Gasta ${escaparHtml(partes)}${hechizo.dedos.some(dd => dd.origen === "generar") ? " y los PV de generar" : ""}. Lo quitado se le quita a su dueño al resolver.</p>
+    </div>`;
 
-    // Daño por elemento (editable); el radio lo reduce al final
-    const factor = factorRadio(d.radio);
-    el("dannoSacroMaster").innerHTML = d.danno.length ? d.danno.map((fila, i) => {
-        const info = ELEMENTOS_SACRO[fila.elemento];
-        const final = Math.floor(fila.cantidad * factor);
-        return `<div class="ranura fila-danno-sacro" data-index="${i}">
-            <span class="ranura-icono icono-activo" style="--color:${info.color};--color-glifo:${info.colorGlifo ?? "#FBFBFB"}">${iconoSao(info.icono)}</span>
-            <label class="ranura-etiqueta" for="dannoSacro${i}">${escaparHtml(info.etiqueta)} <small>(${escaparHtml(info.textoDanno)})</small></label>
-            <input type="number" id="dannoSacro${i}" class="cantidad-danno-sacro" min="0" max="999" value="${fila.cantidad}">
-            <span class="final-danno-sacro">${d.radio > 1 ? `→ ${final}` : ""}</span>
-        </div>`;
-    }).join("") : `<p class="lista-vacia">Sin elementos.</p>`;
-    prepararFormularioSao(el("dannoSacroMaster"));
-
+    if (peticionPintada !== peticion) {
+        peticionPintada = peticion;
+        filaAbierta = null;
+        editorEstados?.rellenar(d.estados);
+    }
+    pintarFilas();
+    el("juntarSacroMaster").checked = d.juntar;
+    el("unicoSacroMaster").checked = d.unico;
     el("radioSacroMaster").value = String(d.radio);
-    el("textoRadioSacroMaster").textContent = d.radio > 1 ? `Área ${d.radio}×${d.radio}: daño ×${factor === 0.5 ? "½" : factor === 0.25 ? "¼" : String(factor).replace(".", ",")}` : "Un objetivo: daño completo";
     el("tiradaSacroMaster").value = d.tirada;
     el("caracteristicaSacroMaster").value = d.caracteristica;
     el("habilidadSacroMaster").value = d.habilidad;
     el("ranuraOtraTiradaSacro").hidden = d.tirada !== "otra";
     el("dadoSacroMaster").value = String(d.dado);
     el("dadoSacroMaster").disabled = !d.tirada;
-    el("estadoSacroMaster").value = d.estado;
-    el("valorEstadoSacroMaster").value = d.valorEstado;
-    el("turnosEstadoSacroMaster").value = d.turnosEstado;
-    el("valorEstadoSacroMaster").disabled = el("turnosEstadoSacroMaster").disabled = !d.estado;
     if (document.activeElement !== el("notaSacroMaster")) el("notaSacroMaster").value = d.nota;
     sincronizar.forEach(f => f());
+    pintarResumen();
 
     el("objetosSacroMaster").innerHTML = peticion.objetos.length ? peticion.objetos.map((objeto, i) => `
         <div class="fila-objeto" data-index="${i}">
@@ -170,46 +227,87 @@ function pintar() {
                 <button type="button" class="btn-objeto" data-accion="editar" title="Editar" aria-label="Editar">${iconoSao("editar")}</button>
                 <button type="button" class="btn-objeto" data-accion="borrar" title="Quitar" aria-label="Quitar">${iconoSao("descartar")}</button>
             </div>
-        </div>`).join("") : `<p class="lista-vacia">No genera objetos.</p>`;
+        </div>`).join("") : `<p class="lista-vacia">No crea nada todavía.</p>`;
+    el("btnPropuestaSacroMaster").disabled = !peticion.propuesta.length;
 }
 let sincronizar = [];
 
-/* Juntar por tipo: los elementos que hacen el mismo daño se suman en una fila (la del primero) */
-function juntarPorTipo(d) {
-    const grupos = new Map();
-    for (const fila of d.danno) {
-        const info = ELEMENTOS_SACRO[fila.elemento];
-        const clave = `${info.tipoDanno}${info.ignoraArmadura ? "-ignora" : ""}`;
-        if (grupos.has(clave)) grupos.get(clave).cantidad += fila.cantidad;
-        else grupos.set(clave, { ...fila });
-    }
-    d.danno = [...grupos.values()];
+/* Filas de daño (una .fila-objeto por golpe, ordenables arrastrando): número, elemento (al pulsarlo, la rejilla de los
+   siete dentro de la fila), − / +, estados sí / no y quitar */
+function pintarFilas() {
+    const d = decisionDe(cola[actual]);
+    const hayEstados = d.estados.length > 0;
+    el("dannoSacroMaster").innerHTML = d.filas.length ? d.filas.map((fila, i) => {
+        const info = infoDannoMagia(fila.elemento);
+        const conEstados = hayEstados && fila.estados;
+        const rejilla = filaAbierta === i ? `<div class="rejilla-elementos fichas-sao" role="radiogroup" aria-label="Elemento">${TIPOS_GOLPE.map(c => `
+            <button type="button" class="ficha-sao" role="radio" data-elemento="${c}" aria-checked="${c === fila.elemento}"><span class="ficha-icono">${iconoElemento(c)}</span><span>${escaparHtml(infoDannoMagia(c).etiqueta)}</span></button>`).join("")}</div>` : "";
+        return `<div class="fila-objeto fila-golpe" data-index="${i}" title="Arrastra para cambiar el orden">
+            <span class="num-golpe">${i + 1}</span>
+            <button type="button" class="elegir-elemento" aria-expanded="${filaAbierta === i}" title="Cambiar el elemento">${iconoElemento(fila.elemento)}<span>${escaparHtml(info.etiqueta)} <small>${escaparHtml(info.textoDanno)}</small></span></button>
+            <input type="number" class="cantidad-danno-sacro" data-decimal step="any" min="0" max="999" value="${Number.isFinite(fila.bruto) ? fila.bruto : fila.cantidad}"
+                title="Admite decimales: el resultado se redondea (sube desde ,51)" aria-label="Daño de ${escaparHtml(info.etiqueta)}">
+            <span class="acciones-golpe">
+                <button type="button" class="btn-objeto btn-estados-golpe${conEstados ? " activo" : ""}" data-accion="estados" aria-pressed="${conEstados}"
+                    ${hayEstados ? "" : "disabled"} title="${hayEstados ? (conEstados ? "Lleva los estados: pulsa para quitarlos de este golpe" : "Sin estados: pulsa para que este golpe los lleve") : "Elige antes algún estado (abajo)"}"
+                    aria-label="Estados en este golpe">${iconoSao("veneno")}</button>
+                <button type="button" class="btn-objeto" data-accion="quitar" title="Quitar" aria-label="Quitar">${iconoSao("descartar")}</button>
+            </span>
+            ${rejilla}
+        </div>`;
+    }).join("") : `<p class="lista-vacia">Sin golpes.</p>`;
+    el("btnAnadirGolpeSacro").hidden = d.filas.length >= MAX_FILAS;
+    prepararFormularioSao(el("dannoSacroMaster"));
 }
 
-/* Resolver o rechazar ____________________________________________________________ */
-function resultadoDe(peticion, rechazado) {
-    const d = decisionDe(peticion);
-    if (rechazado) return { id: peticion.id, rechazado: true, nota: d.nota.trim().slice(0, 300) };
+/* Lo que saldrá al resolver: los golpes (ya juntados y con el radio) y si llevan estados */
+function pintarResumen() {
+    const d = decisionDe(cola[actual]);
+    const golpes = golpesDeFilas(d.filas.map(f => ({ ...f, estados: f.estados && d.estados.length > 0 })), { juntarPorTipo: d.juntar, unico: d.unico, radio: d.radio });
+    const ficha = (f) => {
+        const e = fichaDannoMagia(f.elemento, f.cantidad);
+        return `<span class="popup-elemento" style="--color:${e.color};--color-texto:${e.colorTexto}" title="${escaparHtml(e.etiqueta)}">${e.cantidad} ${escaparHtml(infoDannoMagia(f.elemento).etiqueta)}</span>`;
+    };
+    const tiradas = d.tirada ? ` con ${golpes.length === 1 ? "su tirada" : "una tirada cada uno"}` : " sin tirada";
+    el("resumenGolpesSacro").innerHTML = golpes.length
+        ? `<span>Al resolver: ${golpes.length} golpe${golpes.length === 1 ? "" : "s"}${tiradas}</span>`
+            + golpes.map((g, i) => `<span class="golpe-resumen">${i + 1}. ${g.danno.map(ficha).join("")}${g.estados ? ` <span class="marca-estados">${iconoSao("veneno")}</span>` : ""}</span>`).join("")
+        : "<span>Al resolver: sin daño</span>";
     const factor = factorRadio(d.radio);
-    const tirada = !d.tirada ? null : d.tirada === "otra"
+    el("textoRadioSacroMaster").textContent = d.radio > 1 ? `Área ${d.radio}×${d.radio}: daño ×${factor === 0.5 ? "½" : factor === 0.25 ? "¼" : String(factor).replace(".", ",")}` : "Un objetivo";
+    const conEstados = d.filas.filter(f => f.estados).length;
+    ponerResumen(el("detallesEstadosSacro"), d.estados.length
+        ? `${d.estados.length} estado${d.estados.length === 1 ? "" : "s"} · en ${conEstados} golpe${conEstados === 1 ? "" : "s"}` : "Ninguno");
+}
+
+/* Resolver o cancelar ____________________________________________________________ */
+function tiradaDe(d) {
+    if (!d.tirada) return null;
+    return d.tirada === "otra"
         ? { caracteristica: d.caracteristica, habilidad: d.habilidad, dado: d.dado }
         : { caracteristica: TIRADAS_MAGIA[d.tirada].caracteristica, habilidad: TIRADAS_MAGIA[d.tirada].habilidad, dado: d.dado };
+}
+
+function resultadoDe(peticion, rechazado) {
+    const d = decisionDe(peticion);
+    const nota = d.nota.trim().slice(0, 300);
+    if (rechazado) return { id: peticion.id, rechazado: true, nota };
+    const tipo = peticion.hechizo.tipo;
+    if (tipo === "objeto") return { id: peticion.id, objetos: peticion.objetos, nota };
+    if (tipo === "escenario") return { id: peticion.id, tirada: tiradaDe(d), nota };
     return {
         id: peticion.id,
-        rechazado: false,
-        danno: d.danno.map(f => ({ elemento: f.elemento, cantidad: Math.floor(f.cantidad * factor) })).filter(f => f.cantidad > 0),
+        golpes: golpesDeFilas(d.filas.map(f => ({ ...f, estados: f.estados && d.estados.length > 0 })), { juntarPorTipo: d.juntar, unico: d.unico, radio: d.radio }),
         radio: d.radio,
-        tirada,
-        estado: d.estado ? { clave: d.estado, valor: entero(d.valorEstado, 99) || 1, turnos: entero(d.turnosEstado, 99) } : null,
-        nota: d.nota.trim().slice(0, 300),
-        objetos: peticion.objetos
+        tirada: tiradaDe(d),
+        estados: d.estados,
+        nota
     };
 }
 
 async function resolver(rechazado) {
     const peticion = cola[actual];
     if (!peticion) return;
-    if (rechazado && !(await ctx.confirmar({ titulo: "Rechazar", texto: `¿Rechazar lo que quiere hacer ${peticion.de.nombre}? No gasta nada.` }))) return;
     const resultado = resultadoDe(peticion, rechazado);
     if (peticion.de.local) {
         ctx.aplicarResultadoLocal(peticion.de.instancia, resultado);
@@ -219,7 +317,7 @@ async function resolver(rechazado) {
         } catch (error) {
             return ctx.aviso("Magia", [`No se pudo enviar: ${error.message ?? error}`, "La petición sigue pendiente."]);
         }
-        ctx.aviso("Magia", [rechazado ? `Rechazado lo de ${peticion.de.nombre}.` : `Resuelto lo de ${peticion.de.nombre}.`]);
+        ctx.aviso("Magia", [rechazado ? `Cancelado lo de ${peticion.de.nombre}.` : `Resuelto lo de ${peticion.de.nombre}.`]);
     }
     // Lo que ha usado del ambiente ya no está la próxima vez
     if (!rechazado) descontarAmbiente(peticion.hechizo.dedos.filter(dd => dd.origen === "ambiente"));
@@ -230,13 +328,13 @@ async function resolver(rechazado) {
 function recibirPeticion(evento) {
     if (!soyMasterDeSala()) return;
     const peticion = cargarPeticion({
-        hechizo: evento.datos?.hechizo, sugerencia: evento.datos?.sugerencia,
+        hechizo: evento.datos?.hechizo, sugerencia: evento.datos?.sugerencia, objetos: evento.datos?.objetos,
         de: { instancia: evento.instancia, jugador: evento.jugador, nombre: evento.personaje, local: false }
     });
     if (!peticion) return;
     encolar(peticion);
     ctx.reproducir("notificacion");
-    ctx.aviso("Magia", [`${peticion.de.nombre} quiere hacer magia: ${describirEnergia({ dedos: peticion.hechizo.dedos })}`]);
+    ctx.aviso("Magia", [`${peticion.de.nombre} quiere hacer magia (${TIPOS_HECHIZO[peticion.hechizo.tipo].etiqueta.toLowerCase()}): ${describirEnergia({ dedos: peticion.hechizo.dedos })}`]);
     abrirHechizosMaster();
 }
 
@@ -250,20 +348,21 @@ function recibirCancelacion(evento) {
 }
 
 /** Un personaje del propio máster pide magia: entra directamente en la cola */
-export function encolarHechizoLocal(instancia, nombre, hechizo, sugerencia) {
-    const peticion = cargarPeticion({ hechizo, sugerencia, de: { instancia, jugador: "", nombre, local: true } });
+export function encolarHechizoLocal(instancia, nombre, hechizo, sugerencia, objetos = []) {
+    const peticion = cargarPeticion({ hechizo, sugerencia, objetos, de: { instancia, jugador: "", nombre, local: true } });
     if (!peticion) return;
     encolar(peticion);
     abrirHechizosMaster();
 }
 export const cancelarHechizoLocal = (id) => quitarDeCola(id);
 
-/* Objetos que genera el hechizo: el formulario de objetos sobre un pj falso (van al botín de quien lo lanza) */
+/* Objetos que crea: el formulario de objetos sobre un pj falso (van al botín de quien lo lanza) */
 function formularioObjeto(indice = null) {
     const peticion = cola[actual];
     if (!peticion) return;
     const pj = { baul: peticion.objetos, inventario: [], calcularCaracteristicas: () => {} };
     const opciones = { pj, origen: ventana(), libre: true, alTerminar: () => { peticion.objetos = pj.baul.slice(0, 10); guardarCola(); pintar(); } };
+    yendoAHija = true; // se oculta para abrir el formulario: no es cancelar
     if (indice === null) ctx.abrirCrearObjeto("baul", opciones);
     else ctx.abrirEditorObjeto("baul", indice, opciones);
 }
@@ -337,6 +436,7 @@ export const pedirAmbienteLocal = (instancia, nombre) => pedirAmbiente({ instanc
 
 /**
  * ctx: { aviso, confirmar, reproducir, iconoObjeto, detalleObjeto, abrirCrearObjeto, abrirEditorObjeto,
+ *        crearEditorEstados(acordeon, opciones) (el de los objetos, interfaz.js),
  *        aplicarResultadoLocal(instancia, resultado), aplicarAmbienteLocal(instancia, elementos) }
  */
 export function inicializarSacroMaster(contexto) {
@@ -347,52 +447,113 @@ export function inicializarSacroMaster(contexto) {
     el("caracteristicaSacroMaster").innerHTML = Object.entries(CARACTERISTICAS_MAGIA).map(([v, t]) => `<option value="${v}">${t}</option>`).join("");
     el("habilidadSacroMaster").innerHTML = Object.entries(HABILIDADES_MAGIA).map(([v, t]) => `<option value="${v}">${t}</option>`).join("");
     el("dadoSacroMaster").innerHTML = Object.entries(DADOS).map(([v, t]) => `<option value="${v}">${t}</option>`).join("");
-    el("estadoSacroMaster").innerHTML = `<option value="">Ninguno</option>` + Object.entries(ESTADOS_INFO).map(([v, info]) => `<option value="${v}">${info.etiqueta}</option>`).join("");
+    el("navegarSacroMaster").querySelector('[data-ir="-1"]').innerHTML = iconoSao("anterior");
+    el("navegarSacroMaster").querySelector('[data-ir="1"]').innerHTML = iconoSao("siguiente");
     prepararFormularioSao(el("formSacroMaster"));
     sincronizar = [
         crearFichas(el("tiradaSacroMaster")),
         crearFichas(el("dadoSacroMaster"))
     ];
+    // Estados: como los de una poción (provoca o cura), sin probabilidad y sin permanente ni descanso corto
+    const acordeon = el("detallesEstadosSacro");
+    editorEstados = ctx.crearEditorEstados(acordeon, { probabilidad: false, cura: true, turnos: true, permanente: false });
+    const alCambiarEstados = () => setTimeout(() => {
+        const d = decision();
+        if (!d) return;
+        const antes = d.estados.length;
+        d.estados = editorEstados.leer();
+        // Al poner el primer estado, el primer golpe lo lleva
+        if (!antes && d.estados.length && !d.filas.some(f => f.estados) && d.filas[0]) d.filas[0].estados = true;
+        guardarCola();
+        pintarFilas();
+        pintarResumen();
+    }, 0);
+    acordeon.querySelector(".editor-estados-acertar").addEventListener("click", alCambiarEstados);
+    acordeon.querySelector(".editor-estados-acertar").addEventListener("change", alCambiarEstados);
 
     const decision = () => (cola[actual] ? decisionDe(cola[actual]) : null);
     const alCambiar = (e) => {
         const d = decision();
         if (!d) return;
         const t = e.target;
+        if (t.closest(".editor-estados-acertar")) return;
         if (t.classList.contains("cantidad-danno-sacro")) {
-            d.danno[Number(t.closest("[data-index]").dataset.index)].cantidad = entero(t.value);
+            const fila = d.filas[Number(t.closest("[data-index]").dataset.index)];
+            fila.cantidad = decimal(t.value);
+            delete fila.bruto; // de colas guardadas con la versión anterior
             guardarCola();
-            // Solo el valor final del radio: no se repinta para no perder el foco
-            const fila = t.closest(".fila-danno-sacro");
-            const final = Math.floor(entero(t.value) * factorRadio(d.radio));
-            fila.querySelector(".final-danno-sacro").textContent = d.radio > 1 ? `→ ${final}` : "";
-            return;
+            return pintarResumen(); // sin repintar las filas, para no perder el foco
         }
         const campos = {
+            juntarSacroMaster: () => { d.juntar = t.checked; },
+            unicoSacroMaster: () => { d.unico = t.checked; },
             radioSacroMaster: () => { d.radio = Math.max(1, Math.min(5, entero(t.value))); },
             tiradaSacroMaster: () => { d.tirada = t.value; },
             caracteristicaSacroMaster: () => { d.caracteristica = t.value; },
             habilidadSacroMaster: () => { d.habilidad = t.value; },
             dadoSacroMaster: () => { d.dado = entero(t.value, 2); },
-            estadoSacroMaster: () => { d.estado = t.value; },
-            valorEstadoSacroMaster: () => { d.valorEstado = entero(t.value, 99); },
-            turnosEstadoSacroMaster: () => { d.turnosEstado = entero(t.value, 99); },
             notaSacroMaster: () => { d.nota = t.value; }
         };
         if (!campos[t.id]) return;
         campos[t.id]();
         guardarCola();
-        if (t.id !== "notaSacroMaster" && e.type === "change") pintar();
+        if (t.id === "notaSacroMaster") return;
+        if (t.id === "radioSacroMaster" && e.type === "input") return pintarResumen();
+        if (e.type === "change") pintar();
     };
     el("formSacroMaster").addEventListener("change", alCambiar);
     el("formSacroMaster").addEventListener("input", alCambiar);
-    el("btnJuntarSacroMaster").addEventListener("click", () => {
+    // Filas de daño: elegir elemento, estados sí / no y quitar
+    el("dannoSacroMaster").addEventListener("click", (e) => {
         const d = decision();
         if (!d) return;
+        const i = Number(e.target.closest("[data-index]")?.dataset.index);
+        if (!Number.isInteger(i) || !d.filas[i]) return;
+        const opcion = e.target.closest("[data-elemento]");
+        if (opcion) {
+            if (d.filas[i].elemento !== opcion.dataset.elemento) {
+                delete d.filas[i].bruto;
+                // Metala hace siempre su daño fijo por dedo (20)
+                const fijo = infoDannoMagia(opcion.dataset.elemento)?.fijo;
+                if (fijo) d.filas[i].cantidad = fijo;
+            }
+            d.filas[i].elemento = opcion.dataset.elemento;
+            filaAbierta = null;
+        } else {
+            const accion = e.target.closest("[data-accion]")?.dataset.accion;
+            if (e.target.closest(".elegir-elemento")) filaAbierta = filaAbierta === i ? null : i;
+            else if (accion === "estados") d.filas[i].estados = !d.filas[i].estados;
+            else if (accion === "quitar") { d.filas.splice(i, 1); filaAbierta = null; }
+            else return;
+        }
         ctx.reproducir("click");
-        juntarPorTipo(d);
         guardarCola();
-        pintar();
+        pintarFilas();
+        pintarResumen();
+    });
+    // Ordenar los golpes arrastrando (cambia el orden de las tiradas y de "Juntar por tipo")
+    hacerOrdenable(el("dannoSacroMaster"), {
+        alSoltar: (desde, hasta) => {
+            const d = decision();
+            if (!d) return;
+            const [fila] = d.filas.splice(desde, 1);
+            d.filas.splice(hasta, 0, fila);
+            filaAbierta = null;
+            guardarCola();
+            pintarFilas();
+            pintarResumen();
+        }
+    });
+    el("btnAnadirGolpeSacro").addEventListener("click", () => {
+        const d = decision();
+        if (!d || d.filas.length >= MAX_FILAS) return;
+        ctx.reproducir("click");
+        const elemento = d.filas.at(-1)?.elemento ?? "hela";
+        d.filas.push({ elemento, cantidad: infoDannoMagia(elemento)?.fijo ?? 0, estados: false });
+        filaAbierta = d.filas.length - 1;
+        guardarCola();
+        pintarFilas();
+        pintarResumen();
     });
     el("objetosSacroMaster").addEventListener("click", (e) => {
         const boton = e.target.closest("[data-accion]");
@@ -406,15 +567,31 @@ export function inicializarSacroMaster(contexto) {
         pintar();
     });
     el("btnObjetoSacroMaster").addEventListener("click", () => { ctx.reproducir("click"); formularioObjeto(null); });
-    el("btnRechazarSacroMaster").addEventListener("click", () => resolver(true));
-    el("btnResolverSacroMaster").addEventListener("click", () => resolver(false));
-    el("btnSiguienteSacroMaster").addEventListener("click", () => {
+    el("btnPropuestaSacroMaster").addEventListener("click", () => {
+        const peticion = cola[actual];
+        if (!peticion) return;
         ctx.reproducir("click");
-        actual = (actual + 1) % cola.length;
+        peticion.objetos = structuredClone(peticion.propuesta);
+        guardarCola();
         pintar();
     });
-    ventana().addEventListener("show.bs.modal", pintar);
-    ventana().addEventListener("shown.bs.modal", pintar); // al volver del formulario de objetos
+    el("btnResolverSacroMaster").addEventListener("click", () => resolver(false));
+    el("navegarSacroMaster").addEventListener("click", (e) => {
+        const ir = Number(e.target.closest("[data-ir]")?.dataset.ir);
+        if (!ir || cola.length < 2) return;
+        ctx.reproducir("click");
+        actual = (actual + ir + cola.length) % cola.length;
+        pintar();
+    });
+    // Sin peticiones no se abre (p. ej. al volver de la confirmación de cancelar la última)
+    ventana().addEventListener("show.bs.modal", (e) => { if (!cola.length) e.preventDefault(); else pintar(); });
+    ventana().addEventListener("shown.bs.modal", () => {
+        yendoAHija = false; // vuelve del formulario de objetos
+        if (!cola.length || cerrandoPorCodigo) return cerrar(); // Bootstrap ignora hide() mientras se abre
+        pintar();
+    });
+    ventana().addEventListener("hide.bs.modal", alOcultar);
+    ventana().addEventListener("hidden.bs.modal", alOcultada);
 
     // Ambiente
     el("listaAmbienteMaster").addEventListener("input", (e) => {

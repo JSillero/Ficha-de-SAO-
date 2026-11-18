@@ -7,7 +7,8 @@
  * - tipoDanno: el de estados.js con el que se aplica ("fisico" lo reduce la armadura salvo con ignoraArmadura).
  * - multiplicador: del daño mágico por dedo.
  * - coste: múltiplo del coste de generar (null = no se puede generar).
- * - fijo: daño por dedo que no depende del daño mágico (Metala guardado en la mano; en un hechizo lo pone el máster).
+ * - fijo: daño por dedo que no depende del daño mágico ni de la potencia (Metala: 20 por dedo, guardada, en un hechizo
+ *   o recogida de un cristal; un cristal de Metala lanzado hace 20).
  * - enCristal: false si no se puede guardar en un cristal elemental.
  * - icono (iconos.js), color y colorGlifo: los del tipo de daño que hacen (los de TIPOS_DANNO de estados.js); los
  *   físicos tienen el suyo. textoDanno: qué daño hace, para los pop-ups ("fuego", "físico", "ignora armadura").
@@ -45,6 +46,21 @@ export function entradaDannoSacro(clave, cantidad) {
 export const CLAVES_ELEMENTOS_SACRO = Object.keys(ELEMENTOS_SACRO);
 export const esElementoSacro = (clave) => Object.hasOwn(ELEMENTOS_SACRO, clave);
 
+/* Daño físico normal que el máster puede poner en un golpe de magia (no es un elemento): va en golpe.total, como el
+   de un arma, y lo reduce la armadura */
+export const DANNO_FISICO = "fisico";
+const INFO_FISICO = { etiqueta: "Físico", que: "Físico", tipoDanno: "fisico", textoDanno: "lo reduce la armadura", icono: "fisico", color: "#5a5a5a" };
+/** Datos de un tipo de daño de la magia: un elemento o el físico normal (null si no existe) */
+export const infoDannoMagia = (clave) => (clave === DANNO_FISICO ? INFO_FISICO : ELEMENTOS_SACRO[clave] ?? null);
+export const esDannoMagia = (clave) => clave === DANNO_FISICO || esElementoSacro(clave);
+/** Ficha de color de un daño de la magia para pintarla (resúmenes): { cantidad, etiqueta, color, colorTexto } */
+export const fichaDannoMagia = (clave, cantidad) => (clave === DANNO_FISICO
+    ? { cantidad, etiqueta: "Físico", color: INFO_FISICO.color, colorTexto: "#FBFBFB" }
+    : entradaDannoSacro(clave, cantidad));
+
+/** Resultado de la magia: entero; los decimales suben a partir de ,51 (1,5 → 1; 1,51 → 2) */
+export const redondearMagia = (n) => Math.max(0, Math.floor(Math.round((Number(n) || 0) * 100) / 100 + 0.49 + 1e-9));
+
 /* Elementos que se pueden guardar en un cristal elemental (Kristala no) */
 export const ELEMENTOS_CRISTAL = CLAVES_ELEMENTOS_SACRO.filter(clave => ELEMENTOS_SACRO[clave].enCristal !== false);
 
@@ -62,8 +78,8 @@ function cargarEnergiaMano(datos) {
     const dedos = (Array.isArray(datos?.dedos) ? datos.dedos : []).slice(0, MAX_DEDOS_MANO)
         .filter(dedo => esElementoSacro(dedo?.elemento))
         .map(dedo => {
-            const puntos = Math.floor(Number(dedo.puntos));
-            return { elemento: dedo.elemento, puntos: dedo.puntos !== null && Number.isFinite(puntos) && puntos >= 0 ? puntos : null };
+            const puntos = Math.round(Number(dedo.puntos) * 100) / 100; // con decimales: solo se redondea el resultado
+            return { elemento: dedo.elemento, puntos: dedo.puntos !== null && dedo.puntos !== undefined && Number.isFinite(puntos) && puntos >= 0 ? puntos : null };
         });
     if (!dedos.length) return null;
     return { dedos, plays: Math.max(0, Math.min(PLAYS_ENERGIA, Math.floor(Number(datos.plays) || 0))) };
@@ -109,8 +125,15 @@ export function describirEnergia(energia) {
     return [...cuenta].map(([clave, n]) => `${ELEMENTOS_SACRO[clave].etiqueta}${n > 1 ? ` ×${n}` : ""}`).join(", ");
 }
 
+/* Tipos de petición al máster: hacer daño, crear un objeto con los elementos o cambiar el escenario */
+export const TIPOS_HECHIZO = {
+    danno: { etiqueta: "Daño", icono: "combate", ayuda: "Hacer daño" },
+    objeto: { etiqueta: "Objeto", icono: "cristalElemental", ayuda: "Crear un objeto con los elementos" },
+    escenario: { etiqueta: "Escenario", icono: "mapa", ayuda: "Cambiar el escenario" }
+};
+
 /* Petición de hechizo enviada al máster (13-sacro.md §6.4): pj.hechizo = null o
- * { id, dedos: [{ id, elemento, origen, fuente, puntos? }], forma, hora }. Se guarda con la ficha. */
+ * { id, tipo, dedos: [{ id, elemento, origen, fuente, puntos? }], forma (puede ir vacía), hora }. Se guarda con la ficha. */
 const DEDO_VALIDO = /^(manoIzquierda-[0-4]|manoDerecha-[0-4]|pies-\d)$/;
 const ORIGENES = ["generar", "ambiente", "cinturon", "quitado"];
 export function cargarHechizo(datos) {
@@ -120,10 +143,42 @@ export function cargarHechizo(datos) {
         .map(d => ({
             id: String(d.id), elemento: d.elemento, origen: ORIGENES.includes(d.origen) ? d.origen : "generar",
             fuente: String(d.fuente ?? "").slice(0, 40),
-            ...(Number.isFinite(Number(d.puntos)) && d.puntos !== null && d.puntos !== undefined ? { puntos: Math.max(0, Math.floor(Number(d.puntos))) } : {})
+            ...(Number.isFinite(Number(d.puntos)) && d.puntos !== null && d.puntos !== undefined ? { puntos: Math.max(0, Math.round(Number(d.puntos) * 100) / 100) } : {})
         }));
     if (!dedos.length) return null;
-    return { id: String(datos.id ?? "").slice(0, 60) || `h-${Date.now().toString(36)}`, dedos, forma: String(datos.forma ?? "").slice(0, 500), hora: Number(datos.hora) || 0 };
+    return {
+        id: String(datos.id ?? "").slice(0, 60) || `h-${Date.now().toString(36)}`,
+        tipo: Object.hasOwn(TIPOS_HECHIZO, datos.tipo) ? datos.tipo : "danno",
+        dedos, forma: String(datos.forma ?? "").slice(0, 500), hora: Number(datos.hora) || 0
+    };
+}
+
+/* Magia resuelta con varios golpes que el jugador lanza uno a uno (ventana #modalGolpesMagia de interfazSacro.js):
+ * pj.magiaPendiente = null o { id, forma, radio, tirada: { caracteristica, habilidad, dado } | null, nota,
+ * estados (los de una poción, se vuelven a validar al lanzar), golpes: [{ danno: [{ elemento, cantidad }], estados,
+ * lanzado }] }. Se guarda con la ficha para poder seguir después de cerrar la ventana o recargar. */
+export function cargarMagiaPendiente(datos) {
+    if (!datos || typeof datos !== "object" || !Array.isArray(datos.golpes)) return null;
+    const entero = (v, max = 999) => Math.max(0, Math.min(max, Math.floor(Number(v) || 0)));
+    const golpes = datos.golpes.slice(0, 20).map(g => ({
+        danno: (Array.isArray(g?.danno) ? g.danno : []).filter(f => esDannoMagia(f?.elemento))
+            .map(f => ({ elemento: f.elemento, cantidad: entero(f.cantidad) })).slice(0, 20),
+        estados: g?.estados === true,
+        lanzado: g?.lanzado === true
+    }));
+    if (!golpes.some(g => !g.lanzado)) return null;
+    const t = datos.tirada;
+    return {
+        id: String(datos.id ?? "").slice(0, 60),
+        forma: String(datos.forma ?? "").slice(0, 500),
+        radio: Math.max(1, Math.min(5, entero(datos.radio) || 1)),
+        tirada: t && typeof t.caracteristica === "string" && typeof t.habilidad === "string"
+            ? { caracteristica: t.caracteristica.slice(0, 20), habilidad: t.habilidad.slice(0, 20), dado: entero(t.dado, 2) } : null,
+        nota: String(datos.nota ?? "").slice(0, 300),
+        estados: (Array.isArray(datos.estados) ? datos.estados : []).slice(0, 10).filter(e => e && typeof e === "object")
+            .map(e => ({ clave: String(e.clave ?? "").slice(0, 30), valor: Number(e.valor) || 0, turnos: Number(e.turnos) || 0, quitar: e.quitar === true })),
+        golpes
+    };
 }
 
 /* Ambiente que concede el máster para un hechizo (13-sacro.md §3.2): pj.ambienteSacro = [{ elemento, dedos }] (dedos que

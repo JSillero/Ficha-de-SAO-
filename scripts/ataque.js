@@ -315,9 +315,11 @@ export function calcularDannoLanzamiento(pj, objeto, critico) {
     const elemento = objeto?.subtipo === "cristalElemental" ? objeto.elemento : null;
     const info = ELEMENTOS_SACRO[elemento?.clave];
     if (info && elemento.puntos > 0) {
-        golpe.elemental.push(entradaDannoSacro(elemento.clave, elemento.puntos));
+        // Metala hace siempre su daño fijo (20), tenga los puntos que tenga
+        const danno = info.fijo ?? Math.floor(elemento.puntos);
+        golpe.elemental.push(entradaDannoSacro(elemento.clave, danno));
         golpe.magia = true;
-        notas.push(`El cristal se rompe y libera ${info.etiqueta} (${info.que.toLowerCase()}): ${elemento.puntos} de daño. Es magia.`);
+        notas.push(`El cristal se rompe y libera ${info.etiqueta} (${info.que.toLowerCase()}): ${danno} de daño. Es magia.`);
     }
     return golpe;
 }

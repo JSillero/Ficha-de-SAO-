@@ -243,8 +243,9 @@ function pintarEvento(evento, propio, idAutorPropio = null) {
         popup.classList.add("popup-ajeno");
         hacerGolpesAplicables(popup, evento, autor);
         if (esOfertaParaMi(evento)) hacerOfertaConsumible(popup, evento, autor);
-    } else if (golpesPropiosAplicables()) {
-        // Modo máster: el golpe de uno de sus personajes se puede recibir en otro (el que tenga en pantalla)
+    } else if (golpesPropiosAplicables() || golpesDeEvento(evento).some(g => g?.unico === true)) {
+        // Modo máster: el golpe de uno de sus personajes se puede recibir en otro (el que tenga en pantalla). Un golpe
+        // único (la energía ofrecida con Aligi) lo puede coger también quien lo da
         const autor = String(evento.personaje ?? "").trim() || "Tu personaje";
         hacerGolpesAplicables(popup, evento, autor, idAutorPropio);
     }
@@ -277,6 +278,29 @@ export function golpesDeEvento(evento) {
     return [];
 }
 
+/* Golpes que solo puede recibir uno (golpe.unico con golpe.idUnico; p. ej. la energía ofrecida con Aligi): quien lo
+   coge avisa a toda la sala con el privado "golpeCogido" y en los demás el bloque deja de poder pulsarse */
+const golpesCogidos = new Map(); // idUnico → nombre de quien lo ha cogido
+const bloquesUnicos = new Map(); // idUnico → bloques pintados de ese golpe
+const idUnicoDe = (golpe) => (golpe?.unico === true && typeof golpe.idUnico === "string" && golpe.idUnico ? golpe.idUnico.slice(0, 80) : null);
+
+function ponerCogido(bloque, nombre) {
+    if (bloque.classList.contains("aplicado")) return; // es el de quien lo ha cogido
+    bloque.classList.remove("aplicable");
+    bloque.classList.add("cogido");
+    bloque.removeAttribute("role");
+    bloque.tabIndex = -1;
+    bloque.title = `Ya lo ha cogido ${nombre}`;
+    const aviso = bloque.querySelector(".popup-aplicar") ?? bloque.appendChild(Object.assign(document.createElement("div"), { className: "popup-aplicar" }));
+    aviso.textContent = `Ya lo ha cogido ${nombre}`;
+}
+
+function marcarCogido(id, nombre) {
+    if (!id || golpesCogidos.has(id)) return;
+    golpesCogidos.set(id, nombre);
+    (bloquesUnicos.get(id) ?? []).forEach(bloque => ponerCogido(bloque, nombre));
+}
+
 function hacerGolpesAplicables(popup, evento, autor, idAutorPropio = null) {
     if (!aplicadorDanno) return;
     const golpes = golpesDeEvento(evento);
@@ -286,6 +310,11 @@ function hacerGolpesAplicables(popup, evento, autor, idAutorPropio = null) {
         // Con objetivo (transfusión): solo lo recibe ese personaje, y se le aplica a él aunque no esté en pantalla
         const objetivo = typeof golpe.objetivo === "string" && golpe.objetivo ? golpe.objetivo : null;
         if (objetivo && !esObjetivoPropio(objetivo)) return;
+        const idUnico = idUnicoDe(golpe);
+        if (idUnico) {
+            bloquesUnicos.set(idUnico, [...(bloquesUnicos.get(idUnico) ?? []), bloque]);
+            if (golpesCogidos.has(idUnico)) return ponerCogido(bloque, golpesCogidos.get(idUnico));
+        }
         bloque.classList.add("aplicable");
         bloque.tabIndex = 0;
         bloque.setAttribute("role", "button");
@@ -294,7 +323,7 @@ function hacerGolpesAplicables(popup, evento, autor, idAutorPropio = null) {
         bloque.insertAdjacentHTML("beforeend", `<div class="popup-aplicar">Clic para recibir este golpe</div>`);
         const aplicar = (e) => {
             e.stopPropagation(); // no cierra el pop-up
-            if (bloque.classList.contains("aplicado")) return;
+            if (bloque.classList.contains("aplicado") || bloque.classList.contains("cogido")) return;
             // tirada: total de la tirada de ataque (para compararlo con la Defensa); null si no hubo tirada (artes)
             const tirada = evento.tipo === "tirada" && Number.isFinite(Number(evento.datos?.total)) ? Number(evento.datos.total) : null;
             // origen: quién ha dado el golpe (para saber quién mata a un NPC del máster)
@@ -305,6 +334,11 @@ function hacerGolpesAplicables(popup, evento, autor, idAutorPropio = null) {
             bloque.removeAttribute("role");
             bloque.title = "Ya has recibido este golpe";
             bloque.querySelector(".popup-aplicar").textContent = "✓ Recibido";
+            // Golpe único: nadie más lo puede coger (aquí y en el resto de la sala)
+            if (idUnico) {
+                marcarCogido(idUnico, String(valor(origen.personaje) || "otro personaje"));
+                if (publicador) emitirPrivado("golpeCogido", { para: PARA_TODOS, id: idUnico }).catch(() => {});
+            }
         };
         bloque.addEventListener("click", aplicar);
         bloque.addEventListener("keydown", (e) => {
@@ -370,3 +404,6 @@ function hacerOfertaConsumible(popup, evento, autor) {
         boton.textContent = coger ? "✓ Cogido" : "✓ Consumida";
     });
 }
+
+/* Alguien de la sala ha cogido un golpe único (Aligi): ya no se puede coger aquí */
+registrarManejador("golpeCogido", (evento) => marcarCogido(String(evento.datos?.id ?? "").slice(0, 80), String(evento.personaje || "otro personaje")));

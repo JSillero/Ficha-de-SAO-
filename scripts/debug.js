@@ -13,7 +13,12 @@ import { limpiarPesadilla } from "./npc.js";
 import { aplicarDanno, activarEstado } from "./estados.js";
 import { iniciarTurno } from "./turno.js";
 import { descansoLargo } from "./zonas.js";
-import { costeGenerar, motivoNoGenerar, dannoElementos, factorRadio, golpesDeElementos, partesHechizo, motivoNoDedos } from "./sacro.js";
+import {
+    costeGenerar, motivoNoGenerar, dannoElementos, factorRadio, golpesDeElementos, partesHechizo, motivoNoDedos, golpesDeFilas,
+    propuestaObjetos, cristalParaLlenar, motivoDedoNoUsable, motivoNoGuardarEnMano, energiaDe, quitarElementos, devolverElementos, dannoDedo,
+    redondearMagia
+} from "./sacro.js";
+import { cargarMagiaPendiente } from "./elementosSacro.js";
 
 /* Ids de la interfaz que no coinciden con el nombre del campo en PJ */
 const ALIAS_INTERFAZ = { arte: "puntosArte" };
@@ -478,7 +483,12 @@ export function comprobarSacro() {
     const danno = Object.fromEntries(dannoElementos(pj, dedos).map(e => [e.clave, e.cantidad]));
     if (danno.termika !== 7 || danno.hela !== 5 || danno.kristala !== 5) fallos.push(`Daño por elemento: ${JSON.stringify(danno)} (esperado termika 7, hela 5, kristala 5).`);
     const enRadio = Object.fromEntries(dannoElementos(pj, dedos, { radio: 2 }).map(e => [e.clave, e.cantidad]));
-    if (enRadio.termika !== 3 || factorRadio(3) !== 0.25) fallos.push(`Radio 2×2: termika ${enRadio.termika} (esperado 3); factor 3×3 ${factorRadio(3)}.`);
+    if (enRadio.termika !== 4 || factorRadio(3) !== 0.25) fallos.push(`Radio 2×2: termika ${enRadio.termika} (esperado 4: 3,75 sube); factor 3×3 ${factorRadio(3)}.`);
+    // Redondeo de la magia: sube desde ,51
+    if ([1.5, 1.51, 2.5, 2.51].map(redondearMagia).join() !== "1,2,2,3") fallos.push(`Redondeo de la magia: ${[1.5, 1.51, 2.5, 2.51].map(redondearMagia).join()} (esperado 1,2,2,3).`);
+    // Daño físico normal en los golpes del máster: va aparte de la magia física al juntar por tipo
+    const conFisico = golpesDeFilas([{ elemento: "fisico", cantidad: 2.3 }, { elemento: "fisico", cantidad: 2.3 }, { elemento: "akva", cantidad: 3 }], { juntarPorTipo: true });
+    if (conFisico.length !== 2 || conFisico[0].danno[0].elemento !== "fisico" || conFisico[0].danno[0].cantidad !== 5) fallos.push(`Físico normal al juntar: ${JSON.stringify(conFisico)} (esperado 5 de físico y el Akva aparte).`);
     const golpes = golpesDeElementos(dannoElementos(pj, dedos));
     const fichas = golpes[0]?.elemental ?? [];
     const kristala = fichas.find(f => f.sacro === "kristala");
@@ -491,6 +501,72 @@ export function comprobarSacro() {
         fallos.push("Deja usar los pies sin ropa ni armadura real.");
     }
     if (!motivoNoDedos(pj, [{ id: "manoIzquierda-0", elemento: "morna", origen: "generar" }])) fallos.push("Deja generar Morna.");
+    // Zona segura: generar no puede dejar por debajo de 1 PV
+    pj.zona = "segura";
+    pj.vida = 11;
+    if (!motivoNoGenerar(pj, dedos)) fallos.push("En zona segura deja generar hasta 0 PV (mínimo 1).");
+    pj.vida = 12;
+    if (motivoNoGenerar(pj, dedos)) fallos.push("En zona segura no deja generar hasta quedarse en 1 PV.");
+    pj.zona = "noSegura";
+    // Golpes del máster: uno por fila, juntar por tipo (la Kristala aparte), único y radio
+    const filas = [{ elemento: "kriogenia", cantidad: 4, estados: true }, { elemento: "kriogenia", cantidad: 4 }, { elemento: "akva", cantidad: 3 }, { elemento: "kristala", cantidad: 5 }];
+    if (golpesDeFilas(filas).length !== 4) fallos.push("Golpes del máster: debería haber uno por fila.");
+    const juntos = golpesDeFilas(filas, { juntarPorTipo: true });
+    if (juntos.length !== 3 || juntos[0].danno[0].cantidad !== 8 || !juntos[0].estados) fallos.push(`Juntar por tipo: ${JSON.stringify(juntos)} (esperado 3 golpes, hielo 8 con estados, Akva y Kristala aparte).`);
+    const unico = golpesDeFilas(filas, { unico: true, radio: 2 });
+    if (unico.length !== 1 || unico[0].danno.length !== 4 || unico[0].danno[0].cantidad !== 2) fallos.push("Un único golpe con radio 2: un golpe con 4 fichas y la mitad de daño.");
+    // Propuesta de objetos: un cristal por Kristala (capacidad = daño de un dedo, 5) llenado por orden; Metala sola = lingote
+    const propuesta = propuestaObjetos(pj, [...dedos, { id: "manoDerecha-0", elemento: "kristala", origen: "generar" }]);
+    if (propuesta.length !== 2 || propuesta[0].capacidad !== 5 || propuesta[0].elemento?.clave !== "termika" || propuesta[0].elemento.puntos !== 5 || propuesta[1].elemento?.clave !== "hela") {
+        fallos.push(`Propuesta con 2 Kristala + 2 Termika + 1 Hela: ${JSON.stringify(propuesta.map(o => o.elemento))} (esperado Termika 5 y Hela 5).`);
+    }
+    const lingote = propuestaObjetos(pj, [{ id: "manoIzquierda-0", elemento: "metala" }, { id: "manoIzquierda-1", elemento: "metala" }]);
+    if (lingote.length !== 1 || lingote[0].subtipo !== "herreria" || lingote[0].potencia !== 2) fallos.push("Propuesta con 2 Metala: un material de herrería de potencia 2.");
+    // Llenar: el cristal vacío donde quepa; si no cabe en ninguno, el que menos pierde
+    const cristal = (capacidad, elemento = null) => ({ objeto: { tipo: "arrojadiza", subtipo: "cristalElemental", capacidad, elemento, nombre: `C${capacidad}` } });
+    const elegido = cristalParaLlenar(pj, [cristal(4), cristal(20), cristal(8)], "termika", 2); // floor(2 × 3,75) = 7
+    if (elegido?.candidato.objeto.capacidad !== 8 || elegido.perdido) fallos.push(`Llenar 7 de Termika: elige ${elegido?.candidato.objeto.nombre} (esperado C8, sin perder).`);
+    const menosPierde = cristalParaLlenar(pj, [cristal(2), cristal(4)], "termika", 2);
+    if (menosPierde?.candidato.objeto.capacidad !== 4 || menosPierde.perdido !== 3) fallos.push("Llenar 7 sin hueco suficiente: debería ir al que menos pierde (C4, pierde 3).");
+    // Arma a dos manos: la derecha vale para la magia pero no para guardar energía; la izquierda no
+    const conEspadon = new PJ();
+    conEspadon.cargarJSON(JSON.parse(pj.toJSONString()));
+    conEspadon.manoIzquierda = new Equipamiento("Espadón", "", "espadon");
+    conEspadon.manoDerecha = new Equipamiento();
+    if (motivoDedoNoUsable(conEspadon, "manoDerecha-0") || !motivoDedoNoUsable(conEspadon, "manoIzquierda-0") || !motivoNoGuardarEnMano(conEspadon, "manoDerecha")) {
+        fallos.push("Arma a dos manos: la mano derecha debe aceptar dedos (sin guardar energía) y la izquierda no.");
+    }
+    // Lo quitado conserva la potencia de su dueño y se quita todo o nada
+    const dueno = new PJ();
+    dueno.cargarJSON(JSON.parse(pj.toJSONString()));
+    dueno.dMagico = 7;
+    dueno.energiaManos = { manoIzquierda: { dedos: [{ elemento: "termika", puntos: null }, { elemento: "metala", puntos: null }], plays: 0 }, manoDerecha: null };
+    const vista = Object.fromEntries(energiaDe(dueno).map(e => [e.elemento, e.puntos[0]]));
+    if (vista.termika !== 5.25 || vista.metala !== 20) fallos.push(`Potencia al escanear: ${JSON.stringify(vista)} (esperado Termika 5,25 con daño mágico 7, Metala 20).`);
+    if (quitarElementos(dueno, ["termika", "termika"]) || energiaDe(dueno).length !== 2) fallos.push("Quitar dos Termika teniendo una: no debería quitar nada.");
+    const quitados = quitarElementos(dueno, ["termika"]);
+    if (quitados?.[0]?.puntos !== 5.25 || energiaDe(dueno).some(e => e.elemento === "termika")) fallos.push("Quitar una Termika: debería devolver sus 5,25 puntos y quitarla.");
+    // Metala: siempre 20 por dedo, tenga la potencia que tenga
+    if (dannoDedo(pj, { elemento: "metala" }) !== 20 || dannoDedo(pj, { elemento: "metala", puntos: 3 }) !== 20) fallos.push("Metala debería hacer siempre 20 por dedo.");
+    // Decimales: se suman sin redondear y solo se redondea el resultado (1,5 + 1,5 = 3)
+    const conDecimales = golpesDeFilas([{ elemento: "kriogenia", cantidad: 1, bruto: 1.5 }, { elemento: "kriogenia", cantidad: 1, bruto: 1.5 }], { juntarPorTipo: true });
+    if (conDecimales[0]?.danno[0].cantidad !== 3) fallos.push(`Juntar 1,5 + 1,5 de hielo: ${conDecimales[0]?.danno[0].cantidad} (esperado 3).`);
+    // Robar de un cristal del cinturón: se ve al escanear, se quita (queda vacío) y se puede devolver
+    const conCinturon = new PJ();
+    conCinturon.cargarJSON(JSON.parse(pj.toJSONString()));
+    const cinturon = new Equipamiento("Cinturón", "", "accesorio");
+    cinturon.cinturon = { huecos: 2, objetos: [{ tipo: "arrojadiza", subtipo: "cristalElemental", nombre: "Cristal", cantidad: 1, capacidad: 10, elemento: { clave: "hela", puntos: 8 } }, null] };
+    conCinturon.accesorios = [cinturon];
+    const enCinturon = energiaDe(conCinturon).find(e => e.elemento === "hela");
+    if (enCinturon?.puntos[0] !== 8 || enCinturon.origenes[0] !== "cinturon") fallos.push("Escanear: debería verse la Hela del cristal del cinturón (8, origen cinturón).");
+    const deCristal = quitarElementos(conCinturon, ["hela"]);
+    if (deCristal?.[0]?.ranura !== "accesorio-0" || cinturon.cinturon.objetos[0].elemento) fallos.push("Quitar de un cristal del cinturón: debería quedar vacío.");
+    devolverElementos(conCinturon, deCristal);
+    // Magia pendiente (golpes que se lanzan uno a uno): se guarda con la ficha; sin golpes por lanzar no queda nada
+    const pendiente = cargarMagiaPendiente({ id: "x", golpes: [{ danno: [{ elemento: "fisico", cantidad: 4 }], lanzado: true }, { danno: [{ elemento: "hela", cantidad: 3 }] }] });
+    if (pendiente?.golpes.length !== 2 || pendiente.golpes[0].danno[0].elemento !== "fisico") fallos.push("Magia pendiente: debería conservar los dos golpes (con el físico).");
+    if (cargarMagiaPendiente({ golpes: [{ danno: [], lanzado: true }] }) !== null) fallos.push("Magia pendiente sin golpes por lanzar: debería quedar en null.");
+    if (cinturon.cinturon.objetos[0].elemento?.puntos !== 8) fallos.push("Devolver a un cristal del cinturón: debería volver a tener 8 de Hela.");
     // Anticuración: ni regeneración, ni pociones, ni luz (sin otros estados que quiten PV al empezar turno)
     ESTADOS_LISTA.forEach(clave => { pj.estados[clave] = { valor: 0, turnos: 0 }; });
     pj.vida = 5;

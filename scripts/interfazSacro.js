@@ -3,23 +3,30 @@
 // imgs/mano.svg.svg, siluetasSacro.js) y la fila de los pies; cada punta de dedo es una diana a la que se arrastra un
 // elemento (o se toca la ficha y después el dedo). Fuentes: Generar (PV), Cinturón (cristales elementales llenos),
 // Ambiente (lo que conceda el máster) y Quitado (tras escanear). Resumen en vivo con el coste, las acciones y el daño.
-// Sin el máster: Guardar en una mano y Llenar un cristal del cinturón. Con el máster: Enviar (con lo que quiere hacer escrito),
-// que deja la petición esperando en pj.hechizo y emite "hechizo" (para: PARA_TODOS; lo atiende el máster de la sala, ver
-// interfazSacroMaster.js). Su respuesta "hechizoResultado" (a esta pestaña) se aplica con aplicarResultadoHechizo: gasta
-// las acciones y los PV, los cristales y el ambiente usados, tira si el máster lo pide y saca el pop-up con el daño.
-// "Pedir" (ambiente) emite "peticionAmbiente" y la respuesta "ambiente" llena pj.ambienteSacro.
+// Lo puesto en un dedo se puede arrastrar a otro (se intercambian) o fuera (vuelve a su fuente).
+// "Usar ahora" (sin el máster): Guardar en una mano y Llenar cristal (va solo al cristal del cinturón donde quepa,
+// cristalParaLlenar). "Pedir al máster": tipo (Daño, Objeto, Escenario; TIPOS_HECHIZO), texto opcional y Enviar, que deja
+// la petición esperando en pj.hechizo y emite "hechizo" (para: PARA_TODOS; lo atiende el máster de la sala, ver
+// interfazSacroMaster.js). Sin máster conectado (ctx.masterConectado) el daño se resuelve con la sugerencia, el objeto con
+// la propuesta (propuestaObjetos) y el escenario no se puede. La respuesta "hechizoResultado" se aplica con
+// aplicarResultadoHechizo: quita lo robado a sus dueños (confirmarRobos, todo o nada; si falta algo no se gasta nada),
+// gasta las acciones y los PV, los cristales y el ambiente usados, y saca los golpes (uno por golpe del máster, con su
+// tirada), los objetos al botín o la nota. "Pedir" (ambiente) emite "peticionAmbiente" y la respuesta "ambiente" llena
+// pj.ambienteSacro.
 // Reglas en sacro.js; este módulo solo es DOM. inicializarSacro(ctx) desde interfaz.js.
 
 import {
     ELEMENTOS_SACRO, CLAVES_ELEMENTOS_SACRO, parteDeDedo, dedosSacro, motivoDedoNoUsable, motivoNoDedos, costeGenerar,
-    motivoNoGenerar, dannoElementos, partesHechizo, entradaDannoSacro, maximoPorDedo, guardarEnMano, motivoNoLlenar,
+    motivoNoGenerar, partesHechizo, entradaDannoSacro, maximoPorDedo, guardarEnMano,
     llenarCristal, describirEnergia, puedeUsarMagia, cargarDedos, cargarAmbiente, gastarHechizo, esElementoSacro,
-    energiaDe, quitarElemento, maxTransfusion, MODOS_TRANSFUSION, minimoTransfusion
+    energiaDe, quitarElementos, devolverElementos, maxTransfusion, MODOS_TRANSFUSION, minimoTransfusion,
+    motivoNoGuardarEnMano, cristalParaLlenar, sugerenciaPorDedo, propuestaObjetos, TIPOS_HECHIZO, DANNO_FISICO, esDannoMagia
 } from "./sacro.js";
-import { ESTADOS_INFO, noSeCura } from "./estados.js";
+import { fichaDannoMagia } from "./elementosSacro.js";
+import { noSeCura } from "./estados.js";
 import { manoVacia } from "./turno.js";
 import { caracteristicaArma } from "./ataque.js";
-import { cargarObjeto, manoParaUsar } from "./objetos.js";
+import { cargarObjeto, cargarEstadosObjeto, manoParaUsar } from "./objetos.js";
 import { TIPOS_DOS_MANOS } from "./equipamiento.js";
 import { emitirPrivado, emitirEvento, registrarManejador, PARA_TODOS } from "./eventos.js";
 import { mostrarPopupDanno } from "./dados.js";
@@ -41,11 +48,15 @@ let elegida = null; // ficha tocada (alternativa a arrastrar)
 let esperandoAmbiente = false; // se ha preguntado al máster qué hay en el ambiente
 /* Escaneo (13-sacro.md §12): { id, terminado, resultados: Map(instancia → { instancia, nombre, npc, elementos }) } */
 let escaneo = null;
-/* Quitar un elemento a otra pestaña: id de la petición → { dedo, fuente } (se pone en el dedo cuando contesta) */
+/* Quitar elementos a otra pestaña al resolver: id de la petición → resolve({ ok, quitados }) */
 const quitando = new Map();
+const SEGUNDOS_QUITAR = 8;
 const nuevoId = () => globalThis.crypto?.randomUUID?.() ?? `x-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 let mensaje = "";
 let forma = "";
+let tipoPeticion = ""; // danno | objeto | escenario (TIPOS_HECHIZO): obligatorio para enviar
+let ignorarClic = false; // tras arrastrar un dedo, el clic que llega después no lo quita
+let conservarAlCerrar = false; // la ventana se cierra para volver (ambiente del máster): no se vacían los dedos
 
 const MANOS = ["manoIzquierda", "manoDerecha"];
 const ETIQUETA_MANO = { manoIzquierda: "Mano izquierda", manoDerecha: "Mano derecha" };
@@ -80,10 +91,12 @@ function fuentes() {
         }));
     // El ambiente lo concede el máster; lo quitado sale de escanear (lo que lleva cada uno en las manos)
     const ambiente = (p.ambienteSacro ?? []).map((a, i) => ({ origen: "ambiente", fuente: String(i), elemento: a.elemento, quedan: a.dedos - usados("ambiente", String(i)), texto: `×${a.dedos - usados("ambiente", String(i))}` }));
-    const quitado = [...(escaneo?.resultados.values() ?? [])].flatMap(r => r.elementos.map(a => ({
-        origen: "quitado", fuente: `${r.instancia}|${a.elemento}`, elemento: a.elemento, quedan: a.dedos,
-        texto: `${r.nombre}${r.npc ? " (NPC)" : ""} ×${a.dedos}`
-    })));
+    // Lo quitado no se le quita hasta resolver: aquí solo se descuenta lo que ya está puesto en un dedo
+    const quitado = [...(escaneo?.resultados.values() ?? [])].flatMap(r => r.elementos.map(a => {
+        const fuente = `${r.instancia}|${a.elemento}`;
+        const quedan = Math.max(0, a.dedos - usados("quitado", fuente));
+        return { origen: "quitado", fuente, elemento: a.elemento, quedan, texto: `${r.nombre}${r.npc ? " (NPC)" : ""} ×${quedan}` };
+    }));
     return { generar, cinturon, ambiente, quitado };
 }
 const fichaDe = (origen, fuente) => Object.values(fuentes()).flat().find(f => f.origen === origen && String(f.fuente) === String(fuente));
@@ -119,7 +132,9 @@ function htmlMano(mano) {
     const X = (x) => (reflejo ? MANO_ANCHO - x : x);
     const motivo = motivoDedoNoUsable(p, `${mano}-1`);
     const silueta = `<g class="silueta" transform="${reflejo ? `translate(${MANO_ANCHO} 0) scale(-1 1) ` : ""}translate(0 ${MANO_ALTO}) scale(0.1 -0.1)"><path d="${MANO_D}"/></g>`;
-    const ocupadaPor = p[mano]?.tipo ? (p[mano].nombre?.trim() || "ocupada") : motivo ? "con energía" : "";
+    const dosManos = MANOS.some(m => TIPOS_DOS_MANOS.includes(p[m]?.tipo));
+    const ocupadaPor = !motivo ? (dosManos ? "arma a dos manos: sin guardar energía" : "")
+        : p.energiaManos?.[mano] ? "con energía" : dosManos ? "arma a dos manos" : (p[mano]?.nombre?.trim() || "ocupada");
     return `<div class="mano-sacro${motivo ? " ocupada" : ""}">
         <div class="titulo-mano">${ETIQUETA_MANO[mano]}${ocupadaPor ? ` · ${escaparHtml(ocupadaPor)}` : ""}</div>
         <svg viewBox="-20 -80 ${MANO_ANCHO + 40} ${MANO_ALTO + 100}" aria-label="${ETIQUETA_MANO[mano]}">${silueta}${PUNTAS_MANO.map(([x, y], i) => htmlDiana(`${mano}-${i}`, X(x), y, RADIO_DIANA)).join("")}</svg>
@@ -146,13 +161,13 @@ function pintar() {
 
     // Petición enviada al máster: solo se ve y se puede cancelar
     if (p.hechizo) {
+        const tipo = TIPOS_HECHIZO[p.hechizo.tipo] ?? TIPOS_HECHIZO.danno;
         cuerpo.innerHTML = `<div class="esperando-sacro">
             <p><b>Esperando al máster…</b></p>
-            <p>${escaparHtml(describirEnergia({ dedos: p.hechizo.dedos }))} · Qué quiero hacer: «${escaparHtml(p.hechizo.forma)}»</p>
-            <p>Mientras tanto no puedes seguir con tu turno. Las acciones y los PV se gastan cuando lo resuelva.</p>
+            <p>${escaparHtml(tipo.etiqueta)}: ${escaparHtml(describirEnergia({ dedos: p.hechizo.dedos }))}${p.hechizo.forma ? ` · «${escaparHtml(p.hechizo.forma)}»` : ""}</p>
+            <p>Mientras tanto no puedes seguir con tu turno. Las acciones, los PV y los elementos se gastan cuando lo resuelva.</p>
             <button type="button" class="btn-pastilla-sao" data-accion="cancelarPeticion">Cancelar la petición</button>
         </div>`;
-        el("btnEnviarSacro").disabled = true;
         return;
     }
 
@@ -160,54 +175,81 @@ function pintar() {
     const partes = puestos.length ? partesHechizo(puestos) : [];
     const coste = costeGenerar(p, puestos);
     const sinPV = Boolean(motivoNoGenerar(p, puestos));
-    const danno = dannoElementos(p, puestos).filter(e => e.cantidad > 0);
+    const danno = sugerenciaPorDedo(p, puestos).filter(e => e.cantidad > 0);
     const motivo = puestos.length ? motivoNoDedos(p, puestos) || motivoNoGenerar(p, puestos) : "";
     const manosCon = MANOS.filter(m => puestos.some(d => parteDeDedo(d.id) === m));
-    // Llenar: todos los dedos con el mismo elemento y ninguno sacado de un cristal; un botón por cristal con hueco
-    const unElemento = puestos.length && new Set(puestos.map(d => d.elemento)).size === 1 && puestos.every(d => d.origen !== "cinturon");
-    const llenables = unElemento ? cristalesCinturon(p).filter(({ objeto }) => !motivoNoLlenar(objeto, puestos[0].elemento)) : [];
+    const llenar = destinoLlenar(p, puestos);
     const puedePedir = !esperandoAmbiente && (ctx.esMaster || ctx.enSala());
     const puedeEscanear = !(escaneo && !escaneo.terminado) && (ctx.esMaster || ctx.enSala());
     const fichasDanno = danno.map(e => {
         const ficha = entradaDannoSacro(e.elemento, e.cantidad);
-        return `<span class="popup-elemento" style="--color:${ficha.color};--color-texto:${ficha.colorTexto}">+${ficha.cantidad} ${escaparHtml(ficha.etiqueta)}</span>`;
+        return `<span class="popup-elemento" style="--color:${ficha.color};--color-texto:${ficha.colorTexto}" title="${escaparHtml(ficha.etiqueta)}">${ficha.cantidad} ${escaparHtml(ELEMENTOS_SACRO[e.elemento].etiqueta)}</span>`;
     }).join("");
+    // Guardar en una mano: con dedos en esa mano, que la mano lo permita (arma a dos manos) y sin otro motivo
+    const motivoGuardar = (m) => motivoNoGuardarEnMano(p, m) || (!manosCon.includes(m) ? "Pon elementos en los dedos de esa mano" : motivo);
+    const motivoEnviar = !puestos.length ? "Pon algún elemento en los dedos" : !tipoPeticion ? "Elige si es daño, objeto o escenario" : motivo;
 
     cuerpo.innerHTML = `
         <div class="sacro-fuentes">
             <div class="sacro-fuente"><h3>${iconoSao("magia")}Generar <small>(con tus PV)</small></h3><div class="sacro-fichas">${f.generar.map(htmlFicha).join("")}</div></div>
             <div class="sacro-fuente"><h3>${iconoSao("cinturon")}Cinturón</h3>${f.cinturon.length ? `<div class="sacro-fichas">${f.cinturon.map(htmlFicha).join("")}</div>` : `<p class="lista-vacia">Sin cristales elementales con elemento.</p>`}</div>
             <div class="sacro-fuente"><h3>${iconoSao("mapa")}Ambiente <button type="button" class="btn-pastilla-sao" data-accion="pedirAmbiente" ${puedePedir ? "" : "disabled"} title="${escaparHtml(puedePedir ? "Pregúntale al máster qué hay en el ambiente (no gasta acción)" : esperandoAmbiente ? "Esperando la respuesta del máster" : "Solo en una sala con máster")}">${esperandoAmbiente ? "Esperando…" : "Pedir"}</button></h3>${f.ambiente.length ? `<div class="sacro-fichas">${f.ambiente.map(htmlFicha).join("")}</div>` : `<p class="lista-vacia">${esperandoAmbiente ? "Esperando al máster…" : "El máster aún no te ha dicho qué hay."}</p>`}</div>
-            <div class="sacro-fuente"><h3>${iconoSao("personaje")}Quitado <button type="button" class="btn-pastilla-sao" data-accion="escanear" ${puedeEscanear ? "" : "disabled"} title="${escaparHtml(puedeEscanear ? "Ver quién de la sala tiene energía en las manos (y los NPC cargados)" : escaneo && !escaneo.terminado ? "Escaneando…" : "Solo en una sala")}">${escaneo && !escaneo.terminado ? "Escaneando…" : "Escanear"}</button></h3>${f.quitado.length ? `<div class="sacro-fichas">${f.quitado.map(htmlFicha).join("")}</div><p class="lista-vacia">Ponlo en un dedo para quitárselo (sin tirada).</p>` : `<p class="lista-vacia">${escaneo?.terminado ? "Nadie tiene energía en las manos." : escaneo ? "Escaneando…" : "Escanea para ver quién tiene energía."}</p>`}</div>
+            <div class="sacro-fuente"><h3>${iconoSao("personaje")}Quitado <button type="button" class="btn-pastilla-sao" data-accion="escanear" ${puedeEscanear ? "" : "disabled"} title="${escaparHtml(puedeEscanear ? "Ver quién de la sala tiene energía en las manos (y los NPC cargados)" : escaneo && !escaneo.terminado ? "Escaneando…" : "Solo en una sala")}">${escaneo && !escaneo.terminado ? "Escaneando…" : "Escanear"}</button></h3>${f.quitado.length ? `<div class="sacro-fichas">${f.quitado.map(htmlFicha).join("")}</div><p class="lista-vacia">Ponlo en un dedo: se le quita (sin tirada) cuando se resuelva.</p>` : `<p class="lista-vacia">${escaneo?.terminado ? "Nadie tiene energía en las manos." : escaneo ? "Escaneando…" : "Escanea para ver quién tiene energía."}</p>`}</div>
         </div>
         <div class="sacro-manos">
             <div class="sacro-manos-fila">${MANOS.map(htmlMano).join("")}</div>
             <div class="pies-sacro">${htmlPies()}<div>Pies: solo con ropa o armadura real</div></div>
         </div>
         <div class="sacro-resumen">
-            <div class="dato-sacro"><b>Coste en PV</b><span class="valor${sinPV ? " negativo" : ""}">${coste}</span> de ${p.vida} PV</div>
-            <div class="dato-sacro"><b>Acciones</b><span class="valor">${partes.length || "—"}</span> ${escaparHtml(partes.map(x => NOMBRES_PARTES[x]).join(", "))}${partes.length > 3 ? " (solo sin acciones gastadas)" : ""}</div>
-            <div class="dato-sacro"><b>Daño sugerido</b><div class="danno-sacro">${fichasDanno || "—"}</div></div>
+            <span class="dato-sacro"><b>Coste</b><span class="valor${sinPV ? " negativo" : ""}">${coste}</span> de ${p.vida} PV</span>
+            <span class="dato-sacro"><b>Acciones</b><span class="valor">${partes.length || "—"}</span> ${escaparHtml(partes.map(x => NOMBRES_PARTES[x]).join(", "))}${partes.length > 3 ? " (solo sin acciones gastadas)" : ""}</span>
+            <span class="dato-sacro"><b>Daño</b><span class="danno-sacro">${fichasDanno || "—"}</span></span>
+            <button type="button" class="btn-pastilla-sao" data-accion="vaciar" ${puestos.length ? "" : "disabled"}>Quitar todo</button>
         </div>
         <p class="aviso-zona aviso-sacro">${escaparHtml(mensaje || motivo || "")}</p>
-        <div class="ranura ranura-alta sacro-forma">
-            <span class="ranura-icono">${iconoSao("diario")}</span>
-            <label class="ranura-etiqueta" for="formaSacro">Qué quiero hacer</label>
-            <textarea id="formaSacro" rows="2" maxlength="500"></textarea>
-        </div>
-        <div class="sacro-botones">
-            ${MANOS.map(m => `<button type="button" class="btn-pastilla-sao" data-accion="guardar" data-mano="${m}" ${manosCon.includes(m) && !motivo ? "" : "disabled"}
-                title="Guarda los dedos de esa mano: solo gasta la boca y los PV; se pierde al segundo Play o al descansar">Guardar en la ${ETIQUETA_MANO[m].toLowerCase()}</button>`).join("")}
-            ${llenables.length && !motivo
-                ? llenables.map(({ ranura, indice, objeto }) => `<button type="button" class="btn-pastilla-sao" data-accion="llenar" data-ranura="${ranura}" data-indice="${indice}"
-                    title="Gasta la boca y los PV">Llenar ${escaparHtml(objeto.nombre)}</button>`).join("")
-                : `<button type="button" class="btn-pastilla-sao" disabled title="Un solo elemento (sin cristales del cinturón) y un cristal elemental del cinturón con hueco">Llenar cristal</button>`}
-            <button type="button" class="btn-pastilla-sao" data-accion="vaciar" ${puestos.length ? "" : "disabled"}>Quitar todo</button>
+        <div class="sacro-acciones">
+            <div class="tarjeta-accion-sacro">
+                <h3>${iconoSao("usar")}Usar ahora <small>sin el máster</small></h3>
+                <div class="botones-usar">
+                    ${MANOS.map(m => `<button type="button" class="btn-pastilla-sao" data-accion="guardar" data-mano="${m}" ${motivoGuardar(m) ? "disabled" : ""}
+                        title="${escaparHtml(motivoGuardar(m) || "Guarda los dedos de esa mano: solo gasta la boca y los PV; se pierde al segundo Play o al descansar")}">Guardar en la ${ETIQUETA_MANO[m].toLowerCase()}</button>`).join("")}
+                    <button type="button" class="btn-pastilla-sao" data-accion="llenar" ${llenar.motivo || motivo ? "disabled" : ""}
+                        title="${escaparHtml(llenar.motivo || motivo || llenar.texto)}">Llenar cristal</button>
+                </div>
+            </div>
+            <div class="tarjeta-accion-sacro">
+                <h3>${iconoSao("personaje")}Pedir al máster</h3>
+                <div class="cabecera-pedir">
+                    <label for="formaSacro">Qué quiero hacer <small>(opcional)</small></label>
+                    <div class="tipos-sacro" role="radiogroup" aria-label="Tipo de magia">
+                        ${Object.entries(TIPOS_HECHIZO).map(([clave, t]) => `<button type="button" class="tipo-sacro" role="radio" data-tipo="${clave}"
+                            aria-checked="${tipoPeticion === clave}" title="${escaparHtml(t.ayuda)}">${iconoSao(t.icono)}${escaparHtml(t.etiqueta)}</button>`).join("")}
+                    </div>
+                </div>
+                <textarea id="formaSacro" rows="2" maxlength="500"></textarea>
+                <div class="pie-pedir">
+                    <span class="pista">${escaparHtml(motivoEnviar || "No gasta nada hasta que el máster lo resuelva")}</span>
+                    <button type="button" class="btn-eleccion" data-accion="enviar" ${motivoEnviar ? "disabled" : ""} title="${escaparHtml(motivoEnviar || "Enviar al máster")}">Enviar al máster</button>
+                </div>
+            </div>
         </div>`;
     el("formaSacro").value = forma;
-    const motivoEnviar = !puestos.length ? "Pon algún elemento en los dedos" : motivo || (!ctx.enSala() && !ctx.esMaster ? "Solo en una sala con máster" : "");
-    el("btnEnviarSacro").disabled = Boolean(motivoEnviar);
-    el("btnEnviarSacro").title = motivoEnviar || "Enviar al máster";
+}
+
+/* Llenar cristal: todos los dedos con el mismo elemento (ninguno sacado de un cristal) y el cristal del cinturón donde
+   quepa (cristalParaLlenar). @returns { motivo } o { cristal: { ranura, indice, objeto }, anadido, perdido, texto } */
+function destinoLlenar(p, puestos) {
+    if (!puestos.length) return { motivo: "Pon algún elemento en los dedos" };
+    if (new Set(puestos.map(d => d.elemento)).size !== 1) return { motivo: "Para llenar un cristal, todos los dedos con el mismo elemento" };
+    if (puestos.some(d => d.origen === "cinturon")) return { motivo: "No se puede llenar un cristal con otro cristal" };
+    const elemento = puestos[0].elemento;
+    const r = cristalParaLlenar(p, cristalesCinturon(p), elemento, puestos.length);
+    if (!r) return { motivo: `Ningún cristal elemental del cinturón admite ${ELEMENTOS_SACRO[elemento].etiqueta}` };
+    const nombre = r.candidato.objeto.nombre;
+    return {
+        cristal: r.candidato, anadido: r.anadido, perdido: r.perdido,
+        texto: `Llena ${nombre} (+${r.anadido}${r.perdido ? `, se pierden ${r.perdido}` : ""}). Gasta la boca y los PV`
+    };
 }
 /* Un cristal del cinturón ya puesto en un dedo no está en fuentes() (no se puede usar dos veces), pero sigue valiendo */
 function esUsado(dedo) {
@@ -224,9 +266,26 @@ function poner(id, f) {
     const motivo = motivoDedoNoUsable(p, id);
     if (motivo) { mensaje = motivo; return pintar(); }
     if (!dedos.has(id) && dedos.size >= dedosSacro(p)) { mensaje = `Tu Sacro solo da para ${dedosSacro(p)} dedos.`; return pintar(); }
-    if (f.origen === "quitado") return quitar(id, f);
-    dedos.set(id, { id, elemento: f.elemento, origen: f.origen, fuente: f.fuente, ...(f.puntos !== undefined ? { puntos: f.puntos } : {}) });
+    // Lo quitado lleva la potencia que tenía en la mano de su dueño (del escaneo); no se le quita hasta resolver
+    const puntos = f.origen === "quitado" ? puntosQuitado(f.fuente) : f.puntos;
+    dedos.set(id, { id, elemento: f.elemento, origen: f.origen, fuente: f.fuente, ...(Number.isFinite(puntos) ? { puntos } : {}) });
     elegida = null;
+    pintar();
+}
+
+/* Mueve lo puesto en un dedo a otro (si el otro está lleno, se intercambian) */
+function moverDedo(desde, hasta) {
+    const p = pj();
+    const origen = dedos.get(desde);
+    if (!origen || desde === hasta) return pintar();
+    const motivo = motivoDedoNoUsable(p, hasta);
+    if (motivo) { mensaje = motivo; return pintar(); }
+    const destino = dedos.get(hasta);
+    dedos.delete(desde);
+    dedos.set(hasta, { ...origen, id: hasta });
+    if (destino) dedos.set(desde, { ...destino, id: desde });
+    mensaje = "";
+    ctx.reproducir("click");
     pintar();
 }
 
@@ -239,61 +298,88 @@ function gastarCristales(puestos) {
     }
 }
 
+/* Guardar en una mano: primero se quita lo robado (si alguien ya no lo tiene, no se hace nada) */
+async function guardar(mano) {
+    const p = pj();
+    const deMano = lista().filter(d => parteDeDedo(d.id) === mano);
+    const robos = await confirmarRobos(deMano);
+    if (!robos.ok) return fallarRobo(robos, deMano);
+    const { resultado, fallo } = ctx.conEmbriaguez("objeto", () => guardarEnMano(p, mano, cargarDedos(deMano), ctx.gastar));
+    if (fallo || !resultado.ok) robos.deshacer();
+    if (fallo) { dedos.clear(); ctx.actualizarTodo(); return pintar(); }
+    mensaje = resultado.resumen.join(" · ");
+    if (resultado.ok) {
+        gastarCristales(deMano);
+        deMano.forEach(d => dedos.delete(d.id));
+    }
+    ctx.actualizarTodo();
+    // Guardado y sin más elementos puestos: la ventana se cierra (el resumen sale como aviso)
+    if (resultado.ok && !dedos.size) {
+        ctx.aviso("Energía guardada", resultado.resumen);
+        mensaje = "";
+        bootstrap.Modal.getInstance(ventana())?.hide();
+        return;
+    }
+    pintar();
+}
+
+/* Llenar el cristal que elige destinoLlenar (donde quepa o el que menos pierde) */
+async function llenar() {
+    const p = pj();
+    const puestos = lista();
+    const destino = destinoLlenar(p, puestos);
+    const motivo = destino.motivo || motivoNoGenerar(p, puestos);
+    if (motivo) { mensaje = motivo; return pintar(); }
+    const cristal = destino.cristal.objeto;
+    const robos = await confirmarRobos(puestos);
+    if (!robos.ok) return fallarRobo(robos, puestos);
+    const { resultado: gastado, fallo } = ctx.conEmbriaguez("objeto", () => ctx.gastar(["cabeza"], `Llenar ${cristal.nombre}`));
+    if (fallo || !gastado) {
+        robos.deshacer();
+        mensaje = fallo ? "" : "Sin acción de boca.";
+        ctx.actualizarTodo();
+        return pintar();
+    }
+    const coste = costeGenerar(p, puestos);
+    const r = llenarCristal(p, cristal, puestos[0].elemento, puestos.length);
+    p.vida -= coste;
+    mensaje = `${cristal.nombre}: +${r.anadido} de ${ELEMENTOS_SACRO[puestos[0].elemento].etiqueta}${r.perdido ? ` (se pierden ${r.perdido}: no caben)` : ""}${coste ? ` · −${coste} PV` : ""}`;
+    dedos.clear();
+    ctx.actualizarTodo();
+    pintar();
+}
+
 function alPulsar(e) {
     const dedo = e.target.closest(".dedo-sacro");
     if (dedo) {
+        if (ignorarClic) return;
         if (dedo.classList.contains("bloqueado")) { mensaje = motivoDedoNoUsable(pj(), dedo.dataset.dedo) ?? ""; return pintar(); }
         if (elegida) return poner(dedo.dataset.dedo, elegida);
         if (dedos.has(dedo.dataset.dedo)) { dedos.delete(dedo.dataset.dedo); mensaje = ""; ctx.reproducir("click"); return pintar(); }
         mensaje = "Elige primero un elemento: arrástralo o tócalo.";
         return pintar();
     }
+    const tipo = e.target.closest(".tipo-sacro");
+    if (tipo) {
+        ctx.reproducir("click");
+        tipoPeticion = tipo.dataset.tipo;
+        return pintar();
+    }
     const boton = e.target.closest("button[data-accion]");
     if (!boton || boton.disabled) return;
     ctx.reproducir("click");
     const p = pj();
-    const puestos = lista();
     switch (boton.dataset.accion) {
-        case "guardar": {
-            const mano = boton.dataset.mano;
-            const deMano = puestos.filter(d => parteDeDedo(d.id) === mano);
-            const { resultado, fallo } = ctx.conEmbriaguez("objeto", () => guardarEnMano(p, mano, cargarDedos(deMano), ctx.gastar));
-            if (fallo) { dedos.clear(); break; }
-            mensaje = resultado.resumen.join(" · ");
-            if (resultado.ok) {
-                gastarCristales(deMano);
-                deMano.forEach(d => dedos.delete(d.id));
-            }
-            ctx.actualizarTodo();
-            // Guardado y sin más elementos puestos: la ventana se cierra (el resumen sale como aviso)
-            if (resultado.ok && !dedos.size) {
-                ctx.aviso("Energía guardada", resultado.resumen);
-                mensaje = "";
-                bootstrap.Modal.getInstance(ventana())?.hide();
-                return;
-            }
-            break;
-        }
-        case "llenar": {
-            const cristal = objetoCinturon(p, boton.dataset.ranura, Number(boton.dataset.indice));
-            const motivo = motivoNoGenerar(p, puestos);
-            if (!cristal || motivo) { mensaje = motivo || "Ese cristal ya no está."; break; }
-            const { resultado: gastado, fallo } = ctx.conEmbriaguez("objeto", () => ctx.gastar(["cabeza"], `Llenar ${cristal.nombre}`));
-            if (fallo || !gastado) { mensaje = fallo ? "" : "Sin acción de boca."; ctx.actualizarTodo(); break; }
-            const coste = costeGenerar(p, puestos);
-            const r = llenarCristal(p, cristal, puestos[0].elemento, puestos.length);
-            p.vida -= coste;
-            mensaje = `${cristal.nombre}: +${r.anadido} de ${ELEMENTOS_SACRO[puestos[0].elemento].etiqueta}${r.perdido ? ` (se pierden ${r.perdido}: no caben)` : ""}${coste ? ` · −${coste} PV` : ""}`;
-            dedos.clear();
-            ctx.actualizarTodo();
-            break;
-        }
+        case "guardar": return guardar(boton.dataset.mano);
+        case "llenar": return llenar();
+        case "enviar": return enviar();
         case "vaciar": dedos.clear(); mensaje = ""; break;
         case "escanear": escanear(); break;
         case "pedirAmbiente": {
             esperandoAmbiente = true;
             // Un personaje del máster: se cierra esta ventana para que se abra la del ambiente (y vuelve al responder)
             if (ctx.esMaster) {
+                conservarAlCerrar = true; // vuelve a abrirse con el ambiente: los dedos puestos se quedan
                 bootstrap.Modal.getInstance(ventana())?.hide();
                 ctx.pedirAmbienteLocal(ctx.instancia(), p.nombre || "Sin nombre");
             }
@@ -317,17 +403,28 @@ function alPulsar(e) {
     pintar();
 }
 
-/* Arrastrar una ficha a un dedo (ratón y táctil); un toque sin moverse la deja elegida */
+/* Arrastrar (ratón y táctil): una ficha a un dedo (un toque sin moverse la deja elegida), o lo puesto en un dedo a
+   otro dedo (se mueve o se intercambia) o fuera de los dedos (vuelve a su fuente) */
 function alApretar(e) {
     const boton = e.target.closest(".ficha-elemento");
-    if (!boton || boton.disabled) return;
-    const f = fichaDe(boton.dataset.origen, boton.dataset.fuente);
+    const dedoLleno = boton ? null : e.target.closest(".dedo-sacro.lleno");
+    if ((!boton || boton.disabled) && !dedoLleno) return;
+    const f = boton ? fichaDe(boton.dataset.origen, boton.dataset.fuente) : null;
+    const desde = dedoLleno?.dataset.dedo;
     const inicio = { x: e.clientX, y: e.clientY };
     let fantasma = null;
+    const crearFantasma = () => {
+        if (boton) return boton.cloneNode(true);
+        const puesto = dedos.get(desde);
+        const ficha = document.createElement("span");
+        ficha.className = "ficha-elemento";
+        ficha.innerHTML = `${iconoElemento(puesto.elemento)}${escaparHtml(ELEMENTOS_SACRO[puesto.elemento].etiqueta)}`;
+        return ficha;
+    };
     const mover = (ev) => {
         if (!fantasma && Math.hypot(ev.clientX - inicio.x, ev.clientY - inicio.y) < 6) return;
         if (!fantasma) {
-            fantasma = boton.cloneNode(true);
+            fantasma = crearFantasma();
             fantasma.classList.add("ficha-fantasma");
             document.body.appendChild(fantasma);
         }
@@ -340,46 +437,78 @@ function alApretar(e) {
         document.removeEventListener("pointermove", mover);
         document.removeEventListener("pointerup", soltar);
         if (!fantasma) {
-            elegida = elegida && elegida.origen === f.origen && String(elegida.fuente) === String(f.fuente) ? null : f;
-            return pintar();
+            // Un toque en un dedo lleno lo quita (lo hace el clic); en una ficha, la deja elegida
+            if (boton) {
+                elegida = elegida && elegida.origen === f.origen && String(elegida.fuente) === String(f.fuente) ? null : f;
+                pintar();
+            }
+            return;
         }
         fantasma.remove();
         const destino = document.elementFromPoint(ev.clientX, ev.clientY)?.closest(".dedo-sacro");
-        if (destino) poner(destino.dataset.dedo, f);
-        else pintar();
+        if (boton) return destino ? poner(destino.dataset.dedo, f) : pintar();
+        // Tras arrastrar un dedo no cuenta el clic que llega a continuación
+        ignorarClic = true;
+        setTimeout(() => { ignorarClic = false; }, 0);
+        if (destino) return moverDedo(desde, destino.dataset.dedo);
+        dedos.delete(desde);
+        mensaje = "";
+        ctx.reproducir("click");
+        pintar();
     };
     document.addEventListener("pointermove", mover);
     document.addEventListener("pointerup", soltar);
 }
 
-/* Enviar al máster: la petición queda en pj.hechizo esperando (sin gastar nada hasta que la resuelva) */
-function enviar() {
+/* Enviar al máster _______________________________________________________________
+ * La petición queda en pj.hechizo esperando (sin gastar nada hasta que la resuelva). Sin máster (fuera de una sala o
+ * sin personajes del máster conectados): el daño se resuelve con la sugerencia, el objeto con la propuesta y el
+ * escenario no se puede. */
+async function enviar() {
     const p = pj();
     const puestos = lista();
-    if (!forma.trim()) { mensaje = "Escribe qué quieres hacer."; return pintar(); }
+    if (!tipoPeticion) { mensaje = "Elige si es daño, objeto o escenario."; return pintar(); }
     const motivo = motivoNoDedos(p, puestos) || motivoNoGenerar(p, puestos);
     if (motivo) { mensaje = motivo; return pintar(); }
-    ctx.reproducir("click");
-    p.hechizo = {
-        id: globalThis.crypto?.randomUUID?.() ?? `h-${Date.now().toString(36)}`,
-        dedos: puestos.map(({ id, elemento, origen, fuente, puntos }) => ({ id, elemento, origen, fuente: String(fuente), ...(puntos !== undefined ? { puntos } : {}) })),
+    const hechizo = {
+        id: nuevoId(),
+        tipo: tipoPeticion,
+        dedos: puestos.map(({ id, elemento, origen, fuente, puntos }) => ({ id, elemento, origen, fuente: String(fuente), ...(Number.isFinite(puntos) ? { puntos } : {}) })),
         forma: forma.trim(),
         hora: Date.now()
     };
-    // Sugerencia para el máster: el daño mágico × multiplicador de cada elemento (lo puede cambiar)
-    const sugerencia = dannoElementos(p, puestos).map(e => ({ elemento: e.elemento, cantidad: e.cantidad }));
-    const hechizo = p.hechizo;
+    // Para el máster: el daño de cada dedo por separado (cada uno un golpe) y, en Objeto, lo que sale por defecto
+    const sugerencia = sugerenciaPorDedo(p, puestos);
+    const objetos = hechizo.tipo === "objeto" ? propuestaObjetos(p, puestos).map(cargarObjeto).filter(Boolean) : [];
+    const nombre = p.nombre || "Sin nombre";
+    const conMaster = ctx.esMaster || ctx.masterConectado();
+    if (!conMaster && hechizo.tipo === "escenario") {
+        mensaje = "El máster no está conectado: para cambiar el escenario hace falta el máster.";
+        ctx.aviso("Magia", [mensaje]);
+        return pintar();
+    }
+    if (!conMaster && hechizo.tipo === "objeto" && !objetos.length) {
+        mensaje = "Sin el máster, solo la Kristala (cristales) y la Metala (metal) crean objetos.";
+        ctx.aviso("Magia", [mensaje]);
+        return pintar();
+    }
+    p.hechizo = hechizo;
     dedos.clear();
     forma = "";
     mensaje = "";
     ctx.actualizarTodo();
-    pintar();
     if (ctx.esMaster) {
         // Un personaje del máster: se cierra esta ventana y se abre la de resolver
         bootstrap.Modal.getInstance(ventana())?.hide();
-        return ctx.encolarLocal(ctx.instancia(), p.nombre || "Sin nombre", hechizo, sugerencia);
+        return ctx.encolarLocal(ctx.instancia(), nombre, hechizo, sugerencia, objetos);
     }
-    emitirPrivado("hechizo", { para: PARA_TODOS, hechizo, sugerencia }).catch(error => {
+    if (!conMaster) {
+        // Sin máster: lo que saldría por defecto
+        const resultado = hechizo.tipo === "danno" ? resultadoPorDefecto(hechizo.id, sugerencia) : { id: hechizo.id, objetos };
+        return aplicarResultadoHechizo(null, { ...resultado, nota: "Sin máster: se aplica lo que sale por defecto." });
+    }
+    pintar();
+    emitirPrivado("hechizo", { para: PARA_TODOS, hechizo, sugerencia, objetos }).catch(error => {
         if (pj().hechizo?.id === hechizo.id) pj().hechizo = null;
         ctx.aviso("Magia", [`No se pudo enviar al máster: ${error.message ?? error}`]);
         ctx.actualizarTodo();
@@ -387,10 +516,20 @@ function enviar() {
     });
 }
 
+/* Daño sin máster: un golpe por dedo con su tirada de Inteligencia + Percepción y dado medio */
+function resultadoPorDefecto(id, sugerencia) {
+    return {
+        id, radio: 1,
+        golpes: sugerencia.filter(s => s.cantidad > 0).map(s => ({ danno: [{ elemento: s.elemento, cantidad: s.cantidad }], estados: false })),
+        tirada: { caracteristica: "inteligencia", habilidad: "percepcion", dado: 1 }
+    };
+}
+
 /* Escanear y quitar (13-sacro.md §12) ___________________________________________________
  * Escanear emite "escaneo" a toda la sala; cada pestaña con energía en las manos (o NPC cargados, en la del máster)
- * contesta "escaneoRespuesta" solo al que escanea. Los personajes de esta misma pestaña (los del máster) se miran en
- * local. Quitar: "quitarEnergia" a la pestaña dueña, que lo quita y contesta "energiaQuitada"; entonces va al dedo. */
+ * contesta "escaneoRespuesta" solo al que escanea, con la potencia de cada dedo. Los personajes de esta misma pestaña
+ * (los del máster) se miran en local. Lo quitado se pone en un dedo sin quitárselo a nadie: se le quita al resolver
+ * (confirmarRobos: en local o con "quitarEnergia" a la pestaña dueña, que contesta "energiaQuitada"). */
 const SEGUNDOS_ESCANEO = 3;
 
 /* Lo que llevan encima los personajes de esta pestaña (salvo el que escanea) */
@@ -402,10 +541,24 @@ function energiaPropia(salvo = null) {
     }).filter(Boolean);
 }
 
+// Potencia de un dedo (con decimales; solo se redondea el resultado de la magia)
+const puntoValido = (n) => (n === null || n === undefined || !Number.isFinite(Number(n)) ? null : Math.max(0, Math.min(999, Math.round(Number(n) * 100) / 100)));
+/* Lo quitado a alguien (viene de otra pestaña: se valida): { elemento, puntos, mano? } o, de un cristal, { ranura, indice } */
+const cargarQuitado = (q) => ({
+    elemento: q.elemento, puntos: puntoValido(q.puntos),
+    ...(MANOS.includes(q.mano) ? { mano: q.mano } : {}),
+    ...(/^accesorio-\d+$/.test(String(q.ranura)) && Number.isInteger(q.indice) ? { ranura: q.ranura, indice: q.indice } : {})
+});
+
 function anadirResultados(lista) {
     for (const r of Array.isArray(lista) ? lista : []) {
         const elementos = (Array.isArray(r?.elementos) ? r.elementos : []).filter(a => esElementoSacro(a?.elemento))
-            .map(a => ({ elemento: a.elemento, dedos: entero(a.dedos, 40) })).filter(a => a.dedos > 0);
+            .map(a => {
+                const dedosA = entero(a.dedos, 40);
+                const puntos = (Array.isArray(a.puntos) ? a.puntos : []).slice(0, dedosA).map(puntoValido);
+                const origenes = (Array.isArray(a.origenes) ? a.origenes : []).slice(0, dedosA).map(o => (["mano", "cinturon", "npc"].includes(o) ? o : "mano"));
+                return { elemento: a.elemento, dedos: dedosA, puntos, origenes };
+            }).filter(a => a.dedos > 0);
         if (!r?.instancia || !elementos.length) continue;
         escaneo.resultados.set(String(r.instancia), { instancia: String(r.instancia), nombre: String(r.nombre ?? "").slice(0, 60) || "Alguien", npc: r.npc === true, elementos });
     }
@@ -419,34 +572,75 @@ function escanear() {
     setTimeout(() => { if (escaneo?.id === id) { escaneo.terminado = true; pintar(); } }, SEGUNDOS_ESCANEO * 1000);
 }
 
-/* Pone en el dedo lo quitado (fuente "instancia|elemento") y lo descuenta de lo escaneado */
-function ponerQuitado(dedo, fuente, puntos) {
-    const [instancia, elemento] = fuente.split("|");
-    dedos.set(dedo, { id: dedo, elemento, origen: "quitado", fuente, ...(Number.isFinite(puntos) ? { puntos } : {}) });
-    const r = escaneo?.resultados.get(instancia);
-    const a = r?.elementos.find(x => x.elemento === elemento);
-    if (a) a.dedos--;
-    if (r) r.elementos = r.elementos.filter(x => x.dedos > 0);
+/* Potencia del siguiente dedo sin poner de esa fuente ("instancia|elemento"), la que tenía en la mano de su dueño
+   (null: un NPC, se calcula con tu daño mágico) */
+function puntosQuitado(fuente) {
+    const [instancia, elemento] = String(fuente).split("|");
+    const a = escaneo?.resultados.get(instancia)?.elementos.find(x => x.elemento === elemento);
+    const i = usados("quitado", fuente);
+    const n = a?.puntos[i];
+    if (!Number.isFinite(n)) return null;
+    // Lo de un cristal del cinturón, como al absorber uno propio: como mucho el daño de un dedo de quien lo quita
+    return a.origenes?.[i] === "cinturon" ? Math.min(n, maximoPorDedo(pj(), elemento)) : n;
 }
 
-function quitar(dedo, f) {
-    const [instancia, elemento] = f.fuente.split("|");
-    elegida = null;
-    if (ctx.personajesPropios().includes(instancia)) {
-        const r = ctx.conPersonaje(instancia, x => quitarElemento(x, elemento));
-        if (r) ponerQuitado(dedo, f.fuente, r.puntos);
-        else mensaje = "Ya no lo tiene.";
-        ctx.actualizarTodo();
-        return pintar();
-    }
+const nombreDueno = (instancia) => escaneo?.resultados.get(instancia)?.nombre ?? "Alguien";
+
+/* Pide a otra pestaña que quite estos elementos a su personaje (todo o nada); { ok, quitados } o ok false si no contesta */
+function pedirQuitar(instancia, elementos) {
     const id = nuevoId();
-    quitando.set(id, { dedo, fuente: f.fuente });
-    mensaje = "Quitándoselo…";
-    emitirPrivado("quitarEnergia", { para: instancia, id, elemento }).catch(error => {
-        quitando.delete(id);
-        mensaje = `No se pudo: ${error.message ?? error}`;
-        pintar();
+    return new Promise(resolve => {
+        const temporizador = setTimeout(() => { quitando.delete(id); resolve({ ok: false, sinRespuesta: true }); }, SEGUNDOS_QUITAR * 1000);
+        quitando.set(id, (r) => { clearTimeout(temporizador); resolve(r); });
+        emitirPrivado("quitarEnergia", { para: instancia, id, elementos }).catch(() => {
+            clearTimeout(temporizador);
+            quitando.delete(id);
+            resolve({ ok: false, sinRespuesta: true });
+        });
     });
+}
+
+/**
+ * Quita a sus dueños lo robado de estos dedos (al resolver). Todo o nada: si a alguno le falta, se devuelve lo ya
+ * quitado a los demás. @returns { ok: true, deshacer() } o { ok: false, nombre, sinRespuesta }
+ */
+async function confirmarRobos(dedosHechizo) {
+    const porDueno = new Map();
+    for (const d of dedosHechizo.filter(x => x.origen === "quitado")) {
+        const [instancia, elemento] = String(d.fuente).split("|");
+        if (!instancia || !esElementoSacro(elemento)) continue;
+        porDueno.set(instancia, [...(porDueno.get(instancia) ?? []), elemento]);
+    }
+    const hechos = []; // { instancia, local, quitados }
+    const deshacer = () => {
+        for (const h of hechos) {
+            if (h.local) ctx.conPersonaje(h.instancia, x => devolverElementos(x, h.quitados));
+            else emitirPrivado("devolverEnergia", { para: h.instancia, quitados: h.quitados }).catch(() => {});
+        }
+        hechos.length = 0;
+    };
+    for (const [instancia, elementos] of porDueno) {
+        let r;
+        if (ctx.personajesPropios().includes(instancia)) {
+            const quitados = ctx.conPersonaje(instancia, x => quitarElementos(x, elementos));
+            r = quitados ? { ok: true, quitados, local: true } : { ok: false };
+        } else r = await pedirQuitar(instancia, elementos);
+        if (!r.ok) {
+            deshacer();
+            return { ok: false, nombre: nombreDueno(instancia), sinRespuesta: Boolean(r.sinRespuesta) };
+        }
+        hechos.push({ instancia, local: Boolean(r.local), quitados: r.quitados ?? [] });
+    }
+    return { ok: true, deshacer };
+}
+
+/* Lo robado ya no estaba: no se hace nada (se quitan esos dedos y se avisa) */
+function fallarRobo(robos, puestos) {
+    puestos.filter(d => d.origen === "quitado").forEach(d => dedos.delete(d.id));
+    mensaje = robos.sinRespuesta ? `${robos.nombre} no contesta: no se le puede quitar nada. No se ha gastado nada.`
+        : `${robos.nombre} ya no tiene lo que le querías quitar. No se ha gastado nada.`;
+    ctx.aviso("Magia", [mensaje]);
+    ctx.actualizarTodo();
     pintar();
 }
 
@@ -655,43 +849,64 @@ const DIRECCIONES = ["arriba", "abajo", "a la izquierda", "a la derecha", "arrib
 const CARACTERISTICAS = { fortaleza: "Fortaleza", reflejos: "Reflejos", voluntad: "Voluntad", inteligencia: "Inteligencia" };
 const HABILIDADES = { atletismo: "Atletismo", combate: "Combate", percepcion: "Percepción", subterfugio: "Sigilo", comunicacion: "Carisma", cultura: "Cultura" };
 const entero = (v, max = 999) => Math.max(0, Math.min(max, Math.floor(Number(v) || 0)));
+const MAX_GOLPES = 20;
 
-/* Lo que manda el máster (viene de otra pestaña: se valida) */
+/* Lo que manda el máster (viene de otra pestaña: se valida). Formato:
+   { id, rechazado, golpes: [{ danno: [{ elemento, cantidad }], estados }], radio, tirada, estados, nota, objetos } */
 function cargarResultado(datos) {
     if (!datos?.id) return null;
     const tirada = datos.tirada && CARACTERISTICAS[datos.tirada.caracteristica] && HABILIDADES[datos.tirada.habilidad]
         ? { caracteristica: datos.tirada.caracteristica, habilidad: datos.tirada.habilidad, dado: entero(datos.tirada.dado, 2) } : null;
+    const golpes = (Array.isArray(datos.golpes) ? datos.golpes : []).slice(0, MAX_GOLPES).map(g => ({
+        danno: (Array.isArray(g?.danno) ? g.danno : []).filter(f => esDannoMagia(f?.elemento))
+            .map(f => ({ elemento: f.elemento, cantidad: entero(f.cantidad) })).filter(f => f.cantidad > 0).slice(0, MAX_GOLPES),
+        estados: g?.estados === true
+    }));
+    // Estados como los de una poción (provoca o cura); la magia no deja nada permanente: sin turnos pasa a 3
+    const estados = cargarEstadosObjeto({ estados: datos.estados }, "pocion")
+        .map(e => (e.quitar || e.turnos > 0 ? e : { ...e, turnos: 3 }));
     return {
         id: String(datos.id),
         rechazado: datos.rechazado === true,
-        danno: (Array.isArray(datos.danno) ? datos.danno : []).filter(f => esElementoSacro(f?.elemento))
-            .map(f => ({ elemento: f.elemento, cantidad: entero(f.cantidad) })).filter(f => f.cantidad > 0).slice(0, 7),
+        golpes: golpes.filter(g => g.danno.length || (g.estados && estados.length)),
         radio: Math.max(1, Math.min(5, entero(datos.radio) || 1)),
         tirada,
-        estado: datos.estado && ESTADOS_INFO[datos.estado.clave]
-            ? { clave: datos.estado.clave, valor: entero(datos.estado.valor, 99) || 1, turnos: entero(datos.estado.turnos, 99) } : null,
+        estados,
         nota: String(datos.nota ?? "").slice(0, 300),
         objetos: (Array.isArray(datos.objetos) ? datos.objetos : []).map(cargarObjeto).filter(Boolean).slice(0, 10)
     };
 }
 
 /**
- * Aplica la resolución del máster al personaje de esa instancia (null = el de la ficha): gasta las acciones de los
- * dedos (las 4 solo sin acciones gastadas) y los PV de generar, vacía los cristales usados y el ambiente, tira si lo
- * pide y saca el pop-up con el daño de cada elemento (golpe de magia). Los objetos van al botín.
+ * Aplica la resolución del máster (o la de por defecto, sin máster) al personaje de esa instancia (null = el de la
+ * ficha). Primero quita lo robado a sus dueños (si a alguno le falta, se cancela todo sin gastar nada); después gasta
+ * las acciones de los dedos (las 4 solo sin acciones gastadas) y los PV de generar, vacía los cristales usados y el
+ * ambiente, y según el tipo: daño (un golpe por cada uno del máster, cada uno con su tirada si la pide), objetos al
+ * botín o escenario (la nota, con tirada si la pide).
  */
-export function aplicarResultadoHechizo(instancia, datosBrutos) {
+export async function aplicarResultadoHechizo(instancia, datosBrutos) {
     const datos = cargarResultado(datosBrutos);
     const p = ctx.leerPersonaje(instancia);
     if (!datos || !p?.hechizo || p.hechizo.id !== datos.id) return;
     const hechizo = p.hechizo;
     const nombre = p.nombre || "Sin nombre";
+    const tipo = TIPOS_HECHIZO[hechizo.tipo] ? hechizo.tipo : "danno";
     ctx.reproducir("notificacion");
     // Lo ha resuelto (o rechazado) el máster: la ventana de Sacro del jugador se cierra
     if (ventana()?.classList.contains("show")) bootstrap.Modal.getInstance(ventana())?.hide();
     if (datos.rechazado) {
         ctx.conPersonaje(instancia, x => { x.hechizo = null; });
-        ctx.aviso("Magia rechazada", [`El máster ha rechazado lo que querías hacer: «${hechizo.forma}».`, ...(datos.nota ? [datos.nota] : [])]);
+        ctx.aviso("Magia cancelada", [`El máster ha cancelado lo que querías hacer${hechizo.forma ? `: «${hechizo.forma}»` : ""}. No se ha gastado nada.`, ...(datos.nota ? [datos.nota] : [])]);
+        return pintar();
+    }
+    // Lo robado se quita ahora; si alguien ya no lo tiene, no pasa nada (ni se gasta nada)
+    const robos = await confirmarRobos(hechizo.dedos);
+    if (!robos.ok) {
+        ctx.conPersonaje(instancia, x => { x.hechizo = null; });
+        const linea = robos.sinRespuesta ? `${robos.nombre} no contesta: no se le puede quitar la energía.` : `${robos.nombre} ya no tiene la energía que le querías quitar.`;
+        ctx.aviso("La magia falla", [linea, "No se ha gastado nada."]);
+        emitirEvento("objeto", { titulo: `${nombre}: magia`, subtitulo: "La magia falla", lineas: [linea] });
+        ctx.actualizarTodo();
         return pintar();
     }
     // Acciones: en el personaje de la ficha, con la confirmación de siempre si no le quedan
@@ -712,37 +927,137 @@ export function aplicarResultadoHechizo(instancia, datosBrutos) {
         if (datos.objetos.length) x.botin.push(...datos.objetos);
     });
 
-    const elemental = datos.danno.map(f => entradaDannoSacro(f.elemento, f.cantidad));
-    const efecto = datos.estado ? { nombre: "Magia", estados: [{ ...datos.estado, probabilidad: 100 }] } : null;
-    const notas = [];
-    if (datos.radio > 1) notas.push(`En área de ${datos.radio}×${datos.radio}.`);
-    if (datos.tirada) notas.push(`Si no llega a la Defensa del objetivo, se desvía (Defensa − total) casillas ${DIRECCIONES[Math.floor(Math.random() * DIRECCIONES.length)]}.`);
-    if (datos.nota) notas.push(datos.nota);
-    const golpe = elemental.length || efecto ? { etiqueta: "Magia", total: 0, elemental, magia: true, ...(efecto ? { efecto } : {}), notas } : null;
-    const subtitulo = hechizo.forma.slice(0, 120);
+    const subtitulo = hechizo.forma.slice(0, 120) || TIPOS_HECHIZO[tipo].etiqueta;
+    const notasComunes = [];
+    if (datos.radio > 1) notasComunes.push(`En área de ${datos.radio}×${datos.radio}.`);
+    if (datos.nota) notasComunes.push(datos.nota);
+    const tirar = (golpe) => tirarMagia(instancia, datos.tirada, subtitulo, golpe);
 
-    if (datos.tirada) {
-        const x = ctx.leerPersonaje(instancia);
-        ctx.tirar({
-            nombreAccion: "Magia",
-            subtitulo,
-            valorHabilidad: Math.max(0, Number(x.getGenerico(datos.tirada.habilidad)) || 0),
-            etiquetaHabilidad: HABILIDADES[datos.tirada.habilidad],
-            valorCaracteristica: Number(x[datos.tirada.caracteristica]) || 0,
-            etiquetaCaracteristica: CARACTERISTICAS[datos.tirada.caracteristica],
-            modoTirada: datos.tirada.dado,
-            etiquetaTotal: "ATAQUE",
-            ...(golpe ? { calcularDanno: () => golpe } : {})
-        });
-    } else if (golpe) {
-        mostrarPopupDanno({ titulo: `${nombre}: magia`, subtitulo, golpes: [golpe] });
+    if (tipo === "danno" && datos.golpes.length) {
+        // Un golpe: se lanza ya. Varios: la ventana para lanzarlos uno a uno (así da tiempo a leer cada uno)
+        const magia = {
+            id: datos.id, forma: hechizo.forma, radio: datos.radio, tirada: datos.tirada, nota: datos.nota, estados: datos.estados,
+            golpes: datos.golpes.map(g => ({ ...g, lanzado: false }))
+        };
+        if (magia.golpes.length === 1) lanzarGolpe(instancia, magia, 0);
+        else {
+            ctx.conPersonaje(instancia, x => { x.magiaPendiente = magia; });
+            abrirGolpes(instancia);
+        }
+    } else if (datos.tirada) {
+        tirar(null);
+        if (notasComunes.length || hechizo.forma) emitirEvento("objeto", { titulo: `${nombre}: magia`, subtitulo: TIPOS_HECHIZO[tipo].etiqueta, lineas: [hechizo.forma, ...notasComunes].filter(Boolean) });
     } else {
-        emitirEvento("objeto", { titulo: `${nombre}: magia`, subtitulo: "Magia", lineas: [hechizo.forma, ...notas] });
+        const objetos = datos.objetos.map(o => `Crea: ${o.nombre}${o.cantidad > 1 ? ` ×${o.cantidad}` : ""}`);
+        emitirEvento("objeto", { titulo: `${nombre}: magia`, subtitulo: TIPOS_HECHIZO[tipo].etiqueta, lineas: [hechizo.forma, ...objetos, ...notasComunes].filter(Boolean) });
     }
     if (lineas.length) ctx.aviso("Magia", lineas);
     if (datos.objetos.length) ctx.abrirBotin(instancia ?? ctx.instancia());
     ctx.actualizarTodo();
     pintar();
+}
+
+/* Tirada de la magia (la que pide el máster) con el golpe que hace si da (null: sin daño, p. ej. un escenario) */
+function tirarMagia(instancia, tirada, subtitulo, golpe) {
+    const x = ctx.leerPersonaje(instancia);
+    ctx.tirar({
+        nombreAccion: "Magia",
+        subtitulo,
+        valorHabilidad: Math.max(0, Number(x.getGenerico(tirada.habilidad)) || 0),
+        etiquetaHabilidad: HABILIDADES[tirada.habilidad],
+        valorCaracteristica: Number(x[tirada.caracteristica]) || 0,
+        etiquetaCaracteristica: CARACTERISTICAS[tirada.caracteristica],
+        modoTirada: tirada.dado,
+        etiquetaTotal: "ATAQUE",
+        ...(golpe ? { calcularDanno: () => golpe } : {})
+    });
+}
+
+/* Golpe para el pop-up a partir de uno del máster (magia = pj.magiaPendiente o lo resuelto): el daño físico normal va
+   en total (lo reduce la armadura), cada elemento es una ficha de su color (la Kristala atraviesa la armadura:
+   entradaDannoSacro) y, si el golpe los lleva, los estados como los de una poción */
+function construirGolpe(magia, i) {
+    const g = magia.golpes[i];
+    const n = magia.golpes.length;
+    const estados = cargarEstadosObjeto({ estados: magia.estados }, "pocion").map(e => (e.quitar || e.turnos > 0 ? e : { ...e, turnos: 3 }));
+    const notas = [];
+    if (magia.tirada) notas.push(`Si no llega a la Defensa del objetivo, se desvía (Defensa − total) casillas ${DIRECCIONES[Math.floor(Math.random() * DIRECCIONES.length)]}.`);
+    if (magia.radio > 1) notas.push(`En área de ${magia.radio}×${magia.radio}.`);
+    if (magia.nota) notas.push(magia.nota);
+    return {
+        etiqueta: n > 1 ? `Magia ${i + 1} de ${n}` : "Magia", magia: true,
+        total: g.danno.filter(f => f.elemento === DANNO_FISICO).reduce((suma, f) => suma + f.cantidad, 0),
+        elemental: g.danno.filter(f => f.elemento !== DANNO_FISICO).map(f => entradaDannoSacro(f.elemento, f.cantidad)),
+        ...(g.estados && estados.length ? { efecto: { nombre: "Magia", estadosObjeto: estados } } : {}),
+        notas
+    };
+}
+
+/* Lanza un golpe: con la tirada que pide el máster o, sin tirada, el pop-up de daño */
+function lanzarGolpe(instancia, magia, i) {
+    const nombre = ctx.leerPersonaje(instancia)?.nombre || "Sin nombre";
+    const n = magia.golpes.length;
+    const subtitulo = `${magia.forma.slice(0, 120) || "Daño"}${n > 1 ? ` (${i + 1} de ${n})` : ""}`;
+    const golpe = construirGolpe(magia, i);
+    const tirada = magia.tirada && CARACTERISTICAS[magia.tirada.caracteristica] && HABILIDADES[magia.tirada.habilidad] ? magia.tirada : null;
+    if (tirada) tirarMagia(instancia, tirada, subtitulo, golpe);
+    else mostrarPopupDanno({ titulo: `${nombre}: magia`, subtitulo, golpes: [golpe] });
+}
+
+/* Lanzar la magia golpe a golpe (#modalGolpesMagia) _______________________________________
+ * Con varios golpes, el jugador los lanza uno a uno (cada uno con su tirada) para que los demás puedan leer cada
+ * pop-up y haya emoción en cada tirada. Lo que queda se guarda en pj.magiaPendiente: si se cierra la ventana, se
+ * sigue desde la habilidad Sacro. */
+const ventanaGolpes = () => el("modalGolpesMagia");
+let instanciaGolpes = null; // de quién es la magia que se está lanzando (null = el de la ficha)
+
+const htmlFichasGolpe = (g) => g.danno.map(f => {
+    const ficha = fichaDannoMagia(f.elemento, f.cantidad);
+    return `<span class="popup-elemento" style="--color:${ficha.color};--color-texto:${ficha.colorTexto}" title="${escaparHtml(ficha.etiqueta)}">${f.cantidad} ${escaparHtml(f.elemento === DANNO_FISICO ? "Físico" : ELEMENTOS_SACRO[f.elemento].etiqueta)}</span>`;
+}).join("");
+
+function pintarGolpes() {
+    const magia = ctx.leerPersonaje(instanciaGolpes)?.magiaPendiente;
+    if (!magia) return;
+    const lanzados = magia.golpes.filter(g => g.lanzado).length;
+    const siguiente = magia.golpes.findIndex(g => !g.lanzado);
+    el("contadorGolpesMagia").textContent = `(${lanzados} / ${magia.golpes.length})`;
+    el("textoGolpesMagia").textContent = `${magia.forma ? `«${magia.forma}». ` : ""}${magia.tirada ? "Cada golpe tiene su tirada." : "Sin tirada."} Lánzalos uno a uno; si cierras la ventana, sigues después desde la habilidad Sacro.`;
+    el("listaGolpesMagia").innerHTML = magia.golpes.map((g, i) => `
+        <div class="fila-objeto fila-golpe${g.lanzado ? " lanzado" : ""}${i === siguiente ? " siguiente" : ""}" data-index="${i}">
+            <span class="num-golpe">${i + 1}</span>
+            <span class="fichas-golpe">${htmlFichasGolpe(g) || "Sin daño"}${g.estados && magia.estados.length ? ` <span class="marca-estados" title="Lleva los estados">${iconoSao("veneno")}</span>` : ""}</span>
+            ${g.lanzado ? `<span class="estado-golpe">Lanzado</span>`
+                : `<button type="button" class="btn-eleccion" data-accion="lanzar" title="${magia.tirada ? "Tirar los dados de este golpe" : "Lanzar este golpe"}">${magia.tirada ? "Tirar" : "Lanzar"}</button>`}
+        </div>`).join("");
+}
+
+/** Abre la ventana para lanzar los golpes que quedan (de la magia de esa instancia; null = el de la ficha) */
+export function abrirGolpes(instancia = null) {
+    instanciaGolpes = instancia;
+    if (!ctx.leerPersonaje(instancia)?.magiaPendiente) return;
+    mostrarCuandoSePueda(() => {
+        pintarGolpes();
+        bootstrap.Modal.getOrCreateInstance(ventanaGolpes()).show();
+    });
+}
+
+function alPulsarGolpes(e) {
+    const boton = e.target.closest('[data-accion="lanzar"]');
+    const i = Number(boton?.closest("[data-index]")?.dataset.index);
+    if (!boton || !Number.isInteger(i)) return;
+    const magia = ctx.leerPersonaje(instanciaGolpes)?.magiaPendiente;
+    if (!magia?.golpes[i] || magia.golpes[i].lanzado) return;
+    ctx.reproducir("click");
+    lanzarGolpe(instanciaGolpes, magia, i);
+    let terminada = false;
+    ctx.conPersonaje(instanciaGolpes, x => {
+        if (!x.magiaPendiente?.golpes[i]) return;
+        x.magiaPendiente.golpes[i].lanzado = true;
+        if (x.magiaPendiente.golpes.every(g => g.lanzado)) { x.magiaPendiente = null; terminada = true; }
+    });
+    if (terminada) bootstrap.Modal.getInstance(ventanaGolpes())?.hide();
+    else pintarGolpes();
 }
 
 /** El máster dice qué hay en el ambiente para el personaje de esa instancia (null = el de la ficha) */
@@ -777,6 +1092,8 @@ export function abrirSacro() {
         ctx.aviso("Sacro", ["Solo los personajes del Underworld (casilla Underworld del perfil) pueden usar la magia."]);
         return;
     }
+    // Quedan golpes por lanzar de la última magia: primero eso
+    if (p.magiaPendiente) return abrirGolpes(null);
     elegida = null;
     mensaje = "";
     pintar();
@@ -793,6 +1110,7 @@ export function actualizarSacro() {
  *        conEmbriaguez(categoria, fn), reproducir(nombre), enSala(), esMaster, instancia(), leerPersonaje(instancia),
  *        conPersonaje(instancia, fn), tirar(opciones de ejecutarTirada), abrirBotin(instancia),
  *        encolarLocal / cancelarLocal / pedirAmbienteLocal (modo máster, interfazSacroMaster.js),
+ *        masterConectado() (en una sala con algún personaje del máster conectado),
  *        personajesPropios() (instancias de los personajes de esta pestaña), personajesSala() (los demás de la sala) }
  */
 export function inicializarSacro(contexto) {
@@ -801,12 +1119,19 @@ export function inicializarSacro(contexto) {
     if (!modal) return;
     modal.addEventListener("click", alPulsar);
     modal.addEventListener("pointerdown", alApretar);
+    el("listaGolpesMagia")?.addEventListener("click", alPulsarGolpes);
+    // Cerrar la ventana es como "Quitar todo": al volver a abrirla no hay nada en los dedos
+    modal.addEventListener("hidden.bs.modal", () => {
+        if (conservarAlCerrar) { conservarAlCerrar = false; return; }
+        dedos.clear();
+        elegida = null;
+        mensaje = "";
+    });
     modal.addEventListener("input", (e) => { if (e.target.id === "formaSacro") forma = e.target.value; });
     modal.addEventListener("keydown", (e) => {
         const dedo = e.target.closest?.(".dedo-sacro");
         if (dedo && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); alPulsar({ target: dedo }); }
     });
-    el("btnEnviarSacro").addEventListener("click", enviar);
     // Respuestas del máster de la sala (en modo máster sus propios personajes se resuelven en local)
     registrarManejador("hechizoResultado", (evento) => {
         if (ctx.esMaster || !esDelMasterDeSala(evento)) return;
@@ -827,26 +1152,37 @@ export function inicializarSacro(contexto) {
         anadirResultados(evento.datos.quien);
         pintar();
     });
-    // Te quitan un elemento (a ti o a uno de tus personajes, datos.para): sin tirada
+    // Te quitan elementos (a ti o a uno de tus personajes, datos.para) al resolver una magia: sin tirada, todo o nada
     registrarManejador("quitarEnergia", (evento) => {
         const d = evento.datos ?? {};
-        if (!esElementoSacro(d.elemento) || !evento.instancia) return;
-        const r = ctx.conPersonaje(d.para, x => quitarElemento(x, d.elemento));
-        emitirPrivado("energiaQuitada", { para: evento.instancia, id: String(d.id ?? ""), ok: Boolean(r), puntos: r?.puntos ?? null }).catch(() => {});
-        if (r) {
+        const elementos = (Array.isArray(d.elementos) ? d.elementos : [d.elemento]).filter(esElementoSacro).slice(0, 20);
+        if (!elementos.length || !evento.instancia) return;
+        const quitados = ctx.conPersonaje(d.para, x => quitarElementos(x, elementos));
+        emitirPrivado("energiaQuitada", { para: evento.instancia, id: String(d.id ?? ""), ok: Boolean(quitados), quitados: quitados ?? [] }).catch(() => {});
+        if (quitados) {
             ctx.reproducir("notificacion");
-            ctx.aviso("Te quitan energía", [`${evento.personaje || "Alguien"} te ha quitado ${ELEMENTOS_SACRO[d.elemento].etiqueta}.`]);
+            ctx.aviso("Te quitan energía", [`${evento.personaje || "Alguien"} te ha quitado ${describirEnergia({ dedos: quitados })}.`]);
             ctx.actualizarTodo();
         }
     });
     registrarManejador("energiaQuitada", (evento) => {
         const d = evento.datos ?? {};
-        const pendiente = quitando.get(String(d.id));
-        if (!pendiente) return;
+        const resolver = quitando.get(String(d.id));
+        if (!resolver) return;
         quitando.delete(String(d.id));
-        if (d.ok === true && !dedos.has(pendiente.dedo)) { ponerQuitado(pendiente.dedo, pendiente.fuente, Number(d.puntos)); mensaje = ""; }
-        else mensaje = d.ok === true ? "Ese dedo ya tiene otro elemento: lo quitado se pierde." : "Ya no lo tiene.";
-        pintar();
+        const quitados = (Array.isArray(d.quitados) ? d.quitados : []).filter(q => esElementoSacro(q?.elemento))
+            .map(cargarQuitado);
+        resolver({ ok: d.ok === true, quitados });
+    });
+    // Otro dueño no tenía lo suyo: te devuelven lo que te habían quitado para esa magia
+    registrarManejador("devolverEnergia", (evento) => {
+        const d = evento.datos ?? {};
+        const quitados = (Array.isArray(d.quitados) ? d.quitados : []).slice(0, 20).filter(q => esElementoSacro(q?.elemento))
+            .map(cargarQuitado);
+        if (!quitados.length) return;
+        ctx.conPersonaje(d.para, x => devolverElementos(x, quitados));
+        ctx.aviso("Energía devuelta", [`La magia de ${evento.personaje || "alguien"} ha fallado: recuperas ${describirEnergia({ dedos: quitados })}.`]);
+        ctx.actualizarTodo();
     });
     registrarManejador("transfusion", (evento) => recibirTransfusion(evento.datos?.para, evento.datos?.pv, String(evento.personaje || evento.datos?.de || "alguien")));
     // Ventana de transfusión

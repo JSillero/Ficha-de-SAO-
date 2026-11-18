@@ -9,7 +9,7 @@ import { cargarTrueque } from "./trueque.js";
 import { cargarCreacion } from "./creacion.js";
 import { crearNpc, cargarNpc, equiposDePartes, DEFENSA_MINIMA_NPC, defensaParalisisNpc, limpiarPesadilla } from "./npc.js";
 import { guardarFaseActiva, convertirEnJefe } from "./jefes.js";
-import { energiaVacia, cargarEnergiaManos, cargarHechizo, cargarAmbiente } from "./elementosSacro.js";
+import { energiaVacia, cargarEnergiaManos, cargarHechizo, cargarAmbiente, cargarMagiaPendiente } from "./elementosSacro.js";
 
 export { TAMANO_INVENTARIO };
 
@@ -157,6 +157,7 @@ export default class PJ {
         this.creacion = null; // objeto pedido al máster con los materiales apartados (creacion.js)
         this.ambienteSacro = []; // lo que el máster dice que hay en el ambiente para el próximo hechizo (13-sacro.md §3.2)
         this.hechizo = null; // petición de magia enviada al máster, esperando (elementosSacro.js, interfazSacro.js)
+        this.magiaPendiente = null; // magia resuelta con varios golpes, que se lanzan uno a uno (cargarMagiaPendiente)
         this.energiaManos = energiaVacia(); // energía de Sacro guardada en cada mano (elementosSacro.js, 13-sacro.md §7)
         this.ultimoGolpe = null; // { instancia, jugador, nombre } de quien dio el último golpe (desde un pop-up), o null
         this.permitirTrueque = false; // NPC: puede hacer trueques (los personajes siempre pueden)
@@ -254,9 +255,10 @@ export default class PJ {
         const habilidadAtaque = this.getGenerico(this.getHabilidadAtaque());
         this.dFisico = Math.floor((habilidadAtaque + this.fortaleza) / 4) + this.getModificador("dFisico");
         this.dDistancia = Math.floor(habilidadAtaque / 4) + this.getModificador("dDistancia");
-        // El daño mágico solo existe para los personajes del Underworld
+        // El daño mágico solo existe para los personajes del Underworld. Con decimales (se multiplica y se suma por dedo);
+        // lo que se redondea hacia abajo es el resultado de la magia
         this.dMagico = this.esUnderworld
-            ? Math.floor((this.getGenerico("sacro") + this.inteligencia) / 4) + this.getModificador("dMagico")
+            ? (this.getGenerico("sacro") + this.inteligencia) / 4 + this.getModificador("dMagico")
             : 0;
         this.iniciativa = (this.reflejos + this.inteligencia / 2) + this.getModificador("iniciativa");;
         this.vMovimiento = 3 + Math.floor(this.getGenerico("atletismo") / 5) + this.getModificador("vMovimiento");;
@@ -627,6 +629,7 @@ export default class PJ {
         /* Energía de Sacro guardada en las manos */
         this.energiaManos = cargarEnergiaManos(jsonObject.energiaManos);
         this.hechizo = cargarHechizo(jsonObject.hechizo);
+        this.magiaPendiente = cargarMagiaPendiente(jsonObject.magiaPendiente);
         this.ambienteSacro = cargarAmbiente(jsonObject.ambienteSacro);
 
         /* Equipo (con la poción aplicada, si la hay) */
@@ -712,6 +715,7 @@ export default class PJ {
             ultimoGolpe: this.ultimoGolpe,
             energiaManos: this.energiaManos,
             hechizo: this.hechizo,
+            magiaPendiente: this.magiaPendiente,
             ambienteSacro: this.ambienteSacro,
 
             /* Equipo */

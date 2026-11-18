@@ -596,6 +596,15 @@
     color: #7fd17f;
 }
 
+/* Golpe único (la energía de Aligi) que ya ha cogido otro (marcarCogido en eventos.js) */
+.popup-danno.cogido {
+    opacity: 0.5;
+}
+
+.popup-danno.cogido .popup-aplicar {
+    color: #888;
+}
+
 /* Comida o poción ofrecida a ti (eventos.js): botón para consumirla con la boca */
 .btn-consumir-oferta {
     display: block;

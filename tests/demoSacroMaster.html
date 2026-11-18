@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Magia del máster</title>
+<!-- Demo suelta (no forma parte de la app) de las ventanas del máster para resolver la magia según el tipo de petición
+     (Daño, Crear objeto, Escenario) y del final de la ventana del jugador (usar ahora / pedir al máster). Datos inventados.
+     Necesita servidor (módulos ES): npx http-server y abrir /tests/demoSacroMaster.html -->
+<link rel="icon" href="../imgs/atletismo_on.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../css/main.css">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+    body { background: #FBFBFB; padding: 16px; }
+    .demo-nota { max-width: 800px; margin: 0 auto 12px; color: #5a5a5a; font-size: 13px; }
+    .demo-nota h1 { font-size: 22px; font-weight: normal; margin: 0 0 4px; color: #4D4D4D; }
+    .demo-pestanas { display: flex; justify-content: center; margin: 0 auto 12px; }
+    .demo-ventana { position: static; display: block; }
+    .demo-ventana .modal-dialog { max-width: 800px; margin: 0 auto 24px; }
+    .demo-ventana[hidden] { display: none; }
+
+    /* ---- Lo que ha pedido el jugador: una tarjeta con quién, el texto, los elementos y el coste ---- */
+    .pedido-sacro { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+    .pedido-sacro-quien { font-size: 12px; color: #888; margin: 0; }
+    .pedido-sacro-forma { margin: 0; padding: 6px 10px; border-radius: 6px; background: #f4f4f4; font-size: 15px; color: #4D4D4D; }
+    .pedido-sacro-forma.vacia { color: #888; font-style: italic; font-size: 13px; }
+    .pedido-sacro-dedos { display: flex; flex-wrap: wrap; gap: 6px; }
+    .energia-elemento { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 2px; border-radius: 999px; background: #f4f4f4; font-size: 12px; color: #4D4D4D; }
+    .energia-elemento .icono-sao { width: 22px; height: 22px; }
+    .energia-elemento small { color: #888; }
+    .pedido-sacro-coste { font-size: 12px; color: #5a5a5a; margin: 0; }
+
+    /* ---- Navegar entre peticiones pendientes (en la cabecera, a la derecha) ---- */
+    .navegar-peticiones { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: #5a5a5a; }
+    .navegar-peticiones .btn-objeto { width: 28px; height: 28px; }
+
+    /* ---- Golpes: una lista compacta dentro de una tarjeta, una fila por golpe ---- */
+    .titulo-ranuras { font-size: 13px; color: #5a5a5a; margin: 6px 0 0; font-weight: normal; }
+    .golpes-sacro { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); padding: 2px 8px; }
+    .fila-golpe { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 13px; color: #4D4D4D; }
+    .fila-golpe + .fila-golpe, .fila-golpe + .rejilla-elementos, .rejilla-elementos + .fila-golpe { border-top: 1px solid #f4f4f4; }
+    .fila-golpe .num-golpe { width: 16px; color: #888; font-size: 11px; text-align: right; }
+    .fila-golpe .elegir-elemento { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; padding: 0; color: inherit; font-size: 13px; cursor: pointer; border-radius: 999px; }
+    .fila-golpe .elegir-elemento:hover { box-shadow: 0 0 0 2px #EBA601; }
+    .fila-golpe .elegir-elemento .icono-sao { width: 24px; height: 24px; }
+    .fila-golpe .elegir-elemento small { color: #888; font-size: 11px; }
+    .fila-golpe .paso { margin-left: auto; transform: scale(0.85); transform-origin: right center; }
+    .fila-golpe .btn-objeto { width: 26px; height: 26px; }
+    .rejilla-elementos { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 0 6px 22px; }
+    .golpes-sacro .btn-anadir-ranura { margin: 2px auto 4px; display: flex; }
+    .opciones-golpes { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; }
+    .resumen-golpes { font-size: 12px; color: #8a6d2a; text-align: center; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 10px; justify-content: center; }
+    .golpe-resumen { display: inline-flex; gap: 3px; align-items: center; }
+    .popup-elemento { display: inline-block; padding: 0 6px; border-radius: 999px; background: var(--color); color: var(--color-texto); font-size: 11px; }
+
+    /* ---- Final de la ventana del jugador ---- */
+    .sacro-resumen-demo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); padding: 6px 10px; font-size: 12px; color: #5a5a5a; }
+    .sacro-resumen-demo b { font-weight: normal; color: #888; margin-right: 4px; }
+    .sacro-resumen-demo .valor { font-size: 15px; color: #4D4D4D; }
+    .sacro-resumen-demo .btn-pastilla-sao { margin-left: auto; }
+    .sacro-acciones { display: grid; grid-template-columns: 1fr 1.6fr; gap: 10px; align-items: stretch; }
+    @media (max-width: 600px) { .sacro-acciones { grid-template-columns: 1fr; } }
+    .tarjeta-accion-sacro { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; }
+    .tarjeta-accion-sacro h3 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 14px; color: #5a5a5a; font-weight: normal; }
+    .tarjeta-accion-sacro h3 .icono-sao { width: 22px; height: 22px; }
+    .tarjeta-accion-sacro h3 small { color: #888; font-size: 11px; margin-left: auto; }
+    .tarjeta-accion-sacro .botones-usar { display: flex; flex-direction: column; gap: 6px; }
+    .tarjeta-accion-sacro .botones-usar .btn-pastilla-sao { width: 100%; }
+    /* Cabecera de "Pedir al máster": la etiqueta a la izquierda y el tipo (fichas pequeñas) a la derecha */
+    .cabecera-pedir { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .cabecera-pedir label { font-size: 13px; color: #666; }
+    .cabecera-pedir label small { color: #888; }
+    .tipos-sacro { display: inline-flex; margin-left: auto; padding: 2px; border-radius: 999px; background: #f4f4f4; }
+    .tipos-sacro .tipo-sacro { display: inline-flex; align-items: center; gap: 3px; border: none; background: none; padding: 2px 8px 2px 3px; border-radius: 999px; font-size: 12px; color: #4D4D4D; cursor: pointer; }
+    .tipos-sacro .tipo-sacro .icono-sao { width: 20px; height: 20px; }
+    .tipos-sacro .tipo-sacro:hover { color: #EBA601; }
+    .tipos-sacro .tipo-sacro[aria-checked="true"] { background: #4D4D4D; color: #FBFBFB; }
+    .tipos-sacro .tipo-sacro[aria-checked="true"] .icono-sao { --glifo: #EBA601; }
+    .tarjeta-accion-sacro textarea { width: 100%; resize: vertical; border: none; border-bottom: 1px solid #c9c9c9; border-radius: 4px 4px 0 0; background: #f4f4f4; padding: 6px 8px; font-size: 13px; }
+    .tarjeta-accion-sacro textarea:focus { outline: none; border-bottom-color: #EBA601; }
+    .pie-pedir { display: flex; align-items: center; gap: 8px; }
+    .pie-pedir .pista { font-size: 12px; color: #888; }
+    .pie-pedir .btn-eleccion { margin-left: auto; }
+</style>
+</head>
+<body>
+<div class="demo-nota">
+    <h1>Magia: ventanas del máster</h1>
+    Una ventana para cada tipo de petición. Cerrar (rosa) cancela la petición sin gastar nada, tras confirmarlo; Resolver (azul) se la manda al jugador.
+    Con varias peticiones pendientes, las flechas de la cabecera pasan de una a otra (sin resolver ni cancelar la que se deja).
+</div>
+<div class="demo-pestanas form-sao">
+    <div class="fichas-sao" id="demoPestanas">
+        <button type="button" class="ficha-sao" data-ver="jugador" aria-checked="true">Jugador</button>
+        <button type="button" class="ficha-sao" data-ver="danno" aria-checked="false">Máster · Daño</button>
+        <button type="button" class="ficha-sao" data-ver="objeto" aria-checked="false">Máster · Crear objeto</button>
+        <button type="button" class="ficha-sao" data-ver="escenario" aria-checked="false">Máster · Escenario</button>
+    </div>
+</div>
+
+<!-- Jugador: final de #modalSacro -->
+<div class="modal-sao demo-ventana" data-demo="jugador">
+    <div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Sacro <span class="contador-objetos">(3 / 8 dedos)</span></h5></div>
+        <div class="modal-body"><div class="form-objeto form-sao">
+            <p class="texto-esperando-trueque">(Arriba siguen las fuentes y las manos. Los dedos puestos se pueden arrastrar a otro dedo o fuera para devolverlos.)</p>
+            <div class="sacro-resumen-demo">
+                <span><b>Coste</b><span class="valor">6</span> de 24 PV</span>
+                <span><b>Acciones</b><span class="valor">3</span> boca, brazo izq., brazo der.</span>
+                <span><b>Daño</b><span class="popup-elemento" style="--color:#3A9AD9;--color-texto:#FBFBFB">3 Kriogenia</span> <span class="popup-elemento" style="--color:#3A9AD9;--color-texto:#FBFBFB">3 Kriogenia</span> <span class="popup-elemento" style="--color:#E25B12;--color-texto:#FBFBFB">4 Termika</span></span>
+                <button type="button" class="btn-pastilla-sao">Quitar todo</button>
+            </div>
+            <div class="sacro-acciones">
+                <div class="tarjeta-accion-sacro">
+                    <h3><span data-glifo="usar"></span>Usar ahora <small>sin el máster</small></h3>
+                    <div class="botones-usar">
+                        <button type="button" class="btn-pastilla-sao" title="Gasta la boca y los PV; se pierde al segundo Play o al descansar">Guardar en la mano izquierda</button>
+                        <button type="button" class="btn-pastilla-sao" disabled title="Con un arma a dos manos no se puede guardar energía en la mano">Guardar en la mano derecha</button>
+                        <button type="button" class="btn-pastilla-sao" disabled title="Un solo elemento (sin cristales del cinturón) y un cristal elemental del cinturón con hueco">Llenar cristal</button>
+                    </div>
+                </div>
+                <div class="tarjeta-accion-sacro">
+                    <h3><span data-glifo="personaje"></span>Pedir al máster</h3>
+                    <div class="cabecera-pedir">
+                        <label for="formaDemo">Qué quiero hacer <small>(opcional)</small></label>
+                        <div class="tipos-sacro" id="tipoJugador" role="radiogroup" aria-label="Tipo de magia">
+                            <button type="button" class="tipo-sacro" role="radio" aria-checked="false" title="Hacer daño"><span data-glifo="combate"></span>Daño</button>
+                            <button type="button" class="tipo-sacro" role="radio" aria-checked="false" title="Crear un objeto con los elementos"><span data-glifo="cristalElemental"></span>Objeto</button>
+                            <button type="button" class="tipo-sacro" role="radio" aria-checked="false" title="Cambiar el escenario"><span data-glifo="mapa"></span>Escenario</button>
+                        </div>
+                    </div>
+                    <textarea id="formaDemo" rows="2" placeholder="Lanza de hielo al lobo"></textarea>
+                    <div class="pie-pedir">
+                        <span class="pista" id="pistaEnviar">Elige si es daño, objeto o escenario</span>
+                        <button type="button" class="btn-eleccion" id="btnEnviarDemo" disabled title="Elige qué tipo de magia es">Enviar al máster</button>
+                    </div>
+                </div>
+            </div>
+        </div></div>
+        <div class="modal-footer"><button type="button" class="btn-modal-sao cancelar" title="Cerrar" aria-label="Cerrar"></button></div>
+    </div></div>
+</div>
+
+<!-- Máster: Daño -->
+<div class="modal-sao demo-ventana" data-demo="danno" hidden>
+    <div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title">Magia · Daño</h5>
+            <div class="botones-cabecera-modal navegar-peticiones" data-navegar></div>
+        </div>
+        <div class="modal-body"><div class="form-objeto form-sao" id="formDanno">
+            <div data-pedido="danno"></div>
+            <h6 class="titulo-ranuras">Golpes <small>(cada uno con su tirada)</small></h6>
+            <div class="golpes-sacro">
+                <div id="filasDanno"></div>
+                <button type="button" class="btn-anadir-ranura" id="btnAnadirFila" title="Añadir un tipo de daño" aria-label="Añadir un tipo de daño">+</button>
+            </div>
+            <div class="opciones-golpes">
+                <label class="casilla-tipo"><input type="checkbox" id="juntarTipo"> Juntar por tipo</label>
+                <label class="casilla-tipo"><input type="checkbox" id="unicoGolpe"> Un único golpe</label>
+            </div>
+            <p class="resumen-golpes" id="resumenGolpes"></p>
+            <div class="ranura" title="Lado del área: cada casilla más reduce el daño a la mitad">
+                <span class="ranura-icono" data-icono="mapa"></span>
+                <label class="ranura-etiqueta" for="radioDemo">Radio</label>
+                <input type="number" id="radioDemo" min="1" max="5" value="1">
+                <span id="textoRadio" class="ranura-resumen"></span>
+            </div>
+            <div class="ranura ranura-fichas"><span class="ranura-icono" data-icono="combate"></span><span class="ranura-etiqueta">Tirada</span>
+                <select class="tirada-demo"><option value="">Sin tirada</option><option value="intPer" selected>Inteligencia + Percepción</option><option value="refCom">Reflejos + Combate</option><option value="otra">Otra</option></select></div>
+            <div class="ranura ranura-fichas"><span class="ranura-icono" data-icono="iniciativa"></span><span class="ranura-etiqueta">Dado</span>
+                <select class="dado-demo"><option value="0">Bajo</option><option value="1" selected>Medio</option><option value="2">Alto</option></select></div>
+            <!-- El editor real de estados (crearEditorEstadosAlAcertar) con permanente: false -->
+            <details class="ranura-desplegable" open>
+                <summary><span class="ranura-icono" data-icono="veneno"></span><span class="ranura-etiqueta">Estados</span><span class="ranura-resumen" id="resumenEstados"></span></summary>
+                <div class="ranura-cuerpo editor-estados-acertar">
+                    <ul class="lista-estados-acertar">
+                        <li class="fila-estado-acertar">
+                            <span class="fichas-modo-estado" role="radiogroup" aria-label="Provoca o cura">
+                                <label class="casilla-tipo"><input type="radio" name="m0" checked> Provoca</label>
+                                <label class="casilla-tipo"><input type="radio" name="m0"> Cura</label>
+                            </span>
+                            <select aria-label="Estado"><option>Congelado</option><option>Envenenado</option><option>Quemadura</option><option>Electrocutado</option></select>
+                            <label>Potencia <input type="number" min="1" value="2"></label>
+                            <label>Turnos <input type="number" min="1" value="3"></label>
+                            <button type="button" class="btn-objeto" data-glifo-btn="descartar" title="Quitar estado" aria-label="Quitar estado"></button>
+                        </li>
+                    </ul>
+                    <button type="button" class="btn-anadir-ranura" title="Añadir estado" aria-label="Añadir estado">+</button>
+                    <label class="ranura"><span class="ranura-icono" data-icono="elemental"></span><span class="ranura-etiqueta">A todos los golpes</span><input type="checkbox" id="estadosTodos"></label>
+                </div>
+            </details>
+            <div class="ranura ranura-alta"><span class="ranura-icono" data-icono="diario"></span><label class="ranura-etiqueta">Nota para el jugador</label><textarea rows="2"></textarea></div>
+        </div></div>
+        <div class="modal-footer">
+            <button type="button" class="btn-modal-sao cancelar" title="Cancelar la petición (no gasta nada)" aria-label="Cancelar la petición"></button>
+            <button type="button" class="btn-modal-sao aceptar" title="Resolver" aria-label="Resolver"></button>
+        </div>
+    </div></div>
+</div>
+
+<!-- Máster: Crear objeto -->
+<div class="modal-sao demo-ventana" data-demo="objeto" hidden>
+    <div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title">Magia · Crear objeto</h5>
+            <div class="botones-cabecera-modal navegar-peticiones" data-navegar></div>
+        </div>
+        <div class="modal-body"><div class="form-objeto form-sao">
+            <div data-pedido="objeto"></div>
+            <h6 class="titulo-ranuras">Objetos que crea <small>(van a su botín)</small></h6>
+            <div class="lista-objetos" id="objetosDemo"></div>
+            <button type="button" class="btn-anadir-ranura" title="Crear objeto" aria-label="Crear objeto">+</button>
+            <div class="botones-ranura"><button type="button" class="btn-pastilla-sao" title="Vuelve a los objetos que salen de los elementos">Restablecer propuesta</button></div>
+            <div class="ranura ranura-alta"><span class="ranura-icono" data-icono="diario"></span><label class="ranura-etiqueta">Nota para el jugador</label><textarea rows="2"></textarea></div>
+        </div></div>
+        <div class="modal-footer">
+            <button type="button" class="btn-modal-sao cancelar" title="Cancelar la petición (no gasta nada)" aria-label="Cancelar la petición"></button>
+            <button type="button" class="btn-modal-sao aceptar" title="Resolver" aria-label="Resolver"></button>
+        </div>
+    </div></div>
+</div>
+
+<!-- Máster: Escenario -->
+<div class="modal-sao demo-ventana" data-demo="escenario" hidden>
+    <div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title">Magia · Escenario</h5>
+            <div class="botones-cabecera-modal navegar-peticiones" data-navegar></div>
+        </div>
+        <div class="modal-body"><div class="form-objeto form-sao">
+            <div data-pedido="escenario"></div>
+            <div class="ranura ranura-alta"><span class="ranura-icono" data-icono="diario"></span><label class="ranura-etiqueta">Nota para el jugador</label><textarea rows="3">El río se congela durante 3 turnos.</textarea></div>
+            <div class="ranura ranura-fichas"><span class="ranura-icono" data-icono="combate"></span><span class="ranura-etiqueta">Tirada</span>
+                <select class="tirada-demo"><option value="" selected>Sin tirada</option><option value="intPer">Inteligencia + Percepción</option><option value="refCom">Reflejos + Combate</option><option value="otra">Otra</option></select></div>
+            <div class="ranura ranura-fichas"><span class="ranura-icono" data-icono="iniciativa"></span><span class="ranura-etiqueta">Dado</span>
+                <select class="dado-demo"><option value="0">Bajo</option><option value="1" selected>Medio</option><option value="2">Alto</option></select></div>
+        </div></div>
+        <div class="modal-footer">
+            <button type="button" class="btn-modal-sao cancelar" title="Cancelar la petición (no gasta nada)" aria-label="Cancelar la petición"></button>
+            <button type="button" class="btn-modal-sao aceptar" title="Resolver" aria-label="Resolver"></button>
+        </div>
+    </div></div>
+</div>
+
+<script type="module">
+import { iconoSao } from "../scripts/iconos.js";
+import { ELEMENTOS_SACRO, CLAVES_ELEMENTOS_SACRO, entradaDannoSacro } from "../scripts/elementosSacro.js";
+import { prepararFormularioSao, crearFichas } from "../scripts/formularioSao.js";
+
+const el = (id) => document.getElementById(id);
+const conColor = (c) => `--color:${ELEMENTOS_SACRO[c].color};--color-glifo:${ELEMENTOS_SACRO[c].colorGlifo ?? "#FBFBFB"}`;
+const iconoElemento = (c) => `<span class="icono-activo" style="${conColor(c)}">${iconoSao(ELEMENTOS_SACRO[c].icono)}</span>`;
+
+/* Pedidos de ejemplo: tarjeta con quién, lo que quiere (o "Sin descripción"), los elementos y el coste */
+const PEDIDOS = {
+    danno: { quien: "Kirito", forma: "Lanza de hielo al lobo", dedos: [["kriogenia", 2, "generado"], ["termika", 1, "del ambiente"]], coste: "Gasta 6 PV y boca, brazo izq. y brazo der." },
+    objeto: { quien: "Kirito", forma: "", dedos: [["kristala", 2, "generado"], ["termika", 3, "generado"], ["hela", 1, "de un cristal"]], coste: "Gasta 9 PV y boca, brazo izq. y brazo der." },
+    escenario: { quien: "Asuna", forma: "Congelar el río para cruzarlo", dedos: [["kriogenia", 4, "generado"], ["akva", 2, "del ambiente"]], coste: "Gasta 6 PV y boca, brazo izq. y brazo der." }
+};
+document.querySelectorAll("[data-pedido]").forEach(div => {
+    const p = PEDIDOS[div.dataset.pedido];
+    div.innerHTML = `<div class="pedido-sacro">
+        <p class="pedido-sacro-quien">${p.quien} quiere hacer:</p>
+        <p class="pedido-sacro-forma${p.forma ? "" : " vacia"}">${p.forma || "Sin descripción"}</p>
+        <div class="pedido-sacro-dedos">${p.dedos.map(([c, n, o]) => `<span class="energia-elemento">${iconoElemento(c)}${ELEMENTOS_SACRO[c].etiqueta} ×${n} <small>${o}</small></span>`).join("")}</div>
+        <p class="pedido-sacro-coste">${p.coste}</p>
+    </div>`;
+});
+
+/* Navegar entre peticiones pendientes (solo sale con más de una) */
+document.querySelectorAll("[data-navegar]").forEach(n => {
+    n.innerHTML = `<button type="button" class="btn-objeto" title="Petición anterior" aria-label="Petición anterior">${iconoSao("anterior")}</button>
+        <span>1 de 2</span>
+        <button type="button" class="btn-objeto" title="Petición siguiente" aria-label="Petición siguiente">${iconoSao("siguiente")}</button>`;
+});
+
+/* Daño: una fila por dedo; los interruptores solo cambian cómo se agrupan al resolver */
+const filas = [{ elemento: "kriogenia", cantidad: 4 }, { elemento: "kriogenia", cantidad: 4 }, { elemento: "termika", cantidad: 6 }];
+let abierta = null; // fila con la rejilla de elementos abierta
+function pintarFilas() {
+    el("filasDanno").innerHTML = filas.map((f, i) => {
+        const info = ELEMENTOS_SACRO[f.elemento];
+        return `<div class="fila-golpe" data-index="${i}">
+            <span class="num-golpe">${i + 1}</span>
+            <button type="button" class="elegir-elemento" title="Cambiar el elemento">${iconoElemento(f.elemento)}${info.etiqueta} <small>${info.textoDanno}</small></button>
+            <input type="number" min="0" max="999" value="${f.cantidad}" aria-label="Daño">
+            <button type="button" class="btn-objeto" data-accion="quitar" title="Quitar" aria-label="Quitar">${iconoSao("descartar")}</button>
+        </div>${abierta === i ? `<div class="rejilla-elementos fichas-sao">${CLAVES_ELEMENTOS_SACRO.map(c => `<button type="button" class="ficha-sao" data-elemento="${c}" data-index="${i}" aria-checked="${c === f.elemento}"><span class="ficha-icono">${iconoElemento(c)}</span><span>${ELEMENTOS_SACRO[c].etiqueta}</span></button>`).join("")}</div>` : ""}`;
+    }).join("");
+    prepararFormularioSao(el("filasDanno"));
+    pintarResumen();
+}
+function golpes() {
+    let lista = filas.map(f => [{ ...f }]);
+    if (el("juntarTipo").checked) {
+        const grupos = new Map();
+        for (const f of filas) {
+            const info = ELEMENTOS_SACRO[f.elemento];
+            const clave = info.tipoDanno + (info.ignoraArmadura ? "-i" : "");
+            if (grupos.has(clave)) grupos.get(clave).cantidad += f.cantidad; else grupos.set(clave, { ...f });
+        }
+        lista = [...grupos.values()].map(f => [f]);
+    }
+    if (el("unicoGolpe").checked) lista = [lista.flat()];
+    const factor = 1 / 2 ** (Number(el("radioDemo").value) - 1);
+    return lista.map(g => g.map(f => ({ ...f, cantidad: Math.floor(f.cantidad * factor) })));
+}
+function pintarResumen() {
+    const gs = golpes();
+    const ficha = (f) => { const e = entradaDannoSacro(f.elemento, f.cantidad); return `<span class="popup-elemento" style="--color:${e.color};--color-texto:${e.colorTexto}">${e.cantidad} ${ELEMENTOS_SACRO[f.elemento].etiqueta}</span>`; };
+    el("resumenGolpes").innerHTML = `<span>Al resolver: ${gs.length} golpe${gs.length === 1 ? "" : "s"}</span>` + gs.map((g, i) => `<span class="golpe-resumen">${i + 1}. ${g.map(ficha).join("")}</span>`).join("");
+    const n = Number(el("radioDemo").value);
+    el("textoRadio").textContent = n > 1 ? `Área ${n}×${n}: daño ×1/${2 ** (n - 1)}` : "Un objetivo";
+    el("resumenEstados").textContent = `Congelado 2 · 3 turnos · ${el("estadosTodos").checked ? "en todos los golpes" : "solo en el primero"}`;
+}
+el("filasDanno").addEventListener("click", (e) => {
+    const opcion = e.target.closest("[data-elemento]");
+    if (opcion) { filas[Number(opcion.dataset.index)].elemento = opcion.dataset.elemento; abierta = null; return pintarFilas(); }
+    const i = Number(e.target.closest("[data-index]")?.dataset.index);
+    if (e.target.closest(".elegir-elemento")) { abierta = abierta === i ? null : i; return pintarFilas(); }
+    if (e.target.closest("[data-accion=quitar]")) { filas.splice(i, 1); abierta = null; return pintarFilas(); }
+});
+el("filasDanno").addEventListener("change", (e) => {
+    const i = Number(e.target.closest("[data-index]")?.dataset.index);
+    if (e.target.type === "number") { filas[i].cantidad = Math.max(0, Math.floor(Number(e.target.value) || 0)); pintarResumen(); }
+});
+el("btnAnadirFila").addEventListener("click", () => { filas.push({ elemento: "hela", cantidad: 0 }); abierta = filas.length - 1; pintarFilas(); });
+["juntarTipo", "unicoGolpe", "radioDemo", "estadosTodos"].forEach(id => el(id).addEventListener("change", pintarResumen));
+
+/* Crear objeto: la propuesta de 2 Kristala + 3 Termika + 1 Hela con daño mágico 6 (un cristal por Kristala, capacidad 6) */
+const objetos = [
+    { nombre: "Cristal de Kristala", detalle: "Cristal elemental · Termika 6/6 (se pierden 7)" },
+    { nombre: "Cristal de Kristala", detalle: "Cristal elemental · Hela 6/6" }
+];
+el("objetosDemo").innerHTML = objetos.map(o => `<div class="fila-objeto">
+    <span class="objeto-icono">${iconoSao("cristalElemental")}</span>
+    <div class="objeto-info"><div class="objeto-cabecera"><span class="objeto-nombre">${o.nombre}</span><span class="objeto-cantidad">×1</span></div>
+        <div class="objeto-detalle">${o.detalle}</div></div>
+    <div class="objeto-acciones">
+        <button type="button" class="btn-objeto" title="Editar" aria-label="Editar">${iconoSao("editar")}</button>
+        <button type="button" class="btn-objeto" title="Quitar" aria-label="Quitar">${iconoSao("descartar")}</button>
+    </div></div>`).join("");
+
+/* Iconos de los botones y fichas */
+document.querySelectorAll("[data-glifo]").forEach(s => { s.outerHTML = iconoSao(s.dataset.glifo); });
+document.querySelectorAll("[data-glifo-btn]").forEach(b => { b.innerHTML = iconoSao(b.dataset.glifoBtn); });
+document.querySelectorAll(".btn-modal-sao.aceptar").forEach(b => { b.innerHTML = iconoSao("aceptar"); });
+document.querySelectorAll(".btn-modal-sao.cancelar").forEach(b => { b.innerHTML = iconoSao("cancelar"); });
+document.querySelectorAll(".form-sao").forEach(f => prepararFormularioSao(f));
+document.querySelectorAll(".tirada-demo, .dado-demo").forEach(s => crearFichas(s));
+pintarFilas();
+
+/* Jugador: Enviar solo con un tipo elegido */
+el("tipoJugador").addEventListener("click", (e) => {
+    const ficha = e.target.closest(".tipo-sacro");
+    if (!ficha) return;
+    el("tipoJugador").querySelectorAll(".tipo-sacro").forEach(f => f.setAttribute("aria-checked", String(f === ficha)));
+    el("btnEnviarDemo").disabled = false;
+    el("btnEnviarDemo").title = "Enviar al máster";
+    el("pistaEnviar").textContent = "No gasta nada hasta que el máster lo resuelva";
+});
+
+/* Pestañas de la demo */
+el("demoPestanas").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-ver]");
+    if (!b) return;
+    el("demoPestanas").querySelectorAll("[data-ver]").forEach(x => x.setAttribute("aria-checked", String(x === b)));
+    document.querySelectorAll(".demo-ventana").forEach(v => { v.hidden = v.dataset.demo !== b.dataset.ver; });
+});
+</script>
+</body>
+</html>

@@ -992,8 +992,26 @@
                     <div class="sacro-cuerpo form-sao" id="cuerpoSacro"></div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn-modal-sao aceptar" id="btnEnviarSacro" title="Enviar al máster" aria-label="Enviar al máster"></button>
                     <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Magia con varios golpes (interfazSacro.js, abrirGolpes): el jugador los lanza uno a uno, cada uno con su tirada.
+         Lo que queda se guarda en pj.magiaPendiente y se sigue desde la habilidad Sacro -->
+    <div class="modal fade modal-sao" id="modalGolpesMagia" tabindex="-1" aria-labelledby="modalGolpesMagiaLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalGolpesMagiaLabel">Lanzar la magia <span id="contadorGolpesMagia" class="contador-objetos"></span></h5>
+                </div>
+                <div class="modal-body">
+                    <p id="textoGolpesMagia" class="texto-esperando-trueque"></p>
+                    <div id="listaGolpesMagia" class="lista-objetos lista-golpes"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar (lo que quede se lanza después desde Sacro)" aria-label="Cerrar"></button>
                 </div>
             </div>
         </div>
@@ -1041,82 +1059,90 @@
         </div>
     </div>
 
-    <!-- Modo máster: resolver la magia de un jugador (interfazSacroMaster.js) -->
+    <!-- Modo máster: resolver la magia de un jugador (interfazSacroMaster.js). Cambia según el tipo de petición
+         (data-tipo en #formSacroMaster; cada bloque dice en data-para para qué tipos sale). Cerrarla cancela la petición
+         sin gastar nada (con confirmación); con varias pendientes, las flechas de la cabecera pasan de una a otra -->
     <div class="modal fade modal-sao" id="modalSacroMaster" tabindex="-1" aria-labelledby="modalSacroMasterLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="modalSacroMasterLabel">Magia <span id="contadorSacroMaster" class="contador-objetos"></span></h5>
+                    <h5 class="modal-title" id="modalSacroMasterLabel">Magia</h5>
+                    <div class="botones-cabecera-modal navegar-peticiones" id="navegarSacroMaster" hidden>
+                        <button type="button" class="btn-objeto" data-ir="-1" title="Petición anterior" aria-label="Petición anterior"></button>
+                        <span id="contadorSacroMaster"></span>
+                        <button type="button" class="btn-objeto" data-ir="1" title="Petición siguiente" aria-label="Petición siguiente"></button>
+                    </div>
                 </div>
                 <div class="modal-body">
-                    <div id="formSacroMaster" class="form-objeto form-sao">
+                    <div id="formSacroMaster" class="form-objeto form-sao" data-tipo="danno">
                         <div id="pedidoSacroMaster"></div>
-                        <h6 class="titulo-ranuras">Daño de cada elemento</h6>
-                        <div id="dannoSacroMaster"></div>
-                        <div class="botones-ranura">
-                            <button type="button" class="btn-pastilla-sao" id="btnJuntarSacroMaster" title="Suma en una fila los elementos que hacen el mismo tipo de daño">Juntar por tipo</button>
-                        </div>
-                        <div class="ranura" title="Lado del área: cada casilla más reduce el daño a la mitad">
-                            <span class="ranura-icono" data-icono="mapa"></span>
-                            <label class="ranura-etiqueta" for="radioSacroMaster">Radio</label>
-                            <input type="number" id="radioSacroMaster" min="1" max="5" value="1">
-                            <span id="textoRadioSacroMaster" class="ranura-resumen"></span>
-                        </div>
-                        <div class="ranura ranura-fichas">
-                            <span class="ranura-icono" data-icono="combate"></span>
-                            <span class="ranura-etiqueta">Tirada</span>
-                            <select id="tiradaSacroMaster" aria-label="Tirada"></select>
-                        </div>
-                        <div class="ranuras-dobles" id="ranuraOtraTiradaSacro" hidden>
-                            <div class="ranura">
-                                <span class="ranura-icono" data-icono="aguante"></span>
-                                <label class="ranura-etiqueta" for="caracteristicaSacroMaster">Característica</label>
-                                <select id="caracteristicaSacroMaster"></select>
+                        <!-- Daño: un golpe por fila (con su tirada); los interruptores juntan al resolver -->
+                        <div class="bloque-sacro-master" data-para="danno">
+                            <h6 class="titulo-ranuras">Golpes <small>(cada uno con su tirada; arrastra para cambiar el orden)</small></h6>
+                            <div id="dannoSacroMaster" class="lista-objetos lista-golpes"></div>
+                            <button type="button" class="btn-anadir-ranura" id="btnAnadirGolpeSacro" title="Añadir un tipo de daño" aria-label="Añadir un tipo de daño">+</button>
+                            <div class="opciones-golpes">
+                                <label class="casilla-tipo" title="Suma en un golpe los del mismo tipo de daño (la Kristala, que atraviesa la armadura, va aparte)"><input type="checkbox" id="juntarSacroMaster"> Juntar por tipo</label>
+                                <label class="casilla-tipo" title="Todo en un solo golpe con una sola tirada"><input type="checkbox" id="unicoSacroMaster"> Un único golpe</label>
                             </div>
-                            <div class="ranura">
-                                <span class="ranura-icono" data-icono="percepcion"></span>
-                                <label class="ranura-etiqueta" for="habilidadSacroMaster">Habilidad</label>
-                                <select id="habilidadSacroMaster"></select>
+                            <p class="resumen-golpes" id="resumenGolpesSacro"></p>
+                            <div class="ranura" title="Lado del área: cada casilla más reduce el daño a la mitad">
+                                <span class="ranura-icono" data-icono="mapa"></span>
+                                <label class="ranura-etiqueta" for="radioSacroMaster">Radio</label>
+                                <input type="number" id="radioSacroMaster" min="1" max="5" value="1">
+                                <span id="textoRadioSacroMaster" class="ranura-resumen"></span>
                             </div>
                         </div>
-                        <div class="ranura ranura-fichas">
-                            <span class="ranura-icono" data-icono="iniciativa"></span>
-                            <span class="ranura-etiqueta">Dado</span>
-                            <select id="dadoSacroMaster" aria-label="Dado"></select>
-                        </div>
-                        <div class="ranura">
-                            <span class="ranura-icono" data-icono="elemental"></span>
-                            <label class="ranura-etiqueta" for="estadoSacroMaster">Estado</label>
-                            <select id="estadoSacroMaster"></select>
-                        </div>
-                        <div class="ranuras-dobles">
-                            <div class="ranura">
-                                <span class="ranura-icono" data-icono="magia"></span>
-                                <label class="ranura-etiqueta" for="valorEstadoSacroMaster">Valor</label>
-                                <input type="number" id="valorEstadoSacroMaster" min="1" max="99" value="1">
+                        <!-- Daño y escenario: tirada (en el escenario, opcional) -->
+                        <div class="bloque-sacro-master" data-para="danno escenario">
+                            <div class="ranura ranura-fichas">
+                                <span class="ranura-icono" data-icono="combate"></span>
+                                <span class="ranura-etiqueta">Tirada</span>
+                                <select id="tiradaSacroMaster" aria-label="Tirada"></select>
                             </div>
-                            <div class="ranura">
-                                <span class="ranura-icono" data-icono="historial"></span>
-                                <label class="ranura-etiqueta" for="turnosEstadoSacroMaster">Turnos</label>
-                                <input type="number" id="turnosEstadoSacroMaster" min="0" max="99" value="3">
+                            <div class="ranuras-dobles" id="ranuraOtraTiradaSacro" hidden>
+                                <div class="ranura">
+                                    <span class="ranura-icono" data-icono="aguante"></span>
+                                    <label class="ranura-etiqueta" for="caracteristicaSacroMaster">Característica</label>
+                                    <select id="caracteristicaSacroMaster"></select>
+                                </div>
+                                <div class="ranura">
+                                    <span class="ranura-icono" data-icono="percepcion"></span>
+                                    <label class="ranura-etiqueta" for="habilidadSacroMaster">Habilidad</label>
+                                    <select id="habilidadSacroMaster"></select>
+                                </div>
+                            </div>
+                            <div class="ranura ranura-fichas">
+                                <span class="ranura-icono" data-icono="iniciativa"></span>
+                                <span class="ranura-etiqueta">Dado</span>
+                                <select id="dadoSacroMaster" aria-label="Dado"></select>
                             </div>
                         </div>
-                        <h6 class="titulo-ranuras">Objetos que crea (van a su botín)</h6>
-                        <div id="objetosSacroMaster" class="lista-objetos"></div>
+                        <!-- Daño: estados (crearEditorEstadosAlAcertar sin probabilidad ni permanente); cada golpe dice si los lleva -->
+                        <div class="bloque-sacro-master" data-para="danno">
+                            <details class="ranura-desplegable" id="detallesEstadosSacro">
+                                <summary><span class="ranura-icono" data-icono="veneno"></span><span class="ranura-etiqueta">Estados</span><span class="ranura-resumen" id="resumenEstadosSacro"></span></summary>
+                                <div class="ranura-cuerpo editor-estados-acertar"></div>
+                            </details>
+                        </div>
+                        <!-- Crear objeto: la propuesta (cristales de Kristala, metal de Metala), editable -->
+                        <div class="bloque-sacro-master" data-para="objeto">
+                            <h6 class="titulo-ranuras">Objetos que crea <small>(van a su botín)</small></h6>
+                            <div id="objetosSacroMaster" class="lista-objetos"></div>
+                            <button type="button" class="btn-anadir-ranura" id="btnObjetoSacroMaster" title="Crear objeto" aria-label="Crear objeto">+</button>
+                            <div class="botones-ranura">
+                                <button type="button" class="btn-pastilla-sao" id="btnPropuestaSacroMaster" title="Vuelve a los objetos que salen de los elementos">Restablecer propuesta</button>
+                            </div>
+                        </div>
                         <div class="ranura ranura-alta">
                             <span class="ranura-icono" data-icono="diario"></span>
                             <label class="ranura-etiqueta" for="notaSacroMaster">Nota para el jugador</label>
                             <textarea id="notaSacroMaster" rows="2" maxlength="300"></textarea>
                         </div>
-                        <div class="botones-ranura">
-                            <button type="button" class="btn-pastilla-sao" id="btnObjetoSacroMaster">+ Crear objeto</button>
-                            <button type="button" class="btn-pastilla-sao" id="btnRechazarSacroMaster">Rechazar</button>
-                            <button type="button" class="btn-pastilla-sao" id="btnSiguienteSacroMaster" hidden>Siguiente petición</button>
-                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar (sigue pendiente)" aria-label="Cerrar (sigue pendiente)"></button>
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cancelar la petición (no gasta nada)" aria-label="Cancelar la petición"></button>
                     <button type="button" class="btn-modal-sao aceptar" id="btnResolverSacroMaster" title="Resolver" aria-label="Resolver"></button>
                 </div>
             </div>

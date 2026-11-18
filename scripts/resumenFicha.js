@@ -30,7 +30,7 @@ export const VALORES_COMBATE = [
     { clave: "dDistancia", etiqueta: "Daño a distancia", icono: "distancia",
         ayuda: "Combate / 4, hacia abajo. En sigilo usa Sigilo en lugar de Combate." },
     { clave: "dMagico", etiqueta: "Daño mágico", icono: "magia", soloUnderworld: true,
-        ayuda: "(Inteligencia + Sacro) / 4, hacia abajo." },
+        ayuda: "(Inteligencia + Sacro) / 4, con decimales. El daño de la magia se redondea hacia abajo al final." },
     { clave: "aguante", etiqueta: "Aguante", icono: "aguante",
         ayuda: "Fortaleza + Voluntad / 2. PV que ganas cada 5 niveles y resistencia al frío." },
     { clave: "perspicacia", etiqueta: "Perspicacia", icono: "perspicacia",
@@ -77,7 +77,7 @@ function tiradaMediaSigilo(pj) {
 
 export function estadisticasProtagonista(pj) {
     pj.calcularCaracteristicas();
-    const redondear = (n) => Math.round((Number(n) || 0) * 10) / 10;
+    const redondear = (n) => Math.round((Number(n) || 0) * 100) / 100;
     const equipos = [pj.manoDerecha, pj.manoIzquierda, ...(pj.esNpc ? equiposDePartes(pj) : [])].filter(Boolean);
     let mejor = null;
     for (const item of equipos) {
@@ -111,7 +111,7 @@ export function estadisticasProtagonista(pj) {
         vMovimiento: redondear(pj.vMovimiento),
         dFisico: redondear(pj.dFisico),
         dDistancia: redondear(pj.dDistancia),
-        dMagico: pj.esUnderworld || pj.esNpc ? redondear(pj.dMagico) : null,
+        dMagico: pj.esUnderworld || pj.esNpc ? Math.round((Number(pj.dMagico) || 0) * 100) / 100 : null,
         aguante: redondear(pj.aguante),
         perspicacia: redondear(pj.perspicacia),
         percepcionPasiva: redondear(pj.percepcionPasiva)

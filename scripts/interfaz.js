@@ -1905,10 +1905,10 @@ function construirValoresCombate() {
         </div>`).join("");
 }
 
-/* Números con coma decimal; los derivados que no se redondean pueden tener ,5 */
+/* Números con coma decimal (hasta dos cifras); los derivados que no se redondean pueden tener ,5 (o ,25 el daño mágico) */
 function formatearNumero(valor) {
     const numero = Number(valor) || 0;
-    return Number.isInteger(numero) ? String(numero) : numero.toFixed(1).replace(".", ",");
+    return Number.isInteger(numero) ? String(numero) : String(Math.round(numero * 100) / 100).replace(".", ",");
 }
 
 /* NPC: cada valor se escribe a mano (personaje.npc); debajo, el valor con modificadores si es distinto.
@@ -3161,19 +3161,21 @@ function leerElementalesFormulario(campo) {
 /* Estados al acertar (estadosAlAcertar.js) en los formularios de objetos y de artes: un acordeón con una fila por
    estado (estado, potencia, turnos o permanente y probabilidad). acordeon = el <details>, que se abre solo si hay
    alguno. opciones: { probabilidad (columna %), cura (fichas Provoca / Cura; curando se puede elegir "Todos los
-   negativos", CURAR_NEGATIVOS), turnos (sin ellos, la comida: dura hasta el descanso corto) }; configurar(opciones)
-   las cambia sin perder las filas.
+   negativos", CURAR_NEGATIVOS), turnos (sin ellos, la comida: dura hasta el descanso corto), permanente (false: sin la
+   casilla Permanente, siempre por turnos; la magia de Sacro) }; configurar(opciones) las cambia sin perder las filas.
    Devuelve { rellenar(lista), leer(), configurar(opciones) }. */
 function crearEditorEstadosAlAcertar(acordeon, opcionesIniciales = {}) {
     const contenedor = acordeon.querySelector(".editor-estados-acertar");
-    const POR_DEFECTO = { probabilidad: true, cura: false, turnos: true };
+    const POR_DEFECTO = { probabilidad: true, cura: false, turnos: true, permanente: true };
     let config = { ...POR_DEFECTO, ...opcionesIniciales };
     let estados = [];
     // Cada fila guarda todo ({ clave, valor, turnos, probabilidad, quitar }); leer() da lo que piden las opciones
     const normalizar = (datos) => {
         if (datos?.clave === CURAR_NEGATIVOS) return { clave: CURAR_NEGATIVOS, valor: 1, turnos: 3, probabilidad: 100, quitar: true };
         const estado = cargarEstadoAlAcertar(datos);
-        return estado ? { ...estado, quitar: Boolean(datos.quitar) } : null;
+        if (!estado) return null;
+        if (!config.permanente && estado.turnos === TURNOS_PERMANENTE) estado.turnos = 3;
+        return { ...estado, quitar: Boolean(datos.quitar) };
     };
     const opciones = (clave, cura) => (cura ? `<option value="${CURAR_NEGATIVOS}" ${clave === CURAR_NEGATIVOS ? "selected" : ""} title="Salvo oscuridad y embriaguez">Todos los negativos</option>` : "")
         + Object.entries(ESTADOS_INFO)
@@ -3194,7 +3196,7 @@ function crearEditorEstadosAlAcertar(acordeon, opcionesIniciales = {}) {
                     <label title="${conValor ? escaparHtml(ESTADOS_INFO[estado.clave].unidad) : cura ? "Cura el estado" : "Este estado no tiene potencia"}">Potencia
                         <input type="number" data-campo="valor" min="1" value="${estado.valor}" ${conValor ? "" : "disabled"}></label>
                     ${config.turnos ? `<label>Turnos <input type="number" data-campo="turnos" min="1" value="${permanente ? 3 : estado.turnos}" ${permanente || cura ? "disabled" : ""}></label>
-                    <label><input type="checkbox" data-campo="permanente" ${permanente ? "checked" : ""} ${cura ? "disabled" : ""}> Permanente</label>` : ""}
+                    ${config.permanente ? `<label><input type="checkbox" data-campo="permanente" ${permanente ? "checked" : ""} ${cura ? "disabled" : ""}> Permanente</label>` : ""}` : ""}
                     ${config.probabilidad ? `<label title="Probabilidad de que se aplique al acertar">% <input type="number" data-campo="probabilidad" data-incremento="5" min="1" max="100" value="${estado.probabilidad}"></label>` : ""}
                     <button type="button" class="btn-objeto" data-accion="quitar" title="Quitar estado" aria-label="Quitar estado">${iconoSao("descartar")}</button>
                 </li>`;
@@ -3425,6 +3427,7 @@ document.getElementById("divEquipamiento")?.addEventListener("click", (e) => {
     abrirTransfusion(mano);
 });
 
+const nuevoIdUnico = () => globalThis.crypto?.randomUUID?.() ?? `g-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 function ofrecerEnergia(mano) {
     const energia = energiaEnMano(personaje, mano);
     if (!energia) return;
@@ -3433,8 +3436,9 @@ function ofrecerEnergia(mano) {
     mostrarPopupDanno({
         titulo: `${personaje.nombre || "Alguien"} ofrece energía`,
         subtitulo: `${describirEnergia(energia)} · ${ETIQUETAS_MANO[mano]}`,
-        descripcion: "Sin tirada: quien la recibe la acepta pulsando el bloque.",
-        golpes: golpesOfrecerEnergia(personaje, mano)
+        descripcion: "Sin tirada: quien la recibe la acepta pulsando el bloque (también tú). Solo la puede coger uno.",
+        // Golpe único: lo coge el primero que lo pulse, también quien la ofrece (eventos.js, "golpeCogido")
+        golpes: golpesOfrecerEnergia(personaje, mano).map(golpe => ({ ...golpe, unico: true, idUnico: nuevoIdUnico() }))
     });
     quitarEnergia(personaje, mano);
     actualizarTodo();
@@ -5220,7 +5224,8 @@ function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null, obje
         mostrarPopupInfo("No se puede", ["Estás viendo la ficha de un jugador: vuelve a uno de tus personajes."]);
         return false;
     }
-    if (origen?.idPersonaje && origen.idPersonaje === personaje.idPersonaje) {
+    // (un golpe único, como la energía ofrecida con Aligi, sí se lo puede dar uno a sí mismo)
+    if (origen?.idPersonaje && origen.idPersonaje === personaje.idPersonaje && golpe.unico !== true) {
         mostrarPopupInfo("No se puede", [escaparHtml(`Este golpe lo ha dado ${autor}, que es el personaje que tienes en pantalla. Cambia al que lo recibe.`)]);
         return false;
     }
@@ -9066,6 +9071,11 @@ document.addEventListener("DOMContentLoaded", () => {
         encolarLocal: encolarHechizoLocal,
         cancelarLocal: cancelarHechizoLocal,
         pedirAmbienteLocal,
+        // ¿Hay máster para resolver la magia? En una sala con algún personaje del máster conectado
+        masterConectado: () => {
+            const sala = getEstadoOnline().sala;
+            return Boolean(sala?.master) && getTodosPersonajesSala().some(p => p.jugador === sala.master);
+        },
         // Personajes de esta pestaña (el del jugador, o los de la sesión del máster) y los demás que se pueden elegir
         personajesPropios: () => (MODO_MASTER ? idsEnSesion().map(id => `m-${id}`) : [instanciaEmisora()]),
         // pesadilla (del registro de la sala) y, para los máximos de la transfusión, vida y vidaMax de los del máster
@@ -9098,6 +9108,7 @@ document.addEventListener("DOMContentLoaded", () => {
         detalleObjeto: (objeto) => `${TIPOS_OBJETO[objeto.tipo]?.etiqueta ?? ""} · ${detalleObjeto(objeto)}`,
         abrirCrearObjeto: (...args) => abrirCrearObjetoEn(...args),
         abrirEditorObjeto: (...args) => abrirEditorObjeto(...args),
+        crearEditorEstados: crearEditorEstadosAlAcertar,
         aplicarResultadoLocal: aplicarResultadoHechizo,
         aplicarAmbienteLocal: aplicarAmbienteSacro
     });
