@@ -315,28 +315,51 @@ function hacerGolpesAplicables(popup, evento, autor, idAutorPropio = null) {
             bloquesUnicos.set(idUnico, [...(bloquesUnicos.get(idUnico) ?? []), bloque]);
             if (golpesCogidos.has(idUnico)) return ponerCogido(bloque, golpesCogidos.get(idUnico));
         }
+        // Modo máster: el mismo golpe se puede recibir en varios de sus personajes (radio de un hechizo, un espadón
+        // que da a más de uno), uno cada vez cambiando el de la ficha. No los que tienen objetivo ni los únicos
+        const varios = Boolean(golpesPropiosAplicables()) && !objetivo && !idUnico;
+        const recibidoPor = new Map(); // idPersonaje → nombre (solo con varios)
         bloque.classList.add("aplicable");
         bloque.tabIndex = 0;
         bloque.setAttribute("role", "button");
         bloque.title = objetivo ? `Recibirlo en ${String(golpe.nombreObjetivo || "tu personaje")}`
-            : idAutorPropio ? "Recibir este golpe en el personaje que tienes en pantalla" : "Recibir este golpe en tu personaje";
+            : (idAutorPropio || varios) ? "Recibir este golpe en el personaje que tienes en pantalla" : "Recibir este golpe en tu personaje";
         bloque.insertAdjacentHTML("beforeend", `<div class="popup-aplicar">Clic para recibir este golpe</div>`);
+        const aviso = bloque.querySelector(".popup-aplicar");
+        const textoRecibidos = () => `✓ Recibido por ${[...recibidoPor.values()].join(", ")}`;
         const aplicar = (e) => {
             e.stopPropagation(); // no cierra el pop-up
             if (bloque.classList.contains("aplicado") || bloque.classList.contains("cogido")) return;
+            const idActual = varios ? String(origen.idPersonaje() ?? "") : "";
+            const nombreActual = String(valor(origen.personaje) || "tu personaje");
+            if (varios && recibidoPor.has(idActual)) {
+                aviso.textContent = `${nombreActual} ya lo ha recibido · cambia de personaje`;
+                clearTimeout(bloque._avisoRecibido);
+                bloque._avisoRecibido = setTimeout(() => { aviso.textContent = textoRecibidos(); }, 2500);
+                return;
+            }
             // tirada: total de la tirada de ataque (para compararlo con la Defensa); null si no hubo tirada (artes)
             const tirada = evento.tipo === "tirada" && Number.isFinite(Number(evento.datos?.total)) ? Number(evento.datos.total) : null;
             // origen: quién ha dado el golpe (para saber quién mata a un NPC del máster)
             // idPersonaje: en un pop-up propio del máster, su personaje que lo emitió
-            const origen = { jugador: evento.jugador ?? null, instancia: evento.instancia ?? null, nombre: autor, idPersonaje: idAutorPropio };
-            if (!aplicadorDanno(golpe, { autor, titulo: evento.datos?.titulo ?? "", tirada, origen, objetivo })) return;
+            const quien = { jugador: evento.jugador ?? null, instancia: evento.instancia ?? null, nombre: autor, idPersonaje: idAutorPropio };
+            if (!aplicadorDanno(golpe, { autor, titulo: evento.datos?.titulo ?? "", tirada, origen: quien, objetivo })) return;
+            if (varios) {
+                // Sigue pulsable para otro personaje
+                recibidoPor.set(idActual, nombreActual);
+                clearTimeout(bloque._avisoRecibido);
+                bloque.classList.add("recibido-varios");
+                bloque.title = "Cambia de personaje para recibirlo también en otro";
+                aviso.textContent = textoRecibidos();
+                return;
+            }
             bloque.classList.replace("aplicable", "aplicado");
             bloque.removeAttribute("role");
             bloque.title = "Ya has recibido este golpe";
-            bloque.querySelector(".popup-aplicar").textContent = "✓ Recibido";
+            aviso.textContent = "✓ Recibido";
             // Golpe único: nadie más lo puede coger (aquí y en el resto de la sala)
             if (idUnico) {
-                marcarCogido(idUnico, String(valor(origen.personaje) || "otro personaje"));
+                marcarCogido(idUnico, nombreActual);
                 if (publicador) emitirPrivado("golpeCogido", { para: PARA_TODOS, id: idUnico }).catch(() => {});
             }
         };
