@@ -24,7 +24,8 @@
         { "tipo": "habilidad", "clave": "combate", "valor": 8 }
       ],
       "notaRequisitos": "",
-      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["lanza"] }, "danno": 0, "haceDanno": true
+      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["lanza"] }, "danno": 0, "haceDanno": true,
+      "atraviesaArmadura": true
     },
     {
       "id": "volver-al-remitente", "nombre": "Volver al remitente", "tipo": "pasiva", "grupo": "lanza",
@@ -46,7 +47,8 @@
         { "tipo": "habilidad", "clave": "combate", "valor": 8 }
       ],
       "notaRequisitos": "",
-      "costePA": 1, "combo": true, "uso": { "tipo": "arma", "armas": ["estoque"] }, "danno": 0, "haceDanno": true
+      "costePA": 1, "combo": true, "uso": { "tipo": "arma", "armas": ["estoque"] }, "danno": 0, "haceDanno": true,
+      "atraviesaArmadura": true
     },
     {
       "id": "estocada-relampagueante", "nombre": "Estocada relampagueante", "tipo": "activa", "grupo": "estoque",
@@ -148,7 +150,8 @@
         { "tipo": "habilidad", "clave": "combate", "valor": 10 }
       ],
       "notaRequisitos": "",
-      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["hacha"] }, "danno": 0, "haceDanno": true
+      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["hacha"] }, "danno": 0, "haceDanno": true,
+      "estadosAlAcertar": [{ "clave": "escudoInhabilitado", "valor": 1, "turnos": 3, "probabilidad": 100 }]
     },
     {
       "id": "hachazo-demoledor", "nombre": "Hachazo demoledor", "tipo": "activa", "grupo": "hacha",
@@ -157,7 +160,8 @@
       "ranuras": 1,
       "requisitos": [{ "tipo": "habilidad", "clave": "combate", "valor": 20 }],
       "notaRequisitos": "Tener Hachazo destructor.",
-      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["hacha"] }, "danno": 0, "haceDanno": true
+      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["hacha"] }, "danno": 0, "haceDanno": true,
+      "estadosAlAcertar": [{ "clave": "rotura", "valor": 5, "turnos": 3, "probabilidad": 100 }]
     },
     {
       "id": "fallo-impactante", "nombre": "Fallo impactante", "tipo": "pasiva", "grupo": "hacha",
@@ -179,7 +183,8 @@
         { "tipo": "habilidad", "clave": "combate", "valor": 10 }
       ],
       "notaRequisitos": "",
-      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["martillo_guerra"] }, "danno": 0, "haceDanno": true
+      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["martillo_guerra"] }, "danno": 0, "haceDanno": true,
+      "atraviesaArmadura": true
     },
     {
       "id": "golpe-rompedor", "nombre": "Golpe rompedor", "tipo": "activa", "grupo": "martillo",
@@ -188,7 +193,9 @@
       "ranuras": 1,
       "requisitos": [{ "tipo": "habilidad", "clave": "combate", "valor": 20 }],
       "notaRequisitos": "Tener Golpe conmocionador.",
-      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["martillo_guerra"] }, "danno": 0, "haceDanno": true
+      "costePA": 1, "combo": false, "uso": { "tipo": "arma", "armas": ["martillo_guerra"] }, "danno": 0, "haceDanno": true,
+      "atraviesaArmadura": true,
+      "estadosAlAcertar": [{ "clave": "rotura", "valor": 10, "turnos": 3, "probabilidad": 100 }]
     },
     {
       "id": "barrido-sismico", "nombre": "Barrido sísmico", "tipo": "activa", "grupo": "martillo",

@@ -32,7 +32,7 @@ import {
     transferirABaul, transferirAInventario, descartar, comer, beberPocion, aplicarPocionAArma, manosConArma,
     usarCristal, lanzarArrojadiza, manoParaUsar, categoriaEquipo, objetoEn, TIPOS_CINTURON, esCristalElemental, cristalConElemento, manosParaEquipar, motivoNoEquipar, equipar,
     motivoNoGuardar, motivoNoBeber, guardarEquipado, ranuraTieneEquipo, getCantidadAccesoriosPorArmadura, ranurasAccesorio, cabenEnInventario,
-    anadirCor, gastarCor, anadirEgo, gastarEgo, accesorioVacio, aplicarEfectoEnObjetivo, ofrecerObjeto, consumirOfrecido,
+    anadirCor, gastarCor, anadirEgo, gastarEgo, accesorioVacio, aplicarEfectoEnObjetivo, aplicarEfectosPrevios, inhabilitaEscudo, defensaSinEscudo, motivoEscudoInhabilitado, ofrecerObjeto, consumirOfrecido,
     capacidadInventario, ajustarInventario, cargarObjetosClave, motivoNoLanzar, lanzarArma, recogerArma, motivoNoRecoger, destinoRecoger,
     moverEnLista
 } from "./objetos.js";
@@ -74,7 +74,7 @@ import { inicializarCreacion, abrirCreacion, abrirCreacionesMaster, creacionesPe
     exportarHistorialCreaciones } from "./interfazCreacion.js";
 import { pintarIconos, crearFichas, crearRejilla, ponerResumen, prepararFormularioSao } from "./formularioSao.js";
 import { reproducir, iniciarBucle, pararBucle, precargarSonidos, estaSilenciado, setSilenciado } from "./sonidos.js";
-import { ejecutarDebug, crearPersonajePrueba, validarFicha } from "./debug.js";
+import { ejecutarDebug, crearPersonajePrueba, validarFicha, comprobarEfectosNuevos } from "./debug.js";
 import {
     descargarCatalogo, copiarDelCatalogo, estadoRequisitos, motivoRequisitos, ranurasUsadas, PARTES_USO_ARTE,
     equiparArte, desequiparArte, motivoNoEquiparArte, motivoNoDesequiparArte, usarArte, motivoNoUsarArte, partesDeArte,
@@ -1325,6 +1325,18 @@ function golpeDePersonaje(origen) {
     if (MODO_MASTER && origen.instancia.startsWith("m-")) {
         const pj = npcPorId(origen.instancia.slice(2));
         return Boolean(pj) && !pj.esNpc;
+    }
+    return false;
+}
+
+/* ¿El golpe lo ha dado una pesadilla? (registro de la sala o, en modo máster, uno de sus personajes) */
+function golpeDePesadilla(origen) {
+    if (!origen?.instancia) return false;
+    const entrada = getTodosPersonajesSala().find(p => p.instancia === origen.instancia);
+    if (entrada) return Boolean(entrada.pesadilla);
+    if (MODO_MASTER && origen.instancia.startsWith("m-")) {
+        const pj = npcPorId(origen.instancia.slice(2));
+        return Boolean(pj) && esPesadilla(pj);
     }
     return false;
 }
@@ -3501,6 +3513,8 @@ function usarItemEquipo(item, partes, subtitulo, preparar) {
         if (item.enUso) {
             item.enUso = false;
         } else {
+            const inhabilitado = motivoEscudoInhabilitado(personaje, item);
+            if (inhabilitado) return mostrarPopupInfo("No se puede", [escaparHtml(`${inhabilitado} No se puede levantar.`)]);
             const { resultado: usado } = conEmbriaguez("ataque", () => gastarAccionesOConfirmar(partes, `Usar ${nombre}`));
             if (!usado) { actualizarTodo(); return; } // borracho: la acción se ha gastado igual
             item.enUso = true;
@@ -3742,6 +3756,8 @@ function pintarBotonUsar(boton, item, partes) {
         titulo = disparos
             ? `Disparar ${nombre} (${disparos} disparo${disparos === 1 ? "" : "s"}; daño ${Number(item.danno) || 0} + ${bala ?? "la bala"})`
             : `${nombre}: cargador vacío, recarga el arma`;
+    } else if (arma.escudo && motivoEscudoInhabilitado(personaje, item)) {
+        titulo = `${nombre}: escudo inhabilitado, no se puede levantar`;
     } else if (arma.escudo) {
         titulo = item.enUso
             ? `${nombre} en uso: +${item.defensa || 0} de defensa hasta tu siguiente turno. Clic para guardarlo.`
@@ -3757,7 +3773,9 @@ function pintarBotonUsar(boton, item, partes) {
     boton.title = titulo;
     boton.setAttribute("aria-label", titulo);
     // Arma de fuego sin balas: desactivado, con el motivo en el título
-    boton.disabled = Boolean(arma.fuego) && !disparosPosibles(personaje, item);
+    // Escudo inhabilitado: desactivado (salvo para bajarlo si sigue levantado)
+    boton.disabled = (Boolean(arma.fuego) && !disparosPosibles(personaje, item))
+        || (!item.enUso && Boolean(motivoEscudoInhabilitado(personaje, item)));
     boton.classList.toggle("en-uso", Boolean(arma.escudo && item.enUso));
     boton.classList.toggle("sin-accion", !(arma.escudo && item.enUso) && !puedeGastarVarias(personaje, partes));
 }
@@ -4640,14 +4658,16 @@ const MAPEO_HABILIDADES_CARACTERISTICAS = {
  * - modoTirada: lo elegido en el panel (0 desventaja, 1 normal, 2 ventaja).
  * - modos: todas las fuentes de ventaja/desventaja que afectan al personaje (el panel y, si está
  *   aturdido, una desventaja). Cada tirada las pasa a combinarModos junto con las suyas (armadura, arma...).
+ * - caracteristica: la de la tirada; con Voluntad y Soñar despierto, una ventaja más.
  */
-function obtenerConfiguracionTirada() {
+function obtenerConfiguracionTirada(caracteristica = null, pj = personaje) {
     const radioSeleccionado = document.querySelector('input[name="modoTiradaRadio"]:checked');
     const modoTirada = radioSeleccionado ? Number(radioSeleccionado.value) : 1;
     const checkCritico = document.getElementById('checkCriticoFacil');
     const criticoFacil = checkCritico ? checkCritico.checked : false;
     const modos = [modoTirada];
-    if (estaActivo(personaje, "aturdido")) modos.push(0); // Aturdido: tira con desventaja
+    if (estaActivo(pj, "aturdido")) modos.push(0); // Aturdido: tira con desventaja
+    if (caracteristica === "voluntad" && estaActivo(pj, "sonarDespierto")) modos.push(2); // Soñar despierto: ventaja
     return { modoTirada, modos, criticoFacil };
 }
 
@@ -4676,7 +4696,7 @@ function inicializarTiradasHabilidades() {
 
         const dispararTirada = () => {
             if (fallaPorEmbriaguez(`Tirada de ${nombreAccion}`)) return;
-            const { modos, criticoFacil } = obtenerConfiguracionTirada();
+            const { modos, criticoFacil } = obtenerConfiguracionTirada(caractClave);
             // Valor efectivo: incluye modificadores y penalización de armadura (sin bajar de 0)
             const valorHab = Math.max(0, Number(personaje.getGenerico(habilidadId)) || 0);
             const valorCaract = caractClave ? (Number(personaje[caractClave]) || 0) : 0;
@@ -4709,7 +4729,7 @@ function inicializarTiradasHabilidades() {
         icono.addEventListener('click', () => {
             // Cada característica tiene su apartado en MENSAJES_BORRACHO (fortaleza, reflejos, voluntad, inteligencia)
             if (fallaPorEmbriaguez(`Tirada de ${nombre}`, atributo)) return;
-            const { modos, criticoFacil } = obtenerConfiguracionTirada();
+            const { modos, criticoFacil } = obtenerConfiguracionTirada(atributo);
             ejecutarTirada({
                 nombreAccion: nombre,
                 valorHabilidad: 0,
@@ -5111,7 +5131,10 @@ function actualizarEstados() {
     // Aviso en el panel de tiradas: los estados que cambian el modo de todas las tiradas
     const aviso = document.getElementById("avisoModoTirada");
     if (aviso) {
-        aviso.textContent = estaActivo(personaje, "aturdido") ? "Aturdido: tiras con desventaja" : "";
+        aviso.textContent = [
+            estaActivo(personaje, "aturdido") ? "Aturdido: tiras con desventaja" : "",
+            estaActivo(personaje, "sonarDespierto") ? "Soñar despierto: ventaja con Voluntad" : ""
+        ].filter(Boolean).join(" · ");
         aviso.style.display = aviso.textContent ? "" : "none";
     }
 
@@ -5244,8 +5267,11 @@ function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null, obje
         golpe = { ...golpe, total: 0, elemental: curativas, efecto: null, transfusion: null };
         soloCura = true;
     }
-    // Para dar, el ataque tiene que igualar o superar la Defensa (con escudos en uso)
-    const defensa = Number(personaje.defensa) || 0;
+    // Poción aplicada al arma o efecto de la arrojadiza: veneno, daño elemental, PV...
+    let efecto = golpe.efecto && typeof golpe.efecto === "object" ? golpe.efecto : null;
+    // Para dar, el ataque tiene que igualar o superar la Defensa (con escudos en uso). Si el golpe inhabilita el
+    // escudo (levantado y la tirada llega a la Defensa sin él), el escudo cae y cuenta la Defensa sin escudo
+    const defensa = inhabilitaEscudo(personaje, efecto, tirada) ? defensaSinEscudo(personaje) : Number(personaje.defensa) || 0;
     if (tirada !== null && tirada < defensa
         && !confirm(`La tirada de ${autor} (${tirada}) no llega a tu Defensa (${defensa}): este golpe no debería darte.\n\n¿Recibirlo igualmente?`)) {
         return false;
@@ -5260,8 +5286,6 @@ function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null, obje
             dannos.push({ tipo, cantidad: cantidad(valor), ignorarArmadura: ignoraArmadura === true });
         }
     });
-    // Poción aplicada al arma o efecto de la arrojadiza: veneno, daño elemental, PV...
-    const efecto = golpe.efecto && typeof golpe.efecto === "object" ? golpe.efecto : null;
     // Transfusión de sangre (13-sacro.md §9): quien la acepta pierde hasta esos PV (nunca por debajo de 0) y se avisa a
     // quien los recibe. A una pesadilla no se le pueden quitar
     const transfusion = golpe.transfusion && typeof golpe.transfusion === "object" && golpe.transfusion.para ? golpe.transfusion : null;
@@ -5274,12 +5298,19 @@ function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null, obje
         return false;
     }
     const vidaAntes = personaje.vida;
-    const conCabeceras = dannos.length + (efecto ? 1 : 0) > 1;
-    const lineas = dannos.flatMap(({ tipo, cantidad: valor, ignorarArmadura }) => {
+    // Soñar despierto: lo que le hace una pesadilla entra doble (tras armadura y resistencias)
+    const opcionesDanno = estaActivo(personaje, "sonarDespierto") && golpeDePesadilla(origen)
+        ? { multiplicador: 2, notaMultiplicador: "Soñar despierto: daño de pesadilla ×2" } : {};
+    // Rotura de armadura y escudo inhabilitado: antes del daño (el golpe ya usa la armadura rota)
+    const previos = aplicarEfectosPrevios(personaje, efecto, { tirada, ...opcionesDanno });
+    efecto = previos.efecto;
+    const lineas = [...previos.resumen];
+    const conCabeceras = dannos.length + (efecto ? 1 : 0) + (previos.resumen.length ? 1 : 0) > 1;
+    lineas.push(...dannos.flatMap(({ tipo, cantidad: valor, ignorarArmadura }) => {
         // Arte o efecto que atraviesa armadura: solo el daño físico se la salta (las resistencias elementales cuentan)
-        const resumen = aplicarDanno(personaje, valor, tipo, { ignorarArmadura: tipo === "fisico" && (golpe.atraviesaArmadura === true || ignorarArmadura === true) });
+        const resumen = aplicarDanno(personaje, valor, tipo, { ...opcionesDanno, ignorarArmadura: tipo === "fisico" && (golpe.atraviesaArmadura === true || ignorarArmadura === true) });
         return conCabeceras ? [`${TIPOS_DANNO[tipo].etiqueta} ${valor}:`, ...resumen] : resumen;
-    });
+    }));
     if (efecto) {
         const resumen = aplicarEfectoEnObjetivo(personaje, efecto);
         lineas.push(...(conCabeceras ? [`${String(efecto.nombre || "Poción")}:`, ...resumen] : resumen));
@@ -8943,6 +8974,8 @@ function inicializarDebug() {
     // Acceso desde la consola del navegador: fichaDebug.personaje, fichaDebug.ejecutar()...
     window.fichaDebug = {
         personaje, ejecutar: () => ejecutarDebug(personaje), crearPersonajePrueba, validarFicha,
+        // Rotura de armadura, escudo inhabilitado y Soñar despierto (lista de fallos; vacía si todo va bien)
+        comprobarEfectosNuevos,
         // Repinta la ficha tras cambiar fichaDebug.personaje a mano
         actualizar: () => actualizarTodo(),
         // Compendio de NPC: fichaDebug.compendio.info(), y páginas más pequeñas para ver cómo se reparten,
@@ -9166,10 +9199,11 @@ document.addEventListener("DOMContentLoaded", () => {
         abrirCrearObjeto: (...args) => abrirCrearObjetoEn(...args),
         confirmar: confirmarSao,
         crearVentanaHija,
-        // Tirada de creación con el panel de tiradas; null si falla por embriaguez
-        tirar: (opciones) => {
+        // Tirada de creación con el panel de tiradas; null si falla por embriaguez. `caracteristica` y `pj` (el que
+        // crea, que en modo máster puede no ser el de la ficha) deciden la ventaja de Soñar despierto
+        tirar: ({ caracteristica = null, pj = personaje, ...opciones }) => {
             if (fallaPorEmbriaguez(opciones.nombreAccion)) return null;
-            const { modos, criticoFacil } = obtenerConfiguracionTirada();
+            const { modos, criticoFacil } = obtenerConfiguracionTirada(caracteristica, pj);
             return ejecutarTirada({ ...opciones, criticoFacil, ...resolverModoTirada(modos) });
         }
     });

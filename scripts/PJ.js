@@ -53,7 +53,10 @@ export const ESTADOS_LISTA = [
     'aturdido', 'cegado', 'dormido', 'wither', 'embriaguez',
     'electrocutado', // Atletismo restado por electricidad
     'deslumbrado',   // Percepción restada por luz con los PV al máximo
-    'anticuracion'   // Humo de Morna (13-sacro.md §8): nada cura mientras dura (noSeCura en estados.js)
+    'anticuracion',  // Humo de Morna (13-sacro.md §8): nada cura mientras dura (noSeCura en estados.js)
+    'rotura',             // Rotura de armadura: resta su potencia a la armadura (aplicarRotura en estados.js)
+    'escudoInhabilitado', // No se puede levantar ni guardar el escudo
+    'sonarDespierto'      // Ventaja con Voluntad; las pesadillas le hacen el doble de daño
 ];
 
 /* Campos que se guardan y se cargan tal cual (sin conversión) */
@@ -248,7 +251,7 @@ export default class PJ {
         // La oscuridad resta PV máximos hasta un descanso largo. Los PV son enteros aunque el Aguante tenga ,5
         this.vidaMax = Math.floor(this.aguante * (Math.floor((this.nivel - 1) / 5) + 1)) + this.getModificador("vidaMax")
             - (Number(this.estados?.oscuridad?.valor) || 0);
-        this.armadura = (Number(this.equipoArmadura?.armadura) || 0) + this.getModificador("armadura");
+        this.armadura = Math.max(0, (Number(this.equipoArmadura?.armadura) || 0) + this.getModificador("armadura"));
         this.defensa = (5 + this.reflejos) + this.getGenerico("atletismo") + this.getModificador("defensa") + this.getDefensaEscudos();
         // Los bonificadores de daño son los únicos valores que se redondean hacia abajo
         // En sigilo, los ataques usan Sigilo en lugar de Combate (también para el bonificador)
@@ -283,7 +286,7 @@ export default class PJ {
         this.espaciosArte = usadas + 1;
         this.aguante = npc.aguante + this.getModificador("aguante");
         this.vidaMax = Math.max(1, npc.vidaMax + this.getModificador("vidaMax") - (Number(this.estados?.oscuridad?.valor) || 0));
-        this.armadura = (Number(this.equipoArmadura?.armadura) || 0) + this.getModificador("armadura");
+        this.armadura = Math.max(0, (Number(this.equipoArmadura?.armadura) || 0) + this.getModificador("armadura"));
         // Nunca por debajo de DEFENSA_MINIMA_NPC. El electrocutado la baja solo hasta defensaParalisisNpc
         // (mínimo + penalización de Atletismo de la armadura), donde paraliza
         const electrocutado = -this.getModificadorEstados("defensa");
@@ -505,8 +508,10 @@ export default class PJ {
     /* Lo que restan los estados a un atributo (una sola vez, no cada turno):
        quemadura → Combate (si queda por debajo de 0, el sobrante daña PV al iniciar turno),
        electrocutado → Atletismo, deslumbrado → Percepción.
-       Embriaguez: +3 Carisma y −1 al resto de habilidades (salvo Sacro). */
+       Embriaguez: +3 Carisma y −1 al resto de habilidades (salvo Sacro).
+       Rotura de armadura → armadura (personajes y NPC). */
     getModificadorEstados(atributo) {
+        if (atributo === "armadura") return -(Number(this.estados?.rotura?.valor) || 0);
         // Un NPC no tiene habilidades: quemadura → acierto, electrocutado → Defensa y Movimiento,
         // deslumbrado → Percepción pasiva
         if (this.esNpc) {

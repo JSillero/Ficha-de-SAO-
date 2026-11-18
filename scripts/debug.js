@@ -5,7 +5,7 @@
 import PJ, { ESTADOS_LISTA, HABILIDADES_UNDERWORLD, HABILIDADES_LISTA } from "./PJ.js";
 import Equipamiento, { esArmaFuego } from "./equipamiento.js";
 import Modificador, { TURNOS_PERMANENTE } from "./modificador.js";
-import { cargarObjeto, crearInventarioVacio, capacidadInventario, aplicarEfectoEnObjetivo } from "./objetos.js";
+import { cargarObjeto, crearInventarioVacio, capacidadInventario, aplicarEfectoEnObjetivo, aplicarEfectosPrevios, defensaSinEscudo, motivoEscudoInhabilitado } from "./objetos.js";
 import { cargarEfectos } from "./efectosEquipo.js";
 import { cargarArte, artesEquipadas, ranurasUsadas, motivoRequisitos, desbloqueosDisponibles } from "./artes.js";
 import { convertirEnJefe, copiarFase, aplicarFase, esJefe, faseActual, numeroFases } from "./jefes.js";
@@ -424,6 +424,52 @@ export function crearPesadillaPrueba() {
 
 /* Reglas de la pesadilla sobre una copia: daño elemental directo, luz y oscuridad sin efecto, efectos del golpe a
    mano, sin curación y estados puestos a mano que sí actúan al empezar turno */
+/** Rotura de armadura, escudo inhabilitado y el ×2 de Soñar despierto frente a una pesadilla */
+export function comprobarEfectosNuevos() {
+    const fallos = [];
+    const nuevo = () => {
+        const pj = new PJ();
+        pj.equipoArmadura.armadura = 3;
+        pj.calcularCaracteristicas();
+        pj.vida = 100;
+        return pj;
+    };
+    // Rotura 5 con armadura 3: armadura 0 y 2 de daño directo; después un golpe de 4 entra entero
+    let pj = nuevo();
+    const { efecto } = aplicarEfectosPrevios(pj, { nombre: "Prueba", pv: 0, estados: [{ clave: "rotura", valor: 5, turnos: 3, probabilidad: 100 }] });
+    if (pj.armadura !== 0 || pj.vida !== 98) fallos.push(`Rotura 5 sobre armadura 3: armadura ${pj.armadura} (esperado 0), PV ${pj.vida} (esperado 98).`);
+    if (efecto !== null) fallos.push("La rotura no se quita del efecto que queda.");
+    aplicarDanno(pj, 4, "fisico");
+    if (pj.vida !== 94) fallos.push(`Golpe de 4 con la armadura rota: PV ${pj.vida} (esperado 94).`);
+    // Un estado de 3 turnos sigue activo el tercero y termina al iniciar el siguiente (turno.js)
+    for (let i = 0; i < 4; i++) iniciarTurno(pj);
+    pj.calcularCaracteristicas();
+    if (pj.armadura !== 3) fallos.push(`Tras acabar la rotura la armadura es ${pj.armadura} (esperado 3).`);
+    // Escudo inhabilitado: solo con el escudo levantado y una tirada que llegue a la Defensa sin escudo
+    const conEscudo = () => {
+        const x = nuevo();
+        x.manoIzquierda = new Equipamiento("Escudo", "", "escudo", 0, 0, 0);
+        x.manoIzquierda.defensa = 2;
+        x.manoIzquierda.enUso = true;
+        x.calcularCaracteristicas();
+        return x;
+    };
+    const golpeEscudo = { nombre: "Prueba", pv: 0, estados: [{ clave: "escudoInhabilitado", valor: 1, turnos: 3, probabilidad: 100 }] };
+    pj = conEscudo();
+    aplicarEfectosPrevios(pj, golpeEscudo, { tirada: defensaSinEscudo(pj) - 1 });
+    if (!pj.manoIzquierda.enUso || (Number(pj.estados.escudoInhabilitado?.valor) || 0) > 0) fallos.push("Escudo inhabilitado sin llegar a la Defensa sin escudo.");
+    aplicarEfectosPrevios(pj, golpeEscudo, { tirada: defensaSinEscudo(pj) });
+    if (pj.manoIzquierda.enUso || !motivoEscudoInhabilitado(pj, pj.manoIzquierda)) fallos.push("El escudo no cae o se puede seguir usando.");
+    pj = nuevo();
+    aplicarEfectosPrevios(pj, golpeEscudo, { tirada: null });
+    if ((Number(pj.estados.escudoInhabilitado?.valor) || 0) > 0) fallos.push("Escudo inhabilitado sin escudo levantado.");
+    // Soñar despierto: daño de pesadilla ×2 después de la armadura (5 − 3 = 2 → 4)
+    pj = nuevo();
+    aplicarDanno(pj, 5, "fisico", { multiplicador: 2 });
+    if (pj.vida !== 96) fallos.push(`Pesadilla ×2 con armadura 3 e impacto 5: PV ${pj.vida} (esperado 96).`);
+    return fallos.map(f => `Efectos nuevos: ${f}`);
+}
+
 export function comprobarPesadilla() {
     const fallos = [];
     const nueva = () => {
@@ -596,7 +642,7 @@ export function ejecutarDebug(personaje, documento = document) {
     return {
         idaVueltaActual: actual.diferencias,
         idaVueltaPrueba: [...prueba.diferencias, ...npc.diferencias.map(d => `NPC: ${d}`), ...jefe.diferencias.map(d => `Jefe: ${d}`),
-            ...pesadilla.diferencias.map(d => `Pesadilla: ${d}`), ...comprobarPesadilla(), ...comprobarSacro()],
+            ...pesadilla.diferencias.map(d => `Pesadilla: ${d}`), ...comprobarPesadilla(), ...comprobarSacro(), ...comprobarEfectosNuevos()],
         camposSinGuardar: [...new Set([...actual.sinGuardar, ...prueba.sinGuardar, ...npc.sinGuardar, ...jefe.sinGuardar, ...pesadilla.sinGuardar])],
         interfaz: verificarInterfaz(personaje, documento),
         avisos: validarFicha(personaje)

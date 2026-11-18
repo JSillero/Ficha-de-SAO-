@@ -35,6 +35,7 @@ import {
     devolverMateriales, cargarCreacion, cargarObjetosCreados, nuevoIdCreacion
 } from "./creacion.js";
 import * as historial from "./historialCreaciones.js";
+import { estaActivo } from "./estados.js";
 import { getEstadoOnline, soyMasterDeSala, esDelMasterDeSala, leerHistorialCreacionesNube, guardarHistorialCreacionesNube,
     usuarioOnline, haySesionOnline, alCambiarSesionOnline, mensajeErrorOnline } from "./interfazOnline.js";
 import { emitirPrivado, emitirEvento, registrarManejador, instanciaEmisora, PARA_TODOS } from "./eventos.js";
@@ -96,6 +97,25 @@ function htmlDados(tirada) {
     }).join("");
 }
 
+/* Soñar despierto: la tirada extra de Voluntad y el aviso de que el máster puede encantar el objeto */
+function htmlSonarDespierto(tirada, master) {
+    const critico = tirada.critico >= 2;
+    const pifia = !critico && tirada.pifia >= 2;
+    return `
+        <h6 class="panel-protagonistas-titulo">Soñar despierto <small>Voluntad con ventaja</small></h6>
+        <div class="creacion-tirada">
+            <span class="creacion-total">${tirada.total}</span>
+            <div class="creacion-tirada-detalle">
+                <span>Dados: ${htmlDados(tirada)}</span>
+                <span>Voluntad ${tirada.valorCaracteristica}</span>
+                ${critico ? `<span class="creacion-marca positivo">Crítico</span>` : ""}${pifia ? `<span class="creacion-marca negativo">Pifia</span>` : ""}
+            </div>
+        </div>
+        <p class="creacion-dificultad">${master
+            ? "Está bajo los efectos de Soñar despierto: puedes encantar el objeto con efectos extra."
+            : "Bajo los efectos de Soñar despierto: el máster puede encantar el objeto."}</p>`;
+}
+
 /* Tirada, dificultad, (sugerencia), materiales y descripción de una creación. master: con la sugerencia */
 function htmlDetalle(creacion, { master = false } = {}) {
     const { tirada, dificultad } = creacion;
@@ -115,6 +135,7 @@ function htmlDetalle(creacion, { master = false } = {}) {
             </div>
         </div>
         <p class="creacion-dificultad">Dificultad <b>${dificultad}</b> · Diferencia <b class="${diferencia >= 0 ? "positivo" : "negativo"}">${signo}</b></p>
+        ${creacion.sonarDespierto ? htmlSonarDespierto(creacion.sonarDespierto, master) : ""}
         ${master ? `<h6 class="panel-protagonistas-titulo">Sugerencia</h6>
         <ul class="creacion-sugerencia">${sugerenciaCreacion(diferencia, critico).map(l => `<li>${escaparHtml(l)}</li>`).join("")}</ul>` : ""}
         <h6 class="panel-protagonistas-titulo">Materiales <small>${unidadesMateriales(creacion.materiales)} unidades</small></h6>
@@ -240,9 +261,25 @@ function crear() {
         valorHabilidad: valorProfesion,
         etiquetaHabilidad: "Profesión",
         valorCaracteristica,
-        etiquetaCaracteristica: ETIQUETAS_CARACTERISTICA[info.caracteristica]
+        etiquetaCaracteristica: ETIQUETAS_CARACTERISTICA[info.caracteristica],
+        caracteristica: info.caracteristica,
+        pj
     });
     if (!resultado) return;
+    // Soñar despierto: además, una tirada de Voluntad (con ventaja por el estado) que verá el máster
+    const voluntad = Number(pj.voluntad) || 0;
+    const sonar = estaActivo(pj, "sonarDespierto")
+        ? ctx.tirar({
+            nombreAccion: "Soñar despierto",
+            subtitulo: `Crear: ${info.etiqueta}`,
+            valorHabilidad: 0,
+            etiquetaHabilidad: null,
+            valorCaracteristica: voluntad,
+            etiquetaCaracteristica: "Voluntad",
+            caracteristica: "voluntad",
+            pj
+        })
+        : null;
 
     const instancia = instanciaYo();
     const apartado = ctx.conPersonaje(instancia, p => {
@@ -254,7 +291,11 @@ function crear() {
                 total: resultado.total, dados: resultado.dados, dadoUsado: resultado.resultadoDados,
                 critico: resultado.critico, pifia: resultado.pifia,
                 caracteristica: info.caracteristica, valorCaracteristica, valorProfesion
-            }
+            },
+            sonarDespierto: sonar ? {
+                total: sonar.total, dados: sonar.dados, dadoUsado: sonar.resultadoDados,
+                critico: sonar.critico, pifia: sonar.pifia, valorCaracteristica: voluntad
+            } : null
         });
         return r;
     });

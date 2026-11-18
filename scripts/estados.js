@@ -49,7 +49,13 @@ export const ESTADOS_INFO = {
     anticuracion: { etiqueta: "Anticuración", icono: "anticuracion", color: "#5B2C6F", colorGlifo: "#E8DAEF", unidad: null, turnos: DURACION_ELEMENTAL,
         descripcion: "Humo de Morna. Mientras dura no se recuperan PV: ni regeneración, ni pociones, ni luz, ni transfusión, ni descanso corto. El descanso largo lo cura." },
     embriaguez: { etiqueta: "Embriaguez", icono: "embriaguez", color: "#D68910", unidad: "Potencia", turnos: DURACION_ELEMENTAL,
-        descripcion: "Por cada punto de potencia: +3 Carisma y −1 al resto de habilidades (salvo Sacro). Por cada punto que una habilidad quede por debajo de 0, 10 % de que cualquier acción salga mal y haga algo absurdo. Desventaja en resistencia a la convicción." }
+        descripcion: "Por cada punto de potencia: +3 Carisma y −1 al resto de habilidades (salvo Sacro). Por cada punto que una habilidad quede por debajo de 0, 10 % de que cualquier acción salga mal y haga algo absurdo. Desventaja en resistencia a la convicción." },
+    rotura: { etiqueta: "Rotura de armadura", icono: "rotura", color: "#7F8C8D", unidad: "−Armadura", turnos: DURACION_ELEMENTAL,
+        descripcion: "Resta su potencia a la armadura. Al recibirla, lo que la potencia supere a la armadura que quedaba entra una vez como daño directo, antes del daño del golpe." },
+    escudoInhabilitado: { etiqueta: "Escudo inhabilitado", icono: "escudoInhabilitado", color: "#8E5A2B", unidad: null, turnos: DURACION_ELEMENTAL,
+        descripcion: "El escudo cae y no se puede levantar ni guardar en el inventario. Un golpe solo lo provoca si el escudo está levantado y la tirada supera la Defensa sin el escudo." },
+    sonarDespierto: { etiqueta: "Soñar despierto", icono: "sonarDespierto", color: "#5DADE2", colorGlifo: "#1B2631", unidad: null, turnos: DURACION_ELEMENTAL,
+        descripcion: "Ventaja en las tiradas con Voluntad. Las pesadillas le hacen el doble de daño. Al crear un objeto con la profesión tira además Voluntad y el máster puede encantarlo." }
 };
 
 /* Estados que no son negativos: no los cura el descanso largo ni "curar todos los negativos" de un objeto */
@@ -122,6 +128,9 @@ function sumarElemental(pj, estado, cantidad) {
 export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
     cantidad = Math.max(0, Math.floor(Number(cantidad) || 0));
     if (cantidad === 0) return ["Sin daño"];
+    // Multiplicador de lo que entra (tras armadura y resistencias): Soñar despierto frente a una pesadilla
+    const multiplicador = Number(opciones.multiplicador) > 1 ? Number(opciones.multiplicador) : 1;
+    const nota = multiplicador > 1 ? (opciones.notaMultiplicador || `Daño ×${conComa(multiplicador)}`) : "";
 
     const resumen = [];
     // Daño directo (no de estados) rompe el sigilo. La luz cura, así que no cuenta.
@@ -141,6 +150,10 @@ export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
             resumen.push(`Impacto ${cantidad} − resistencia a ${etiqueta} ${resistencia} = ${recibido}`);
             cantidad = recibido;
         }
+    }
+    if (multiplicador > 1 && ELEMENTOS.includes(tipo)) {
+        resumen.push(`${nota}: ${cantidad} → ${Math.floor(cantidad * multiplicador)}`);
+        cantidad = Math.floor(cantidad * multiplicador);
     }
 
     // NPC con debilidad al elemento: el impacto se multiplica y, además de su efecto, resta PV (al final)
@@ -179,12 +192,14 @@ export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
         case "fisico": {
             // La armadura resta daño a cada impacto
             const armadura = opciones.ignorarArmadura ? 0 : Math.max(0, Number(pj.armadura) || 0);
-            const recibido = Math.max(0, cantidad - armadura);
+            const trasArmadura = Math.max(0, cantidad - armadura);
+            const recibido = Math.floor(trasArmadura * multiplicador);
             const antes = pj.vida;
             pj.vida -= recibido; // puede quedar en negativo (muerte al empezar turno)
             resumen.push(armadura > 0
-                ? `Impacto ${cantidad} − armadura ${armadura} = ${recibido} de daño`
-                : `${recibido} de daño${opciones.ignorarArmadura ? " (ignora armadura)" : ""}`);
+                ? `Impacto ${cantidad} − armadura ${armadura} = ${trasArmadura} de daño`
+                : `${trasArmadura} de daño${opciones.ignorarArmadura ? " (ignora armadura)" : ""}`);
+            if (multiplicador > 1 && trasArmadura > 0) resumen.push(`${nota}: ${trasArmadura} → ${recibido}`);
             if (pj.vida !== antes) resumen.push(`PV: ${antes} → ${pj.vida}`);
             rompeSigilo = recibido > 0;
             break;
@@ -317,5 +332,26 @@ export function aplicarDanno(pj, cantidad, tipo, opciones = {}) {
     }
 
     pj.calcularCaracteristicas();
+    return resumen;
+}
+
+/**
+ * Rotura de armadura recibida (de un golpe): suma la potencia al estado y lo que supere a la armadura que quedaba
+ * entra una vez como daño directo. Se aplica antes del daño del golpe (aplicarEfectosPrevios en objetos.js).
+ * @returns {string[]} resumen
+ */
+export function aplicarRotura(pj, potencia, turnos = ESTADOS_INFO.rotura.turnos, opciones = {}) {
+    potencia = Math.max(0, Math.trunc(Number(potencia) || 0));
+    if (potencia === 0) return [];
+    pj.calcularCaracteristicas();
+    const armaduraAntes = Math.max(0, Number(pj.armadura) || 0);
+    const actual = Number(pj.estados.rotura?.valor) || 0;
+    activarEstado(pj, "rotura", actual + potencia, turnos);
+    const resumen = [`Rotura de armadura ${potencia}: armadura ${armaduraAntes} → ${pj.armadura}`];
+    const sobrante = Math.max(0, potencia - armaduraAntes);
+    if (sobrante > 0) {
+        const danno = aplicarDanno(pj, sobrante, "fisico", { ...opciones, ignorarArmadura: true });
+        resumen.push(`Sobrante de la rotura: ${danno.join(" · ")}`);
+    }
     return resumen;
 }

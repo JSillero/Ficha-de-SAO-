@@ -162,6 +162,21 @@ const GLIFOS = {
         <rect class="f" x="38" y="48" width="24" height="8" rx="1"/>
         <path class="tf" d="M22 78L78 22"/>
         <path class="t" d="M22 78L78 22"/>`,
+    /* Rotura de armadura: peto con una grieta en zigzag */
+    rotura: `
+        <path class="p" d="M30 22L42 18C44 24 56 24 58 18L70 22L80 36L70 42V80H30V42L20 36Z"/>
+        <path class="s" d="M50 23C55 23 57 21 58 18L70 22L80 36L70 42V80H50Z"/>
+        <path class="t" style="stroke:var(--fondo);stroke-width:5" d="M54 22L44 40L56 50L42 64L52 80"/>`,
+    /* Escudo inhabilitado: escudo tachado */
+    escudoInhabilitado: `
+        <path class="p" d="M50 16L76 24V46C76 64 64 76 50 84C36 76 24 64 24 46V24Z"/>
+        <path class="s" d="M50 16L76 24V46C76 64 64 76 50 84Z"/>
+        <path class="tf" d="M20 80L80 20"/>
+        <path class="t" d="M20 80L80 20"/>`,
+    /* Soñar despierto: luna creciente sobre una nube */
+    sonarDespierto: `
+        <path class="s" d="M50 14A24 24 0 1 0 74 46A18 18 0 1 1 50 14Z"/>
+        <path class="p" d="M26 80A12 12 0 0 1 28 56A16 16 0 0 1 58 52A12 12 0 0 1 76 64A8 8 0 0 1 76 80Z"/>`,
     aturdido: `
         <ellipse class="t o" cx="50" cy="54" rx="30" ry="13"/>
         ${estrella(50, 38, 13)}

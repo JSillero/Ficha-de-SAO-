@@ -4,12 +4,12 @@
 
 import Modificador, { cargarModificador, TURNOS_PERMANENTE } from "./modificador.js";
 import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, cargarEquipamiento, tipoArmaduraDe } from "./equipamiento.js";
-import { activarEstado, quitarEstado, aplicarDanno, ESTADOS_INFO, TIPOS_DANNO, CURAR_NEGATIVOS, curaConTodosLosNegativos, estaActivo, noSeCura } from "./estados.js";
+import { activarEstado, quitarEstado, aplicarDanno, aplicarRotura, ESTADOS_INFO, TIPOS_DANNO, CURAR_NEGATIVOS, curaConTodosLosNegativos, estaActivo, noSeCura } from "./estados.js";
 import { MANOS, gastarVarias, gastarTodas, partesDeMano, parteDeMano, manoVacia, puedeGastar } from "./turno.js";
 import { esZonaSegura } from "./zonas.js";
 import { cargarEfectos } from "./efectosEquipo.js";
 import { cargarEstadosAlAcertar, cargarEstadoAlAcertar, MAX_ESTADOS_AL_ACERTAR } from "./estadosAlAcertar.js";
-import { esPesadilla } from "./npc.js";
+import { esPesadilla, equiposDePartes } from "./npc.js";
 import { ELEMENTOS_SACRO, ELEMENTOS_CRISTAL } from "./elementosSacro.js";
 
 /* Huecos base del inventario; el modificador `inventario` los amplía (o reduce) */
@@ -562,6 +562,84 @@ function aplicarEfectoPocion(pj, pocion) {
  * No da PA. Puede venir de otro jugador, así que se valida todo.
  * @returns {string[]} resumen
  */
+/* Escudos que lleva (manos y, en un NPC, sus otras partes) */
+function escudosDe(pj) {
+    return [pj.manoIzquierda, pj.manoDerecha, ...equiposDePartes(pj)].filter(equipo => ARMAS[equipo?.tipo]?.escudo);
+}
+
+/** ¿Tiene algún escudo levantado? */
+export const escudoLevantado = (pj) => (Number(pj.getDefensaEscudos?.()) || 0) > 0;
+
+/** Defensa sin lo que suman los escudos levantados */
+export const defensaSinEscudo = (pj) => (Number(pj.defensa) || 0) - (Number(pj.getDefensaEscudos?.()) || 0);
+
+/* Estados de un efecto de golpe que se aplican antes del daño (rotura y escudo inhabilitado) */
+const ESTADOS_PREVIOS = ["rotura", "escudoInhabilitado"];
+
+/** ¿El golpe trae Escudo inhabilitado (de un arma, arte o arrojadiza)? */
+export function efectoInhabilitaEscudo(efecto) {
+    if (!efecto || typeof efecto !== "object") return false;
+    const lista = [...(Array.isArray(efecto.estados) ? efecto.estados : []), ...(Array.isArray(efecto.estadosObjeto) ? efecto.estadosObjeto : [])];
+    return lista.some(datos => datos?.clave === "escudoInhabilitado" && !datos.quitar);
+}
+
+/** ¿Ese golpe le inhabilitaría el escudo? Levantado y la tirada (null = arte, no falla) llega a la Defensa sin escudo */
+export function inhabilitaEscudo(pj, efecto, tirada = null) {
+    return efectoInhabilitaEscudo(efecto) && escudoLevantado(pj) && !esPesadilla(pj)
+        && (tirada === null || Number(tirada) >= defensaSinEscudo(pj));
+}
+
+/** Escudo inhabilitado: baja los escudos y activa el estado */
+export function inhabilitarEscudo(pj, turnos = ESTADOS_INFO.escudoInhabilitado.turnos) {
+    escudosDe(pj).forEach(escudo => { escudo.enUso = false; });
+    activarEstado(pj, "escudoInhabilitado", 1, turnos);
+}
+
+/** Motivo por el que no puede levantar ni guardar un escudo, o null */
+export function motivoEscudoInhabilitado(pj, equipo) {
+    return ARMAS[equipo?.tipo]?.escudo && estaActivo(pj, "escudoInhabilitado") ? "Tienes el escudo inhabilitado." : null;
+}
+
+/**
+ * Efectos de un golpe que van antes de su daño: la rotura de armadura (su sobrante entra como daño y el golpe
+ * ya usa la armadura rota) y el escudo inhabilitado (solo con el escudo levantado y si la tirada llega a la
+ * Defensa sin escudo). Devuelve el resumen y el efecto sin ellos, para aplicarEfectoEnObjetivo.
+ * @param {{ tirada?: number|null, multiplicador?: number, notaMultiplicador?: string }} opciones
+ */
+export function aplicarEfectosPrevios(pj, efecto, { tirada = null, ...opcionesDanno } = {}) {
+    if (!efecto || typeof efecto !== "object") return { resumen: [], efecto };
+    const esPrevio = (datos) => ESTADOS_PREVIOS.includes(datos?.clave) && !datos.quitar;
+    const deArma = (Array.isArray(efecto.estados) ? efecto.estados : []).slice(0, MAX_ESTADOS_AL_ACERTAR * 2);
+    const deObjeto = (Array.isArray(efecto.estadosObjeto) ? efecto.estadosObjeto : []).slice(0, MAX_ESTADOS_AL_ACERTAR);
+    const previos = [
+        ...deArma.filter(esPrevio).map(cargarEstadoAlAcertar),
+        ...deObjeto.filter(esPrevio).map(datos => cargarEstadoObjeto(datos, "arrojadiza"))
+    ].filter(Boolean);
+    if (!previos.length) return { resumen: [], efecto };
+    const sinPrevios = { ...efecto, estados: deArma.filter(datos => !esPrevio(datos)) };
+    // (estadosObjeto solo si venía como lista: los clientes antiguos mandan uno solo en `estado`)
+    if (Array.isArray(efecto.estadosObjeto)) sinPrevios.estadosObjeto = deObjeto.filter(datos => !esPrevio(datos));
+    // Si no queda nada más en el efecto, no se aplica (así no sale "Sin efecto")
+    const vacio = !Number(sinPrevios.pv) && !sinPrevios.estados.length && !(sinPrevios.estadosObjeto?.length) && !sinPrevios.estado
+        && !(Number(sinPrevios.elemental?.cantidad) > 0);
+    const resto = vacio ? null : sinPrevios;
+    // Pesadilla: los efectos no se aplican solos (el máster los pone a mano)
+    if (esPesadilla(pj)) return { resumen: [], efecto: resto };
+    const resumen = [];
+    const escudoAntes = inhabilitaEscudo(pj, efecto, tirada);
+    for (const estado of previos) {
+        if (estado.clave === "rotura") resumen.push(...aplicarRotura(pj, estado.valor, estado.turnos, opcionesDanno));
+        else if (escudoAntes) {
+            inhabilitarEscudo(pj, estado.turnos);
+            resumen.push("Escudo inhabilitado: el escudo cae");
+        } else resumen.push(escudoLevantado(pj)
+            ? "Escudo inhabilitado: no supera la Defensa sin escudo"
+            : "Escudo inhabilitado: no tiene el escudo levantado");
+    }
+    pj.calcularCaracteristicas();
+    return { resumen, efecto: resto };
+}
+
 export function aplicarEfectoEnObjetivo(pj, efecto) {
     if (!efecto || typeof efecto !== "object") return [];
     // Pesadilla: los efectos de los golpes no se aplican solos (el máster los pone a mano)
@@ -881,6 +959,8 @@ export function recogerArma(pj, indice, gastar = gastarEstricto(pj)) {
 /** Motivo por el que no se puede guardar lo equipado en esa ranura, o null. */
 export function motivoNoGuardar(pj, ranura) {
     if (!ranuraTieneEquipo(pj, ranura)) return "No hay nada equipado.";
+    const inhabilitado = motivoEscudoInhabilitado(pj, equipoEnRanura(pj, ranura));
+    if (inhabilitado) return `${inhabilitado} No se puede guardar.`;
     if (!hayHuecoLibre(pj)) return "El inventario está lleno.";
     if (equipoEnRanura(pj, ranura)?.cinturon?.objetos.some(Boolean)) return "Vacía antes el cinturón: no se puede quitar con objetos.";
     if (ranura.startsWith("accesorio-") && !manoParaUsar(pj) && !esZonaSegura(pj)) return "Necesitas una mano libre para quitarte el accesorio.";

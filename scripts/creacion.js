@@ -139,6 +139,9 @@ export function cargarCreacion(datos) {
         materiales,
         descripcion: texto(datos.descripcion, MAX_DESCRIPCION_CREACION),
         tirada: cargarTirada(datos.tirada),
+        // Soñar despierto: tirada extra de Voluntad (dado + Voluntad, con ventaja); el máster puede encantar el objeto
+        sonarDespierto: datos.sonarDespierto && typeof datos.sonarDespierto === "object"
+            ? cargarTirada({ ...datos.sonarDespierto, caracteristica: "voluntad", valorProfesion: 0 }) : null,
         dificultad: dificultadCreacion(materiales),
         hora: texto(datos.hora, 40)
     };
