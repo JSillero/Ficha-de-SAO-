@@ -2236,6 +2236,13 @@
                             <label class="ranura-etiqueta" for="arteCompartir">Compartir en el catálogo de la sala</label>
                             <input type="checkbox" id="arteCompartir">
                         </div>
+                        <!-- Categoría en el catálogo de la sala (al compartir o al editar una compartida; categoriaPorDefecto) -->
+                        <div class="ranura solo-arte no-onirica" id="filaCategoriaArte" hidden title="Elige una categoría o escribe una nueva">
+                            <span class="ranura-icono" data-icono="artes"></span>
+                            <label class="ranura-etiqueta" for="arteCategoria">Categoría</label>
+                            <input type="text" id="arteCategoria" list="categoriasArteLista" maxlength="40" autocomplete="off">
+                            <datalist id="categoriasArteLista"></datalist>
+                        </div>
                         <p id="avisoCrearArte" class="aviso-objeto" role="alert"></p>
                     </form>
                 </div>

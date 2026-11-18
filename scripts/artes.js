@@ -27,10 +27,72 @@ export const URL_CATALOGO_ARTES = "./data/artes.json";
 /* Grupos del catálogo, en el orden en que se muestran. "propia" = creada por el jugador. */
 export const GRUPOS_ARTE = {
     cuchillo: "Cuchillo", lanza: "Lanza", estoque: "Estoque", espadon: "Espadón", espada: "Espada",
-    hacha: "Hacha", martillo: "Martillo de guerra", escudo: "Escudo", profesion: "Profesión",
+    hacha: "Hacha", martillo: "Martillo de guerra", escudo: "Escudo",
+    armadura_pesada: "Armadura pesada", armadura_media: "Armadura media", armadura_ligera: "Armadura ligera",
+    armadura_ropa: "Ropa", armadura_real: "Armadura real", profesion: "Profesión",
     atletismo: "Atletismo", percepcion: "Percepción", sigilo: "Sigilo", carisma: "Carisma", cultura: "Cultura",
-    gritos: "Gritos (rocas dragón)", underworld: "Underworld (guardianes)", ocultas: "Artes ocultas", propia: "Propias"
+    gritos: "Gritos (rocas dragón)", underworld: "Underworld (guardianes)", ocultas: "Artes ocultas",
+    sin_catalogar: "Sin catalogar", propia: "Propias"
 };
+
+/* Categorías del catálogo de la sala ____________________________________________
+   Un arte compartida lleva una categoría: una clave de GRUPOS_ARTE o un texto libre (categoría nueva, que existe
+   mientras alguna arte la use). Si no la tiene, la de por defecto (categoriaPorDefecto). */
+
+export const CATEGORIA_SIN_CATALOGAR = "sin_catalogar";
+export const MAX_CARACTERES_CATEGORIA = 40;
+
+/* Grupo de cada tipo de arma (los que no tienen, como el garrote, no cuentan) */
+const GRUPO_DE_ARMA = { martillo_guerra: "martillo", gran_escudo: "escudo" };
+const grupoDeArma = (tipo) => {
+    const grupo = GRUPO_DE_ARMA[tipo] ?? tipo;
+    return GRUPOS_ARTE[grupo] && !["propia", CATEGORIA_SIN_CATALOGAR].includes(grupo) ? grupo : null;
+};
+/* Grupo de cada habilidad (Combate y Sacro no tienen) */
+const GRUPO_DE_HABILIDAD = {
+    atletismo: "atletismo", percepcion: "percepcion", subterfugio: "sigilo", comunicacion: "carisma",
+    cultura: "cultura", profesion: "profesion"
+};
+
+/**
+ * Categoría por defecto de un arte: el arma con la que se usa (si el uso es un arma), si no el requisito de arma,
+ * de escudo, de armadura (por tipo) o la habilidad requerida de mayor valor; si nada, Sin catalogar.
+ */
+export function categoriaPorDefecto(arte) {
+    const primera = (tipos) => (tipos ?? []).map(grupoDeArma).find(Boolean) ?? null;
+    if (arte?.tipo === "activa" && arte.uso?.tipo === "arma") {
+        const grupo = primera(arte.uso.armas);
+        if (grupo) return grupo;
+    }
+    const requisitos = Array.isArray(arte?.requisitos) ? arte.requisitos : [];
+    const deTipo = (tipo) => requisitos.filter(req => req.tipo === tipo);
+    for (const req of deTipo("arma")) {
+        const grupo = primera(req.tipos);
+        if (grupo) return grupo;
+    }
+    if (deTipo("escudo").length) return "escudo";
+    const armadura = deTipo("armadura").flatMap(req => req.tipos ?? []).find(t => GRUPOS_ARTE[`armadura_${t}`]);
+    if (armadura) return `armadura_${armadura}`;
+    const habilidad = deTipo("habilidad").filter(req => GRUPO_DE_HABILIDAD[req.clave])
+        .sort((x, y) => (Number(y.valor) || 0) - (Number(x.valor) || 0))[0];
+    if (habilidad) return GRUPO_DE_HABILIDAD[habilidad.clave];
+    return CATEGORIA_SIN_CATALOGAR;
+}
+
+const sinTildes = (valor) => String(valor ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
+
+/** Categoría escrita por alguien: la clave de un grupo si coincide con su clave o su nombre; si no, el texto (nueva); vacía → null */
+export function normalizarCategoria(valor) {
+    const limpio = String(valor ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_CARACTERES_CATEGORIA);
+    if (!limpio) return null;
+    const buscado = sinTildes(limpio);
+    const fija = Object.entries(GRUPOS_ARTE)
+        .find(([clave, etiqueta]) => clave !== "propia" && (clave === buscado || sinTildes(etiqueta) === buscado));
+    return fija ? fija[0] : limpio;
+}
+
+/** Nombre que se muestra de una categoría */
+export const etiquetaCategoria = (categoria) => GRUPOS_ARTE[categoria] ?? String(categoria ?? "");
 
 /* Partes del cuerpo que puede gastar un arte activa ("ninguna" = no gasta acción) */
 export const PARTES_USO_ARTE = {

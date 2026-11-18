@@ -269,18 +269,23 @@ service cloud.firestore {
           && (resource.data.jugador == request.auth.uid || resource.data.master == request.auth.uid);
       }
 
-      // Catálogo de artes compartido: lo añade cualquiera de la sala; lo edita su autor y lo borra su autor o el máster
+      // Catálogo de artes compartido: lo añade cualquiera de la sala; lo editan su autor o el máster (sin cambiar el
+      // autor) y lo borran su autor o el máster. categoria: clave de grupo o texto libre (opcional)
+      function arteSalaValida() {
+        return request.resource.data.arte is string
+          && request.resource.data.arte.size() < 50000
+          && (!('categoria' in request.resource.data) || request.resource.data.categoria == null
+            || (request.resource.data.categoria is string && request.resource.data.categoria.size() < 60));
+      }
       match /artes/{arte} {
         allow read: if esMiembro(codigo);
         allow create: if esMiembro(codigo)
           && request.resource.data.autor == request.auth.uid
-          && request.resource.data.arte is string
-          && request.resource.data.arte.size() < 50000;
+          && arteSalaValida();
         allow update: if esMiembro(codigo)
-          && resource.data.autor == request.auth.uid
-          && request.resource.data.autor == request.auth.uid
-          && request.resource.data.arte is string
-          && request.resource.data.arte.size() < 50000;
+          && request.resource.data.autor == resource.data.autor
+          && (resource.data.autor == request.auth.uid || esMaster(codigo))
+          && arteSalaValida();
         allow delete: if esMiembro(codigo)
           && (resource.data.autor == request.auth.uid || esMaster(codigo));
       }

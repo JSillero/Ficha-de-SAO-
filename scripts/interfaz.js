@@ -54,7 +54,7 @@ import { inicializarVentanas, abrirCapa, cerrarCapa } from "./ventanas.js";
 import {
     inicializarOnline, getEstadoOnline, getPersonajesSala, getTodosPersonajesSala, getSalaMaster, avisarNombrePersonaje, setIdPersonajeNube, motivoNombreNoDisponible,
     abrirAmigos, abrirAnadirAmigo, abrirGrupo, crearGrupo, salirGrupo, getGrupoSala, avisarEstadoGrupo, avisarTurno, verTurnoSala, abrirCuenta, abrirSala, abrirPersonajesNube,
-    guardarEnNube, compartirArte, quitarArteDeSala, publicarEstadoDe, estaOcultoEnSala, salirPorMuerte, ponerFranja, colorFranja, rellenarBarrasFases
+    guardarEnNube, compartirArte, editarArteSala, quitarArteDeSala, publicarEstadoDe, estaOcultoEnSala, salirPorMuerte, ponerFranja, colorFranja, rellenarBarrasFases
 } from "./interfazOnline.js";
 import {
     ZONAS, MOTIVOS_ZONA, cambiarZona, esZonaSegura, baulAccesible, puedeRepartirHabilidades, puedeRecibirDanno,
@@ -79,6 +79,7 @@ import {
     descargarCatalogo, copiarDelCatalogo, estadoRequisitos, motivoRequisitos, ranurasUsadas, PARTES_USO_ARTE,
     equiparArte, desequiparArte, motivoNoEquiparArte, motivoNoDesequiparArte, usarArte, motivoNoUsarArte, partesDeArte,
     cargarArte, cargarRequisito, cumpleRequisitos, ajustarMemoriaArtes, GRUPOS_ARTE, TIPOS_REQUISITO,
+    CATEGORIA_SIN_CATALOGAR, categoriaPorDefecto, normalizarCategoria, etiquetaCategoria,
     desbloqueosDisponibles, desbloqueosNaturales, anadirDesbloqueos, quitarDesbloqueos, motivoNoConseguirArte, conseguirArte,
     motivoInactiva, crearOnirica, motivoNoCrearOnirica, arteActiva, puedeTenerOniricas,
     ETIQUETAS_CARACTERISTICA, ETIQUETAS_HABILIDAD, ETIQUETAS_ARMADURA as ETIQUETAS_TIPO_ARMADURA
@@ -6150,7 +6151,7 @@ function requisitosArteHtml(arte) {
  * Fila de un arte. En el catálogo (enCatalogo) solo tiene el botón Añadir; motivoAnadir lo bloquea
  * (ya la tiene o no quedan desbloqueos).
  */
-function filaArte(arte, indice, { enCatalogo = false, motivoAnadir = null, autor = null, quitable = false } = {}) {
+function filaArte(arte, indice, { enCatalogo = false, motivoAnadir = null, autor = null, quitable = false, editable = false } = {}) {
     const activa = arte.tipo === "activa";
     const inactiva = arte.equipada && motivoInactiva(personaje, arte);
     const coste = [activa ? `${arte.costePA} PA` : "Pasiva",
@@ -6165,7 +6166,8 @@ function filaArte(arte, indice, { enCatalogo = false, motivoAnadir = null, autor
             + (activa ? botonObjeto("usar", "usar", motivoUsar || `Usar (${arte.costePA} PA)`, Boolean(motivoUsar)) : "");
     } else if (enCatalogo) {
         const textoAnadir = objetivoCatalogo?.pj?.esNpc ? "Añadir (queda equipada)" : "Añadir a las artes sin equipar (gasta 1 desbloqueo de arte)";
-        botones = (quitable ? botonObjeto("quitarSala", "descartar", "Quitar del catálogo de la sala") : "")
+        botones = (editable ? botonObjeto("editarSala", "editar", "Editar arte compartida") : "")
+            + (quitable ? botonObjeto("quitarSala", "descartar", "Quitar del catálogo de la sala") : "")
             + botonObjeto("anadir", "artesSinEquipar", motivoAnadir || textoAnadir, Boolean(motivoAnadir));
     } else if (arte.equipada && personaje.esNpc) {
         const motivoUsar = activa ? motivoNoUsarArte(personaje, arte) : null;
@@ -6464,6 +6466,8 @@ let abrirEditorArte = () => {};
 let abrirEditorEfecto = () => {};
 /** Abre el mismo formulario para una habilidad onírica (arte o null para crear, ventana de origen) */
 let abrirEditorOnirica = () => {};
+/** Editar un arte compartida del catálogo de la sala (entrada de artesSala, ventana de origen); en inicializarCrearArte */
+let abrirEditorArteSala = () => {};
 
 const ETIQUETAS_TIPO_REQUISITO = {
     nivel: "Nivel", caracteristica: "Característica", habilidad: "Habilidad",
@@ -6546,6 +6550,10 @@ function inicializarFormularioArte() {
     let alGuardarEfecto = null;
     /* Modo habilidad onírica: sin requisitos, memoria ni compartir; no gasta desbloqueo */
     let modoOnirica = false;
+    /* Editar un arte compartida del catálogo de la sala (su autor o el máster): la entrada de artesSala, o null */
+    let edicionSala = null;
+    /* Categoría del catálogo de la sala: mientras no se escriba, sigue a la de por defecto (categoriaPorDefecto) */
+    let categoriaTocada = false;
     /* Personaje al que va el arte: el de la ficha, o el borrador del perfil del máster (libre = no gasta
        desbloqueo; alTerminar en lugar de actualizarTodo) */
     let objetivo = { pj: personaje, libre: false, alTerminar: null };
@@ -6611,7 +6619,30 @@ function inicializarFormularioArte() {
         ponerResumen(campo("detallesRequisitosArte"), requisitos.length
             ? `${requisitos.length} requisito${requisitos.length === 1 ? "" : "s"}${alternativos ? ` (${alternativos} alternativo${alternativos === 1 ? "" : "s"})` : ""}`
             : (campo("arteNotaRequisitos").value.trim() ? "Solo otros requisitos" : "Ninguno"));
+        pintarCategoria();
     };
+    /* Categoría (al compartir o al editar una compartida): sugerida por el uso y los requisitos hasta que se escribe */
+    const pintarCategoria = () => {
+        const fila = campo("filaCategoriaArte");
+        fila.hidden = !edicionSala && (campo("filaCompartirArte").hidden || !campo("arteCompartir").checked);
+        if (fila.hidden) return;
+        let sugerida = CATEGORIA_SIN_CATALOGAR;
+        try { sugerida = categoriaPorDefecto(cargarArte(datosFormulario())); } catch { /* formulario a medias */ }
+        const entrada = campo("arteCategoria");
+        entrada.placeholder = etiquetaCategoria(sugerida);
+        if (!categoriaTocada && entrada.value !== etiquetaCategoria(sugerida)) entrada.value = etiquetaCategoria(sugerida);
+    };
+    campo("arteCategoria").addEventListener("input", (e) => { categoriaTocada = Boolean(e.target.value.trim()); });
+    /* Pone la categoría al abrir: la que ya tiene en la sala (si la tiene) o la de por defecto */
+    const prepararCategoria = (entradaSala) => {
+        campo("categoriasArteLista").innerHTML = categoriasCatalogo()
+            .map(c => `<option value="${escaparHtml(etiquetaCategoria(c))}"></option>`).join("");
+        const actual = normalizarCategoria(entradaSala?.categoria);
+        categoriaTocada = Boolean(actual);
+        campo("arteCategoria").value = actual ? etiquetaCategoria(actual) : "";
+    };
+    /* Categoría que se guarda: la escrita (una ya existente si coincide) o la de por defecto */
+    const categoriaFormulario = (arte) => categoriaEscrita(campo("arteCategoria").value) ?? categoriaPorDefecto(arte);
     const pintarVistaPrevia = () => {
         let arte = null;
         try { arte = cargarArte({ ...datosFormulario(), ...(modoOnirica ? { onirica: true } : {}) }); } catch { arte = null; }
@@ -6736,8 +6767,10 @@ function inicializarFormularioArte() {
         editorEstados.rellenar(activa ? datos.estadosAlAcertar : []);
         marcarElementalesActivos(campo("arteDannoElemental"));
         // Compartir en el catálogo de la sala: solo dentro de una sala
-        campo("filaCompartirArte").hidden = !getEstadoOnline().sala;
+        campo("filaCompartirArte").hidden = !getEstadoOnline().sala || Boolean(edicionSala);
         campo("arteCompartir").checked = false;
+        // Si el arte salió de una compartida tuya, al volver a compartirla se propone su categoría actual
+        prepararCategoria(edicionSala ?? (arte?.idCatalogo ? artesSala.find(a => a.id === arte.idCatalogo) : null));
         aviso.textContent = "";
         pintarRequisitos();
         pintarMods();
@@ -6749,7 +6782,7 @@ function inicializarFormularioArte() {
         campo("detallesDannoArte").open = false;
         actualizarCampos();
         const textoBoton = arte ? "Guardar" : "Crear";
-        const nombreTipo = alGuardarEfecto ? "efecto" : modoOnirica ? "habilidad onírica" : "arte";
+        const nombreTipo = alGuardarEfecto ? "efecto" : modoOnirica ? "habilidad onírica" : edicionSala ? "arte compartida" : "arte";
         campo("modalCrearArteLabel").textContent = `${arte ? "Editar" : "Crear"} ${nombreTipo}`;
         modalEl.classList.toggle("modo-efecto", Boolean(alGuardarEfecto));
         modalEl.classList.toggle("modo-onirica", modoOnirica);
@@ -6817,6 +6850,14 @@ function inicializarFormularioArte() {
             ventana.cerrar();
             return;
         }
+        // Arte compartida del catálogo de la sala: se guarda allí (no toca ningún personaje ni gasta desbloqueos)
+        if (edicionSala) {
+            const arteSala = cargarArte(datos);
+            editarArteSala(edicionSala, arteSala, categoriaFormulario(arteSala));
+            reproducir("click");
+            ventana.cerrar();
+            return;
+        }
         if (modoOnirica) datos.onirica = true; // cargarArte quita requisitos y memoria
         const arte = cargarArte(datos);
         const pj = objetivo.pj;
@@ -6846,7 +6887,7 @@ function inicializarFormularioArte() {
         ventana.cerrar();
         if (!modoOnirica && campo("arteCompartir").checked && getEstadoOnline().sala) {
             // La copia de la ficha pasa a apuntar al arte compartida ("Ya la tienes" en el catálogo)
-            compartirArte(arte, artesSala).then(id => {
+            compartirArte(arte, artesSala, categoriaFormulario(arte)).then(id => {
                 if (!id) return;
                 arte.idCatalogo = id;
                 actualizarTodo();
@@ -6863,6 +6904,7 @@ function inicializarFormularioArte() {
     abrirEditorArte = (arte, origen, opciones) => {
         ponerObjetivo(opciones);
         edicion = arte;
+        edicionSala = null;
         alGuardarEfecto = null;
         modoOnirica = Boolean(arte?.onirica);
         rellenar(arte);
@@ -6871,6 +6913,7 @@ function inicializarFormularioArte() {
     abrirEditorOnirica = (arte, origen, opciones) => {
         ponerObjetivo(opciones);
         edicion = arte;
+        edicionSala = null;
         alGuardarEfecto = null;
         modoOnirica = true;
         rellenar(arte);
@@ -6878,9 +6921,20 @@ function inicializarFormularioArte() {
     };
     abrirEditorEfecto = (efecto, origen, alGuardar) => {
         edicion = efecto;
+        edicionSala = null;
         alGuardarEfecto = alGuardar;
         modoOnirica = false;
         rellenar(efecto);
+        ventana.abrirDesde(origen);
+    };
+    /* Arte compartida del catálogo de la sala (entrada de artesSala): la editan su autor o el máster */
+    abrirEditorArteSala = (entrada, origen) => {
+        ponerObjetivo();
+        edicion = null;
+        edicionSala = entrada;
+        alGuardarEfecto = null;
+        modoOnirica = false;
+        rellenar(cargarArte({ ...entrada.arte, id: entrada.id, idCatalogo: null, equipada: false }));
         ventana.abrirDesde(origen);
     };
     ["btnAbrirCrearArte", "btnCrearArteNpc"].forEach(id => campo(id).addEventListener("click", (e) => {
@@ -6898,12 +6952,34 @@ let catalogoArtes = [];
 let catalogoBase = [];
 /* Artes compartidas de la sala tal y como llegan (con autor): [{ id, autor, nombreAutor, arte }] */
 let artesSala = [];
-const esArteDeSala = (arte) => arte.id.startsWith("sala-");
 
+/* Las compartidas van en las mismas categorías que las del catálogo: la suya (clave de GRUPOS_ARTE o texto libre)
+   o, si no tiene, la de por defecto (categoriaPorDefecto en artes.js) */
 function rehacerCatalogo() {
-    const deSala = artesSala.map(({ id, arte }) => cargarArte({ ...arte, id, idCatalogo: null, equipada: false }))
-        .sort((x, y) => x.nombre.localeCompare(y.nombre));
+    const deSala = artesSala.map(({ id, arte, categoria }) => {
+        const copia = cargarArte({ ...arte, id, idCatalogo: null, equipada: false });
+        copia.grupo = normalizarCategoria(categoria) ?? categoriaPorDefecto(copia);
+        return copia;
+    }).sort((x, y) => x.nombre.localeCompare(y.nombre));
     catalogoArtes = [...catalogoBase, ...deSala];
+}
+
+/* Categoría con la que se muestra un arte del catálogo (las "propias" que pudiera haber, sin catalogar) */
+const categoriaEnCatalogo = (arte) => (arte.grupo === "propia" ? CATEGORIA_SIN_CATALOGAR : arte.grupo);
+
+/** Categorías del catálogo en orden: las fijas de GRUPOS_ARTE, las nuevas de la sala por orden alfabético y Sin catalogar */
+function categoriasCatalogo() {
+    const fijas = Object.keys(GRUPOS_ARTE).filter(c => c !== "propia" && c !== CATEGORIA_SIN_CATALOGAR);
+    const nuevas = [...new Set(catalogoArtes.map(categoriaEnCatalogo).filter(c => !GRUPOS_ARTE[c]))]
+        .sort((x, y) => x.localeCompare(y));
+    return [...fijas, ...nuevas, CATEGORIA_SIN_CATALOGAR];
+}
+
+/** Categoría escrita en un formulario: una fija o nueva que ya exista si coincide (sin tildes ni mayúsculas); vacía → null */
+function categoriaEscrita(valor) {
+    const categoria = normalizarCategoria(valor);
+    if (!categoria || GRUPOS_ARTE[categoria]) return categoria;
+    return categoriasCatalogo().find(c => normalizarTexto(c) === normalizarTexto(categoria)) ?? categoria;
 }
 
 function alCambiarArtesSala(lista) {
@@ -6935,7 +7011,18 @@ function actualizarCatalogoArtes() {
         return;
     }
     const busqueda = normalizarTexto(document.getElementById("catalogoBuscar").value.trim());
-    const grupo = document.getElementById("catalogoGrupo").value;
+    // El filtro de categorías cambia con las nuevas que haya en la sala (se conserva lo elegido)
+    const filtroGrupo = document.getElementById("catalogoGrupo");
+    const categorias = categoriasCatalogo();
+    const opcionesGrupo = `<option value="">Todas las categorías</option>` + categorias
+        .map(c => `<option value="${escaparHtml(c)}">${escaparHtml(etiquetaCategoria(c))}</option>`).join("");
+    if (filtroGrupo.dataset.html !== opcionesGrupo) {
+        const elegido = filtroGrupo.value;
+        filtroGrupo.innerHTML = opcionesGrupo;
+        filtroGrupo.dataset.html = opcionesGrupo;
+        filtroGrupo.value = categorias.includes(elegido) ? elegido : "";
+    }
+    const grupo = filtroGrupo.value;
     const tipo = document.getElementById("catalogoTipo").value;
     const soloCumplo = document.getElementById("catalogoSoloCumplo").checked;
     const tengo = new Set(pj.artes.map(arte => arte.idCatalogo).filter(Boolean));
@@ -6943,31 +7030,29 @@ function actualizarCatalogoArtes() {
 
     const visibles = catalogoArtes
         .map((arte, i) => ({ arte, i }))
-        .filter(({ arte }) => (!grupo || arte.grupo === grupo) && (!tipo || arte.tipo === tipo)
+        .filter(({ arte }) => (!grupo || categoriaEnCatalogo(arte) === grupo) && (!tipo || arte.tipo === tipo)
             && (!soloCumplo || cumpleRequisitos(pj, arte))
             && (!busqueda || normalizarTexto([arte.nombre, arte.descripcion, ...arte.etiquetas].join(" ")).includes(busqueda)));
 
     const opcionesFila = (arte) => {
         const deSala = artesSala.find(a => a.id === arte.id);
+        // Quitarla o editarla: su autor o el máster (lo comprueban también las reglas de Firestore)
+        const suya = Boolean(deSala) && [deSala.autor, salaActual?.master].includes(usuarioActual?.uid);
         return {
             enCatalogo: true,
             motivoAnadir: tengo.has(arte.id) ? "Ya la tienes" : sinDesbloqueos,
             autor: deSala?.nombreAutor ?? null,
-            // Quitarla de la sala: su autor o el máster (lo comprueban también las reglas de Firestore)
-            quitable: Boolean(deSala) && [deSala.autor, salaActual?.master].includes(usuarioActual?.uid)
+            quitable: suya,
+            editable: suya
         };
     };
     const { usuario: usuarioActual, sala: salaActual } = getEstadoOnline();
 
-    // Primero las compartidas en la sala; después las del catálogo, agrupadas en el orden de GRUPOS_ARTE
-    const compartidas = visibles.filter(({ arte }) => esArteDeSala(arte));
-    const htmlSala = compartidas.length
-        ? `<h6 class="grupo-catalogo">Compartidas en la sala</h6>` + compartidas.map(({ arte, i }) => filaArte(arte, i, opcionesFila(arte))).join("")
-        : "";
-    const html = htmlSala + Object.keys(GRUPOS_ARTE).map(clave => {
-        const delGrupo = visibles.filter(({ arte }) => arte.grupo === clave && !esArteDeSala(arte));
+    // Por categorías (categoriasCatalogo); en cada una, las del catálogo y después las compartidas en la sala
+    const html = categorias.map(clave => {
+        const delGrupo = visibles.filter(({ arte }) => categoriaEnCatalogo(arte) === clave);
         if (!delGrupo.length) return "";
-        return `<h6 class="grupo-catalogo">${GRUPOS_ARTE[clave]}</h6>`
+        return `<h6 class="grupo-catalogo">${escaparHtml(etiquetaCategoria(clave))}</h6>`
             + delGrupo.map(({ arte, i }) => filaArte(arte, i, opcionesFila(arte))).join("");
     }).join("");
     pintarLista(listaCatalogoArtesEl, html || `<p class="lista-vacia">Ningún arte coincide con los filtros.</p>`);
@@ -6975,9 +7060,7 @@ function actualizarCatalogoArtes() {
 
 function inicializarCatalogoArtes() {
     const ventana = crearVentanaHija(document.getElementById("modalCatalogoArtes"));
-    document.getElementById("catalogoGrupo").innerHTML = `<option value="">Todos los grupos</option>` +
-        Object.entries(GRUPOS_ARTE).filter(([clave]) => clave !== "propia")
-            .map(([clave, etiqueta]) => `<option value="${clave}">${etiqueta}</option>`).join("");
+    // Las opciones de #catalogoGrupo las pone actualizarCatalogoArtes (cambian con las categorías nuevas de la sala)
     ["catalogoBuscar", "catalogoGrupo", "catalogoTipo", "catalogoSoloCumplo"].forEach(id => {
         document.getElementById(id).addEventListener("input", actualizarCatalogoArtes);
     });
@@ -6999,12 +7082,18 @@ function inicializarCatalogoArtes() {
     });
 
     listaCatalogoArtesEl.addEventListener("click", (e) => {
-        const boton = e.target.closest('button[data-accion="anadir"], button[data-accion="quitarSala"]');
+        const boton = e.target.closest('button[data-accion="anadir"], button[data-accion="quitarSala"], button[data-accion="editarSala"]');
         const arte = catalogoArtes[Number(boton?.closest(".fila-objeto")?.dataset.index)];
         if (!boton || boton.disabled || !arte) return;
         reproducir("click");
         if (boton.dataset.accion === "quitarSala") {
-            if (confirm(`¿Quitar ${arte.nombre} del catálogo de la sala? Quien ya la tenga la conserva.`)) quitarArteDeSala(arte.id, arte.nombre);
+            confirmarSao({ titulo: "Quitar de la sala", texto: `¿Quitar ${arte.nombre} del catálogo de la sala? Quien ya la tenga la conserva.` })
+                .then(si => { if (si) quitarArteDeSala(arte.id, arte.nombre); });
+            return;
+        }
+        if (boton.dataset.accion === "editarSala") {
+            const entrada = artesSala.find(a => a.id === arte.id);
+            if (entrada) abrirEditorArteSala(entrada, document.getElementById("modalCatalogoArtes"));
             return;
         }
         // Gasta un desbloqueo de arte (en el perfil del máster, no)

@@ -758,17 +758,34 @@ function inicializarPersonajesNube() {
  * Devuelve el id del arte en el catálogo, o null si no se pudo (y avisa).
  * @param {object} arte
  * @param {{ id: string, autor: string }[]} artesSala lista actual de la sala
+ * @param {string|null} categoria clave de GRUPOS_ARTE o texto libre (artes.js)
  */
-export async function compartirArte(arte, artesSala) {
+export async function compartirArte(arte, artesSala, categoria = null) {
     const { usuario } = servicio.getEstado();
     const propia = artesSala.find(a => a.id === arte.idCatalogo && a.autor === usuario?.uid);
     try {
-        const id = await servicio.guardarArteSala(arte, propia?.id ?? null);
+        const id = await servicio.guardarArteSala(arte, propia?.id ?? null, { categoria });
         ctx.aviso("Arte compartida", [`${arte.nombre} está en el catálogo de la sala.`]);
         return id;
     } catch (error) {
         ctx.aviso("No se pudo compartir", [servicio.mensajeError(error)]);
         return null;
+    }
+}
+
+/**
+ * Edita un arte compartida desde el catálogo (su autor o el máster). Conserva el autor original.
+ * @param {{ id: string, autor: string, nombreAutor: string }} entrada la de artesSala
+ * @returns {Promise<boolean>} si se guardó
+ */
+export async function editarArteSala(entrada, arte, categoria = null) {
+    try {
+        await servicio.guardarArteSala(arte, entrada.id, { categoria, autorOriginal: entrada });
+        ctx.aviso("Arte actualizada", [`${arte.nombre} se ha actualizado en el catálogo de la sala.`]);
+        return true;
+    } catch (error) {
+        ctx.aviso("No se pudo guardar", [servicio.mensajeError(error)]);
+        return false;
     }
 }
 

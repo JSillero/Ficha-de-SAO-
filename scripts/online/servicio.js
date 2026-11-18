@@ -955,7 +955,7 @@ function escucharSala(codigo) {
         const artes = instantanea.docs.flatMap(d => {
             const datos = d.data();
             try {
-                return [{ id: d.id, autor: datos.autor, nombreAutor: datos.nombreAutor, arte: JSON.parse(datos.arte) }];
+                return [{ id: d.id, autor: datos.autor, nombreAutor: datos.nombreAutor, categoria: datos.categoria ?? null, arte: JSON.parse(datos.arte) }];
             } catch {
                 return [];
             }
@@ -1326,18 +1326,23 @@ export async function expulsar(jugador) {
 /** id (también id del documento): minúsculas, para que valga como id de arte ("sala-xxxx") */
 const nuevoIdArteSala = () => `sala-${codigoAleatorio(10).toLowerCase()}`;
 
-/** Crea (sin id) o actualiza un arte compartida. Devuelve su id. */
-export async function guardarArteSala(arte, id = null) {
+/**
+ * Crea (sin id) o actualiza un arte compartida. Devuelve su id.
+ * categoria: clave de GRUPOS_ARTE o texto libre (artes.js). autorOriginal: { autor, nombreAutor } cuando la edita
+ * el máster y no es suya (se conserva su autor; las reglas no dejan cambiarlo).
+ */
+export async function guardarArteSala(arte, id = null, { categoria = null, autorOriginal = null } = {}) {
     const { db, f, uid } = exigirUsuario();
     if (!estado.sala) throw Object.assign(new Error("No estás en ninguna sala"), { code: "sin-sala" });
     id ??= nuevoIdArteSala();
     // En el catálogo no van los datos de la ficha (id propio, de dónde salió, si está equipada)
     const { id: _id, idCatalogo: _origen, equipada: _equipada, ...datosArte } = arte;
     await f.setDoc(f.doc(db, "salas", estado.sala.codigo, "artes", id), {
-        autor: uid,
-        nombreAutor: estado.usuario.nombre,
+        autor: autorOriginal?.autor ?? uid,
+        nombreAutor: autorOriginal ? String(autorOriginal.nombreAutor ?? "") : estado.usuario.nombre,
         nombre: datosArte.nombre,
         arte: JSON.stringify(datosArte),
+        categoria: categoria ? String(categoria).slice(0, 59) : null,
         actualizado: f.serverTimestamp()
     });
     return id;
