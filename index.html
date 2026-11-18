@@ -69,7 +69,7 @@
                 </div>
             </div>
 
-            <!-- A la derecha de tu HUD: grupo, personajes del máster y jefes en una fila que nunca crece hacia abajo;
+            <!-- A la derecha de tu HUD: grupo, personajes del máster, jefes y NPC en una fila que nunca crece hacia abajo;
                  si no caben, scroll horizontal (.header-derecha en hud.css) -->
             <div class="header-derecha" id="hudDerecha">
             <!-- Barras del grupo (interfazOnline.js, actualizarHudGrupo): a la derecha del HUD si caben;
@@ -97,6 +97,15 @@
                     Jefes (<span class="hud-grupo-numero">0</span>) <span class="hud-grupo-flecha" aria-hidden="true">▾</span>
                 </button>
                 <div id="hudJefesLista" class="hud-grupo-lista"></div>
+            </div>
+
+            <!-- NPC visibles de la sala para los jugadores (interfazOnline.js, actualizarHudNpcs): a la derecha de los
+                 jefes (o en su sitio si no hay), por iniciativa, sin PA. Si no caben, .plegado como el grupo -->
+            <div id="hudNpcs" class="hud-grupo hud-npcs" hidden>
+                <button type="button" class="hud-grupo-pestana" aria-expanded="false" aria-controls="hudNpcsLista">
+                    NPC (<span class="hud-grupo-numero">0</span>) <span class="hud-grupo-flecha" aria-hidden="true">▾</span>
+                </button>
+                <div id="hudNpcsLista" class="hud-grupo-lista"></div>
             </div>
             </div>
 

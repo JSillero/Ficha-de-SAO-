@@ -9386,6 +9386,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // Ficha resumida: la tuya para enviarla a un compañero y la ventana para ver la suya
         resumenPropio,
         mostrarFichaResumen,
+        abrirPerfil: abrirPerfilSegunModo, // al pulsar tu fila del grupo en la cabecera
         // Personaje al que va un evento privado (en modo máster, uno de los suyos aunque no esté en la ficha)
         leerPersonaje: leerPersonajeDeInstancia,
         conPersonaje: conPersonajeDeInstancia,

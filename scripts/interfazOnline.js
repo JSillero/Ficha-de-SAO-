@@ -28,6 +28,7 @@ import { cargarResumenFicha } from "./resumenFicha.js";
  * @property {() => void} actualizar            repinta la ficha (actualizarTodo) tras cambiar los amigos
  * @property {(grupo: object|null) => void} [alCambiarGrupo]  tu grupo (para el menú Social)
  * @property {() => object} resumenPropio       tu ficha resumida (resumenFicha.js), para enviarla a un compañero
+ * @property {() => void} [abrirPerfil]         tu perfil (al pulsar tu fila del grupo en la cabecera)
  * @property {(titulo: string, contenido: object|string) => void} mostrarFichaResumen  ventana de la ficha resumida
  */
 /** @type {ContextoOnline} */
@@ -1020,6 +1021,7 @@ function inicializarSocial() {
 
     inicializarGrupo();
     inicializarJefes();
+    inicializarNpcs();
     inicializarFichaResumen();
 }
 
@@ -1259,17 +1261,42 @@ export const htmlFilaHud = () => `
                 <span class="hud-grupo-estados"></span>
             </button>`;
 
-/** Color de la franja de un personaje (cursores de SAO): NPC amarilla si es neutral y roja si no; personajes verde
- *  con 0 de notoriedad y naranja con 1 o más. Clases franja-* en hud.css */
-export const COLORES_FRANJA = ["verde", "naranja", "amarilla", "roja"];
-export function colorFranja({ npc = false, neutral = false, notoriedad = 0, pesadilla = false } = {}) {
+/** Color de un NPC agresivo según su nivel menos el de quien lo mira (cursores de SAO, .claude/07 §2): el primer
+ *  umbral cuyo máximo no se supera. Configurable: el manual no da cifras */
+export const UMBRALES_COLOR_NPC = [
+    { hasta: -3, color: "rosa" },             // inferior
+    { hasta: 2, color: "roja" },              // igual
+    { hasta: 5, color: "purpura" },           // algo superior
+    { hasta: 10, color: "purpura-oscuro" },   // muy superior
+    { hasta: Infinity, color: "negra" }       // demasiado alto
+];
+
+/** Color de la franja de un personaje (cursores de SAO): personajes verde con 0 de notoriedad y naranja con 1 o más;
+ *  NPC amarilla si es neutral y, si no, según su nivel frente al de quien mira (observador = { nivel, npc }): roja
+ *  si no se sabe o si quien mira es un NPC, jefe o pesadilla. Clases franja-* en hud.css */
+export const COLORES_FRANJA = ["verde", "naranja", "amarilla", "roja", "rosa", "purpura", "purpura-oscuro", "negra"];
+export function colorFranja({ npc = false, neutral = false, notoriedad = 0, pesadilla = false, nivel = null, observador = null } = {}) {
     if (pesadilla) return null; // las pesadillas no tienen franja
-    if (npc) return neutral ? "amarilla" : "roja";
+    if (npc) {
+        if (neutral) return "amarilla";
+        const propio = Number(observador?.nivel);
+        const suyo = Number(nivel);
+        if (!observador || observador.npc || !Number.isFinite(propio) || nivel === null || nivel === "" || !Number.isFinite(suyo)) return "roja";
+        const diferencia = suyo - propio;
+        return UMBRALES_COLOR_NPC.find(u => diferencia <= u.hasta).color;
+    }
     return (Number(notoriedad) || 0) > 0 ? "naranja" : "verde";
 }
-/** Pone la clase franja-<color> en un elemento (fila de la cabecera o tu HUD) */
+
+/* Quien mira los colores: el personaje de la ficha (en modo máster, el que tenga en pantalla) */
+function observadorActual() {
+    const pj = ctx?.personaje?.();
+    return pj ? { nivel: Number(pj.nivel) || 0, npc: Boolean(pj.esNpc) } : null;
+}
+
+/** Pone la clase franja-<color> en un elemento (fila de la cabecera o tu HUD), visto desde el personaje de la ficha */
 export function ponerFranja(elemento, datos) {
-    const color = colorFranja(datos);
+    const color = colorFranja({ observador: observadorActual(), ...datos });
     COLORES_FRANJA.forEach(c => elemento.classList.toggle(`franja-${c}`, c === color));
 }
 
@@ -1349,7 +1376,7 @@ function actualizarHudJefes(lista = servicio.getJefesSala()) {
     lista.forEach((jefe, i) => {
         const bloque = cont.children[i];
         bloque.classList.toggle("en-turno", jefe.turno > 0 && jefe.turno >= ultimoTurnoGrupo);
-        ponerFranja(bloque, { npc: true, neutral: jefe.neutral });
+        ponerFranja(bloque, { npc: true, neutral: jefe.neutral, nivel: jefe.nivel });
         bloque.querySelector(".jefe-nombre").textContent = jefe.nombre;
         bloque.querySelector(".jefe-nivel").textContent = `LV ${jefe.nivel}`;
         bloque.title = jefe.nombre;
@@ -1438,42 +1465,130 @@ let ultimoTurnoGrupo = 0;
 export function verTurnoSala(hora) {
     ultimoTurnoGrupo = Math.max(ultimoTurnoGrupo, Number(hora) || 0);
     if (!ctx) return;
-    actualizarHudGrupo();
+    actualizarHudGrupo(); // también la lista de NPC
     actualizarHudJefes(); // un turno nuevo apaga el de los jefes
 }
 
-/* Barras del grupo en la cabecera (compañeros, sin ti). Las filas solo se regeneran si cambia el número.
-   El máster no ve aquí los grupos: ve a todos sus personajes en #hudMaster (interfazMaster.js). */
-function actualizarHudGrupo() {
-    const hud = el("hudGrupo");
-    const grupo = servicio.getGrupo();
-    const companeros = ctx.modoMaster ? [] : (grupo?.miembros ?? []).filter(m => m.instancia !== getInstancia());
-    hud.hidden = !companeros.length;
-    if (!companeros.length) {
+/* NPC de la sala _________________________________________________________________
+ * Los NPC normales visibles del máster (ni jefes ni pesadillas) salen para los jugadores a la derecha de los jefes
+ * (o en su sitio si no hay): nombre, nivel, vida y estados, sin PA ni cifras, por iniciativa, y parpadean en su
+ * turno. Los neutrales no salen, ni los que están en tu grupo (ya salen en él). Pulsarlos no hace nada por ahora.
+ * El máster no ve esta lista (los tiene en la suya). Datos: cabecera del registro de la sala (servicio.js). */
+
+/* NPC de la sala por instancia ("m-<id>"), también ocultos: para saber si un miembro del grupo es un NPC */
+const npcsPorInstancia = () => new Map(servicio.getNpcsSala().map(n => [n.instancia, n]));
+
+function actualizarHudNpcs() {
+    const hud = el("hudNpcs");
+    if (!hud) return;
+    const enGrupo = new Set((servicio.getGrupo()?.miembros ?? []).map(m => m.instancia));
+    const lista = ctx.modoMaster ? [] : servicio.getNpcsSala()
+        .filter(n => !n.oculto && !n.neutral && !enGrupo.has(n.instancia))
+        .sort((a, b) => b.iniciativa - a.iniciativa || a.nombre.localeCompare(b.nombre));
+    hud.hidden = !lista.length;
+    if (!lista.length) {
         hud.classList.remove("abierto");
         comprobarPlegadoJefes();
         return;
     }
-    hud.querySelector(".hud-grupo-numero").textContent = String(companeros.length + 1);
+    hud.querySelector(".hud-grupo-numero").textContent = String(lista.length);
+    const cont = el("hudNpcsLista");
+    const firma = lista.map(n => n.id).join(",");
+    if (cont.dataset.firma !== firma) {
+        cont.dataset.firma = firma;
+        cont.innerHTML = lista.map(htmlFilaHud).join("");
+        [...cont.children].forEach(fila => fila.classList.add("sin-pa", "solo-mirar"));
+    }
+    // Turno: parpadea si su Play es el más reciente que se ha visto (como el grupo y los jefes)
+    ultimoTurnoGrupo = Math.max(ultimoTurnoGrupo, ...lista.map(n => n.turno || 0));
+    lista.forEach((n, i) => {
+        const fila = cont.children[i];
+        fila.classList.toggle("en-turno", n.turno > 0 && n.turno >= ultimoTurnoGrupo);
+        fila.title = n.nombre;
+        rellenarFilaHud(fila, { ...n, npc: true, pa: 0 });
+    });
+    comprobarPlegadoHud(hud);
+}
+
+function inicializarNpcs() {
+    const hud = el("hudNpcs");
+    hud.addEventListener("click", (e) => {
+        if (!e.target.closest(".hud-grupo-pestana")) return;
+        reproducir("click");
+        hud.classList.toggle("abierto");
+        comprobarPlegadoHud(hud);
+    });
+    document.addEventListener("click", (e) => {
+        if (hud.classList.contains("abierto") && !hud.contains(e.target)) {
+            hud.classList.remove("abierto");
+            comprobarPlegadoHud(hud);
+        }
+    });
+    new ResizeObserver(() => comprobarPlegadoHud(hud)).observe(el("datosPrincipalesDiv"));
+    servicio.alCambiarNpcs(() => actualizarHudGrupo()); // un NPC del grupo cambia de color y la lista se repinta
+}
+
+/* Tu vida, PA, nivel, estados, iniciativa y notoriedad al momento (avisarEstadoGrupo), para tu fila del grupo sin
+   esperar a que se publiquen */
+let estadoPropioHud = null;
+
+/* Barras del grupo en la cabecera: todos sus miembros, tú incluido (con una flecha, como el personaje en pantalla
+   del máster), por iniciativa y nombre. Las filas solo se regeneran si cambia el orden.
+   El máster no ve aquí los grupos: ve a todos sus personajes en #hudMaster (interfazMaster.js). */
+function actualizarHudGrupo() {
+    const hud = el("hudGrupo");
+    const grupo = servicio.getGrupo();
+    const propia = getInstancia();
+    const npcs = npcsPorInstancia();
+    const personajesSala = new Map(servicio.getPersonajesSala().map(p => [p.instancia, p]));
+    const jefes = new Map(servicio.getJefesSala().map(j => [`m-${j.id}`, j]));
+    const miembros = (ctx.modoMaster ? [] : (grupo?.miembros ?? [])).map(m => {
+        // Un NPC del máster en el grupo: color según su nivel (o amarillo si es neutral)
+        const npc = npcs.get(m.instancia);
+        const esNpc = Boolean(npc || personajesSala.get(m.instancia)?.npc);
+        const datos = { ...m, npc: esNpc, neutral: npc?.neutral ?? jefes.get(m.instancia)?.neutral ?? false };
+        if (m.instancia !== propia) return datos;
+        // Tu fila, al día desde la ficha
+        const e = estadoPropioHud;
+        return {
+            ...datos, propia: true, nombre: ctx.personaje()?.nombre || m.nombre, turno: Number(ctx.turnoPropio?.()) || 0,
+            ...(e ? { vida: e.vida, pa: e.pa, nivel: e.nivel, estados: e.estados, iniciativa: Number(e.iniciativa) || 0, notoriedad: e.notoriedad } : {})
+        };
+    }).sort((a, b) => (Number(b.iniciativa) || 0) - (Number(a.iniciativa) || 0) || (a.nombre || "").localeCompare(b.nombre || ""));
+    const hayCompaneros = miembros.some(m => !m.propia);
+    hud.hidden = !hayCompaneros;
+    if (!hayCompaneros) {
+        hud.classList.remove("abierto");
+        actualizarHudNpcs();
+        comprobarPlegadoJefes();
+        return;
+    }
+    hud.querySelector(".hud-grupo-numero").textContent = String(miembros.length);
     const lista = el("hudGrupoLista");
-    if (lista.children.length !== companeros.length) {
-        lista.innerHTML = companeros.map(htmlFilaHud).join("");
+    const firma = miembros.map(m => m.instancia).join(",");
+    if (lista.dataset.firma !== firma) {
+        lista.dataset.firma = firma;
+        lista.innerHTML = miembros.map(htmlFilaHud).join("");
     }
     const enLinea = instanciasConectadas();
     // Turno: parpadea quien pulsó Play más tarde (también tú; con la misma iniciativa, varios a la vez)
     // (se recuerda el último visto: si quien lo tenía pasa a zona segura, los anteriores no vuelven a parpadear)
-    ultimoTurnoGrupo = Math.max(ultimoTurnoGrupo, Number(ctx.turnoPropio?.()) || 0, ...companeros.map(m => m.turno || 0));
+    ultimoTurnoGrupo = Math.max(ultimoTurnoGrupo, ...miembros.map(m => m.turno || 0));
     const ultimoTurno = ultimoTurnoGrupo;
-    companeros.forEach((m, i) => {
+    miembros.forEach((m, i) => {
         const fila = lista.children[i];
         fila.classList.toggle("en-turno", m.turno > 0 && m.turno >= ultimoTurno);
         fila.dataset.instancia = m.instancia;
-        fila.classList.toggle("desconectado", !enLinea.has(m.instancia));
+        fila.classList.toggle("propia", Boolean(m.propia));
+        fila.setAttribute("aria-current", m.propia ? "true" : "false");
+        fila.classList.toggle("desconectado", !m.propia && !enLinea.has(m.instancia));
         fila.classList.toggle("lider", m.lider);
-        fila.title = `${m.nombre || "Sin nombre"}${m.lider ? " (líder)" : ""}${enLinea.has(m.instancia) ? "" : " · desconectado"}`;
+        fila.title = m.propia ? `${m.nombre || "Sin nombre"} (tú${m.lider ? ", líder" : ""}): ver tu perfil`
+            : `${m.nombre || "Sin nombre"}${m.lider ? " (líder)" : ""}${enLinea.has(m.instancia) ? "" : " · desconectado"}`;
         rellenarFilaHud(fila, m);
     });
     comprobarPlegadoHud(hud);
+    actualizarHudNpcs(); // los NPC de tu grupo no salen en la lista de NPC
 }
 
 /** Si no caben las barras a la derecha del HUD, se pliegan en una pestaña. Con más de 3 filas van en
@@ -1549,7 +1664,8 @@ function inicializarGrupo() {
         if (!fila) return;
         reproducir("click");
         hud.classList.remove("abierto");
-        verFichaCompanero(fila.dataset.instancia);
+        if (fila.classList.contains("propia")) ctx.abrirPerfil?.();
+        else verFichaCompanero(fila.dataset.instancia);
     });
     document.addEventListener("click", (e) => {
         if (hud.classList.contains("abierto") && !hud.contains(e.target)) {
@@ -1572,6 +1688,12 @@ export function publicarEstadoDe(id, datos) {
 
 /** La ficha avisa de su estado (en cada actualizarTodo): { vida, pa (fracciones), nivel, estados } */
 export function avisarEstadoGrupo(datos) {
+    // Tu fila del grupo y los colores de los NPC (dependen de tu nivel) se repintan ya
+    estadoPropioHud = datos;
+    if (ctx) {
+        actualizarHudGrupo();
+        actualizarHudJefes();
+    }
     clearTimeout(temporizadorEstadoGrupo);
     // Otro personaje en la ficha (modo máster): lo pendiente del anterior se publica ya, en su grupo
     if (estadoGrupoPendiente && estadoGrupoPendiente.id !== datos.id) {

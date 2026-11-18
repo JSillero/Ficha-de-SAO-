@@ -86,7 +86,16 @@ export function resumenDe(pj) {
             b: barrasJefe(pj).map(v => Math.round(v * 100) / 100),
             n: Number(pj.nivel) || 0,
             e: Object.keys(ESTADOS_INFO).filter(clave => estaActivo(pj, clave)),
-            neu: Boolean(pj.neutral)
+            neu: Boolean(pj.neutral),
+            i: Math.round((Number(pj.iniciativa) || 0) * 10) / 10
+        } : null,
+        // NPC normal (ni jefe ni pesadilla): lo que ven los jugadores en su lista de NPC (registro de la sala). Sin PA
+        cabecera: pj.esNpc && !esJefe(pj) && !esPesadilla(pj) ? {
+            v: pj.vidaMax > 0 ? Math.round(Math.max(0, Math.min(1, pj.vida / pj.vidaMax)) * 100) / 100 : 0,
+            n: Number(pj.nivel) || 0,
+            e: Object.keys(ESTADOS_INFO).filter(clave => estaActivo(pj, clave)),
+            neu: Boolean(pj.neutral),
+            i: Math.round((Number(pj.iniciativa) || 0) * 10) / 10
         } : null
     };
 }
@@ -163,6 +172,22 @@ export function guardar(id, campos) {
         resumen: campos.resumen ?? antes?.resumen ?? null
     };
     return escribirIndice() && ok;
+}
+
+/** Resúmenes de NPC guardados antes de que existiera la cabecera de los jugadores: se recalculan de su ficha */
+export function refrescarResumenesAntiguos() {
+    const d = leer();
+    let cambiado = false;
+    for (const [id, p] of Object.entries(d.personajes)) {
+        if (!p?.resumen?.npc || "cabecera" in p.resumen) continue;
+        const json = leerPj(id).json;
+        if (!json) continue;
+        try {
+            p.resumen = resumenDeJson(json);
+            cambiado = true;
+        } catch { /* ficha dañada: se queda como estaba */ }
+    }
+    if (cambiado) escribirIndice();
 }
 
 export function setActivo(id) {

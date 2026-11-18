@@ -171,19 +171,21 @@ export function marcarSubido(id, idNube, json) {
 /* Nombres de sus personajes que no pueden estar en la sala (los tiene otro jugador): se avisa una vez */
 const avisadosNombre = new Set();
 
-/* Sus personajes de la sesión que van a la sala: [{ id, nombre, npc, trueque, jefe }], sin los de nombre ocupado por otro
+/* Sus personajes de la sesión que van a la sala: [{ id, nombre, npc, trueque, jefe, cabecera, pesadilla }], sin los de nombre ocupado por otro
    jugador. Los NPC pueden repetir nombre: no se comprueban (y en el registro van marcados para no ocupar el suyo). */
 function listaSala(registro) {
     const pj = ctx.personaje();
     const indice = Object.fromEntries(master.todos().map(p => [p.id, p]));
     return master.idsEnSesion()
         .map(id => id === pj.idPersonaje
-            ? { id, nombre: String(pj.nombre ?? "").trim(), npc: Boolean(pj.esNpc), trueque: Boolean(pj.esNpc && pj.permitirTrueque), jefe: master.resumenDe(pj).jefe,
-                pesadilla: esPesadilla(pj) }
+            ? { id, nombre: String(pj.nombre ?? "").trim(), npc: Boolean(pj.esNpc), trueque: Boolean(pj.esNpc && pj.permitirTrueque),
+                ...(({ jefe, cabecera }) => ({ jefe, cabecera }))(master.resumenDe(pj)), pesadilla: esPesadilla(pj) }
             : { id, nombre: indice[id]?.resumen?.nombre ?? "", npc: Boolean(indice[id]?.resumen?.npc), trueque: Boolean(indice[id]?.resumen?.trueque),
-                jefe: indice[id]?.resumen?.jefe ?? null, pesadilla: Boolean(indice[id]?.resumen?.pesadilla) })
-        // Jefe: con la hora de su turno (t), para que parpadee en la cabecera de los jugadores
+                jefe: indice[id]?.resumen?.jefe ?? null, cabecera: indice[id]?.resumen?.cabecera ?? null,
+                pesadilla: Boolean(indice[id]?.resumen?.pesadilla) })
+        // Jefe y NPC: con la hora de su turno (t), para que parpadeen en la cabecera de los jugadores
         .map(p => (p.jefe ? { ...p, jefe: { ...p.jefe, t: ctx.turnoDe(p.id) || 0 } } : p))
+        .map(p => (p.cabecera ? { ...p, cabecera: { ...p.cabecera, t: ctx.turnoDe(p.id) || 0 } } : p))
         .filter(p => {
             if (p.npc) return true;
             const motivo = motivoNombreSala(p.nombre, registro);
@@ -1985,6 +1987,7 @@ function inicializarCompendio() {
 export function inicializarMaster(contexto) {
     ctx = contexto;
     master.setClaveSesion(master.SESION_LOCAL);
+    master.refrescarResumenesAntiguos(); // NPC guardados sin los datos de la lista de NPC de los jugadores
     inicializarHud();
     inicializarPersonajesMaster();
     inicializarPerfilMaster();

@@ -11,8 +11,9 @@
  *       registro: { uid: { idPersonaje: { nombre } } } }           personajes que han estado en la sala (no se
  *                                                                  borran al desconectarse; los quita el máster)
  *       (NPC del máster en el registro: npc: true, trueque: true si acepta trueques y, si es un jefe,
- *        jefe: { b: [fracción de vida de cada fase], n: nivel, e: [estados], neu: neutral, t: hora de su turno }.
- *        Un jefe entra oculto)
+ *        jefe: { b: [fracción de vida de cada fase], n: nivel, e: [estados], neu: neutral, t: hora de su turno, i: iniciativa };
+ *        si es un NPC normal (ni jefe ni pesadilla), cabecera: { v: fracción de vida, n, e, neu, t, i }.
+ *        Todo NPC entra oculto)
  *       (cada entrada de personaje lleva también grupo: id del grupo en el que está, o null, e id: su idPersonaje.
  *        En modo máster, cada personaje de su sesión tiene una entrada "m-<idPersonaje>")
  * - salas/{codigo}/estados/{idPersonaje}: { jugador, master, nombre, vida, pa, nivel, iniciativa, estados, turno, stats, uw }
@@ -66,10 +67,13 @@ const estado = { usuario: null, sala: null };
 let dejarDeEscuchar = [];
 const oyentes = {
     estado: new Set(), evento: new Set(), artesSala: new Set(), personajes: new Set(), salida: new Set(),
-    grupo: new Set(), salidaGrupo: new Set(), estadosSala: new Set(), jefes: new Set()
+    grupo: new Set(), salidaGrupo: new Set(), estadosSala: new Set(), jefes: new Set(), npcs: new Set()
 };
 /* Jefes visibles de la sala (del registro del máster, no ocultos): [{ id, nombre, nivel, barras, estados, neutral }] */
 let jefesSala = [];
+/* NPC normales del máster de la sala (con cabecera en el registro, también los ocultos y neutrales):
+   [{ id, instancia, nombre, vida, nivel, estados, neutral, iniciativa, turno, oculto }] */
+let npcsSala = [];
 /* Último documento de sala leído (registro y entradas propias, para escribir solo lo que cambia) */
 let datosSala = null;
 /* Modo máster: estados de los personajes de los jugadores { idPersonaje: { jugador, nombre, vida, ... } } */
@@ -171,6 +175,9 @@ export function alCambiarEstadosSala(cb) { oyentes.estadosSala.add(cb); return (
 /** cb(lista) con los jefes visibles de la sala (getJefesSala), cada vez que cambia el documento de la sala */
 export function alCambiarJefes(cb) { oyentes.jefes.add(cb); return () => oyentes.jefes.delete(cb); }
 export function getJefesSala() { return jefesSala.map(j => ({ ...j, barras: [...j.barras], estados: [...j.estados] })); }
+/** cb(lista) con los NPC normales del máster de la sala (getNpcsSala), cada vez que cambia el documento de la sala */
+export function alCambiarNpcs(cb) { oyentes.npcs.add(cb); return () => oyentes.npcs.delete(cb); }
+export function getNpcsSala() { return npcsSala.map(n => ({ ...n, estados: [...n.estados] })); }
 
 export function getEstado() { return copiaEstado(); }
 export function getPersonajesSala() { return personajesSala.map(p => ({ ...p })); }
@@ -446,7 +453,14 @@ function mismoJefe(a, b) {
     if (!a || !b) return !a && !b;
     const lista = (v) => JSON.stringify(Array.isArray(v) ? v : []);
     return lista(a.b) === lista(b.b) && Number(a.n) === Number(b.n) && lista(a.e) === lista(b.e) && Boolean(a.neu) === Boolean(b.neu)
-        && (Number(a.t) || 0) === (Number(b.t) || 0);
+        && (Number(a.t) || 0) === (Number(b.t) || 0) && (Number(a.i) || 0) === (Number(b.i) || 0);
+}
+
+/* Cabecera de un NPC normal del registro igual (campo a campo, como mismoJefe) */
+function mismaCabecera(a, b) {
+    if (!a || !b) return !a && !b;
+    return Number(a.v) === Number(b.v) && Number(a.n) === Number(b.n) && JSON.stringify(a.e ?? []) === JSON.stringify(b.e ?? [])
+        && Boolean(a.neu) === Boolean(b.neu) && (Number(a.t) || 0) === (Number(b.t) || 0) && (Number(a.i) || 0) === (Number(b.i) || 0);
 }
 
 /* Modo máster: lo que hay que escribir en la sala para que sus personajes de la sesión (lista [{ id, nombre }])
@@ -465,14 +479,18 @@ function cambiosMaster(f, uid, lista, datos) {
         const jefe = p.npc && p.jefe ? p.jefe : null;
         // Pesadilla: no se le puede invitar a un grupo ni hacer transfusiones
         const pesadilla = Boolean(p.npc && p.pesadilla);
+        // NPC normal: vida, nivel, estados, neutral, turno e iniciativa (los jugadores lo ven en su cabecera)
+        const cabecera = p.npc && !jefe && !pesadilla && p.cabecera ? p.cabecera : null;
         if (registro[p.id]?.nombre !== p.nombre || Boolean(registro[p.id]?.npc) !== Boolean(p.npc)
             || Boolean(registro[p.id]?.trueque) !== trueque || !mismoJefe(registro[p.id]?.jefe, jefe)
-            || Boolean(registro[p.id]?.pesadilla) !== pesadilla) {
+            || !mismaCabecera(registro[p.id]?.cabecera, cabecera) || Boolean(registro[p.id]?.pesadilla) !== pesadilla) {
             cambios[`registro.${uid}.${p.id}`] = p.npc
-                ? { nombre: p.nombre, npc: true, ...(trueque ? { trueque } : {}), ...(jefe ? { jefe } : {}), ...(pesadilla ? { pesadilla } : {}) }
+                ? { nombre: p.nombre, npc: true, ...(trueque ? { trueque } : {}), ...(jefe ? { jefe } : {}),
+                    ...(cabecera ? { cabecera } : {}), ...(pesadilla ? { pesadilla } : {}) }
                 : { nombre: p.nombre };
-            // Un jefe entra en la sala oculto (en la misma escritura): al mostrarlo, los jugadores ven el aviso
-            if (jefe && !registro[p.id]) ocultar.push(claveOculto(uid, p.nombre));
+            // Todo NPC entra en la sala oculto (en la misma escritura): el máster lo muestra con el ojo (con un jefe,
+            // los jugadores ven el aviso)
+            if (p.npc && !registro[p.id]) ocultar.push(claveOculto(uid, p.nombre));
         }
         const entrada = presencia[`m-${p.id}`];
         const idGrupo = grupos.get(`m-${p.id}`)?.id ?? null;
@@ -825,10 +843,12 @@ function dejarSala() {
     datosSala = null;
     estadosSala = {};
     jefesSala = [];
+    npcsSala = [];
     avisar("artesSala", []);
     avisar("personajes", []);
     avisar("estadosSala", {});
     avisar("jefes", []);
+    avisar("npcs", []);
 }
 
 /* Jefes visibles: los del registro del máster de la sala con datos de jefe y no ocultos. Lo escribe el máster,
@@ -849,6 +869,29 @@ function leerJefes(datos) {
         const turno = Math.max(0, Math.trunc(Number(j.t) || 0)); // hora de su último Play (0 = sin turno)
         return [{ id: String(id).slice(0, 80), nombre, nivel, barras, estados, neutral: j.neu === true, turno }];
     }).sort((a, b) => a.nombre.localeCompare(b.nombre));
+}
+
+/* NPC normales: los del registro del máster con cabecera (también ocultos, marcados: la interfaz decide qué se ve
+   y los usa para saber si un miembro del grupo es un NPC). Se valida igual que los jefes */
+function leerNpcs(datos) {
+    const ocultos = datos.ocultos ?? [];
+    const delMaster = datos.registro?.[datos.master] ?? {};
+    return Object.entries(delMaster).flatMap(([id, r]) => {
+        const nombre = String(r?.nombre ?? "").trim().slice(0, 60);
+        const c = r?.npc && !r?.jefe && !r?.pesadilla && r?.cabecera && typeof r.cabecera === "object" ? r.cabecera : null;
+        if (!c || !nombre) return [];
+        const idSeguro = String(id).slice(0, 80);
+        return [{
+            id: idSeguro, instancia: `m-${idSeguro}`, nombre,
+            vida: Math.max(0, Math.min(1, Number(c.v) || 0)),
+            nivel: Math.max(0, Math.min(999, Math.trunc(Number(c.n) || 0))),
+            estados: (Array.isArray(c.e) ? c.e : []).slice(0, 20).map(e => String(e).slice(0, 30)),
+            neutral: c.neu === true,
+            iniciativa: Math.max(-999, Math.min(999, Math.round((Number(c.i) || 0) * 10) / 10)),
+            turno: Math.max(0, Math.trunc(Number(c.t) || 0)),
+            oculto: ocultos.includes(claveOculto(datos.master, nombre))
+        }];
+    });
 }
 
 /** Nombres de usuario (usuarios/{uid}), con caché: solo se leen los que faltan. Para la gestión de sala. */
@@ -917,6 +960,8 @@ function escucharSala(codigo) {
         avisar("personajes", getPersonajesSala());
         jefesSala = leerJefes(datos);
         avisar("jefes", getJefesSala());
+        npcsSala = leerNpcs(datos);
+        avisar("npcs", getNpcsSala());
     }, error => console.warn("Error escuchando la sala:", error)));
 
     // Modo máster en su sala: vida, PA, nivel, iniciativa y estados de los personajes de los jugadores
