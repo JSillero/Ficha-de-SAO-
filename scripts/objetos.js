@@ -3,7 +3,7 @@
 // No toca el DOM: recibe el personaje, lo modifica y devuelve lo que ha pasado.
 
 import Modificador, { cargarModificador, TURNOS_PERMANENTE } from "./modificador.js";
-import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, cargarEquipamiento } from "./equipamiento.js";
+import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, cargarEquipamiento, tipoArmaduraDe } from "./equipamiento.js";
 import { activarEstado, quitarEstado, aplicarDanno, ESTADOS_INFO, TIPOS_DANNO, CURAR_NEGATIVOS, curaConTodosLosNegativos, estaActivo, noSeCura } from "./estados.js";
 import { MANOS, gastarVarias, gastarTodas, partesDeMano, parteDeMano, manoVacia, puedeGastar } from "./turno.js";
 import { esZonaSegura } from "./zonas.js";
@@ -685,9 +685,9 @@ export function accesorioVacio(accesorio) {
 /* Los NPC no tienen límite de accesorios (salvo este máximo): siempre les queda una ranura libre más */
 export const MAX_ACCESORIOS_NPC = 20;
 
-/** Ranuras de accesorio del personaje: las que permite su armadura; en un NPC, las ocupadas + 1 */
+/** Ranuras de accesorio del personaje: las que permite su armadura (sin armadura, como ropa); en un NPC, las ocupadas + 1 */
 export function ranurasAccesorio(pj) {
-    if (!pj.esNpc) return getCantidadAccesoriosPorArmadura(pj.equipoArmadura?.tipo);
+    if (!pj.esNpc) return getCantidadAccesoriosPorArmadura(tipoArmaduraDe(pj));
     let ultima = -1;
     (pj.accesorios ?? []).forEach((accesorio, i) => { if (!accesorioVacio(accesorio)) ultima = i; });
     return Math.min(MAX_ACCESORIOS_NPC, ultima + 2);
@@ -716,6 +716,13 @@ export function manosParaEquipar(pj, tipo) {
     return TIPOS_DOS_MANOS.includes(tipo) ? posibles.slice(-1) : posibles;
 }
 
+/* Acción que gasta ponerse o quitarse un accesorio: la de una mano libre. En zona segura o base no hace falta
+   ninguna mano libre (allí no se gastan acciones), así que con las dos ocupadas no se gasta nada. */
+function partesManoAccesorio(pj) {
+    const mano = manoParaUsar(pj);
+    return mano ? [parteDeMano(mano)] : [];
+}
+
 /** Motivo por el que no se puede equipar el objeto del inventario, o null. */
 export function motivoNoEquipar(pj, objeto) {
     const tipo = objeto?.equipo?.tipo;
@@ -725,6 +732,15 @@ export function motivoNoEquipar(pj, objeto) {
             return motivoNoEquiparEnMano(pj, tipo, "manoDerecha") || motivoNoEquiparEnMano(pj, tipo, "manoIzquierda");
         case "armadura": {
             if (pj.equipoArmadura?.tipo) return "Ya llevas una armadura: guárdala antes.";
+            // Sin armadura (como ropa) puede llevar accesorios: los que no quepan con la nueva se perderían
+            if (!pj.esNpc) {
+                const permite = getCantidadAccesoriosPorArmadura(objeto.equipo.tipo);
+                if ((pj.accesorios ?? []).some((acc, i) => i >= permite && !accesorioVacio(acc))) {
+                    return permite
+                        ? `Esta armadura solo permite ${permite} accesorio${permite === 1 ? "" : "s"}: quítate antes los que sobran.`
+                        : "Esta armadura no permite accesorios: quítatelos antes.";
+                }
+            }
             // El Atletismo efectivo no puede bajar de 0 por la armadura (09-modelo-de-datos.md §5, #17)
             const penalizacion = Number(objeto.equipo.penalizacionAtletismo) || 0;
             return penalizacion > pj.getBaseHabilidad("atletismo")
@@ -734,7 +750,7 @@ export function motivoNoEquipar(pj, objeto) {
         case "accesorio": {
             const ranuras = ranurasAccesorio(pj);
             if (ranuraAccesorioLibre(pj) < 0) return ranuras ? "No quedan ranuras de accesorio libres." : "Tu armadura no permite accesorios.";
-            return manoParaUsar(pj) ? null : "Necesitas una mano libre para ponerte el accesorio.";
+            return manoParaUsar(pj) || esZonaSegura(pj) ? null : "Necesitas una mano libre para ponerte el accesorio.";
         }
         default:
             return "Este equipo no tiene un tipo válido.";
@@ -745,7 +761,7 @@ export function motivoNoEquipar(pj, objeto) {
  * Equipa un objeto del inventario.
  * - Arma o escudo: en una mano vacía (destino), gasta la acción de esa mano (o de las dos).
  * - Armadura: si no llevas ninguna, gasta todas las acciones del turno.
- * - Accesorio: en la primera ranura libre, gasta la acción de una mano libre.
+ * - Accesorio: en la primera ranura libre, gasta la acción de una mano libre (en zona segura o base no hace falta).
  * - Reliquia que no es arma: como un arma de una mano.
  */
 export function equipar(pj, indice, destino, gastar = gastarEstricto(pj)) {
@@ -772,8 +788,7 @@ export function equipar(pj, indice, destino, gastar = gastarEstricto(pj)) {
             pj.equipoArmadura = equipo;
             break;
         case "accesorio": {
-            const mano = manoParaUsar(pj);
-            if (!gastar([parteDeMano(mano)], `Ponerte ${objeto.nombre}`)) return fallo("Sin acción en la mano libre.");
+            if (!gastar(partesManoAccesorio(pj), `Ponerte ${objeto.nombre}`)) return fallo("Sin acción en la mano libre.");
             const ranura = ranuraAccesorioLibre(pj);
             for (let i = pj.accesorios.length; i < ranura; i++) pj.accesorios[i] = new Equipamiento("", "", TIPO_ACCESORIO);
             pj.accesorios[ranura] = equipo;
@@ -867,11 +882,8 @@ export function recogerArma(pj, indice, gastar = gastarEstricto(pj)) {
 export function motivoNoGuardar(pj, ranura) {
     if (!ranuraTieneEquipo(pj, ranura)) return "No hay nada equipado.";
     if (!hayHuecoLibre(pj)) return "El inventario está lleno.";
-    if (ranura === "equipoArmadura" && pj.accesorios.some(acc => !accesorioVacio(acc))) {
-        return "Guarda antes los accesorios: sin armadura no hay ranuras.";
-    }
     if (equipoEnRanura(pj, ranura)?.cinturon?.objetos.some(Boolean)) return "Vacía antes el cinturón: no se puede quitar con objetos.";
-    if (ranura.startsWith("accesorio-") && !manoParaUsar(pj)) return "Necesitas una mano libre para quitarte el accesorio.";
+    if (ranura.startsWith("accesorio-") && !manoParaUsar(pj) && !esZonaSegura(pj)) return "Necesitas una mano libre para quitarte el accesorio.";
     return null;
 }
 
@@ -887,7 +899,7 @@ export function guardarEquipado(pj, ranura, gastar = gastarEstricto(pj)) {
     } else if (ranura === "equipoArmadura") {
         if (!gastar("todas", `Quitarte ${nombre} (gasta todas las acciones)`)) return fallo("Cambiar de armadura gasta todas las acciones del turno.");
     } else {
-        if (!gastar([parteDeMano(manoParaUsar(pj))], `Quitarte ${nombre}`)) return fallo("Sin acción en la mano libre.");
+        if (!gastar(partesManoAccesorio(pj), `Quitarte ${nombre}`)) return fallo("Sin acción en la mano libre.");
     }
 
     equipo.enUso = false;

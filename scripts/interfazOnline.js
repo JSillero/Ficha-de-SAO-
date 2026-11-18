@@ -169,6 +169,32 @@ function comprobarInstanciaNube() {
  * Modo máster en su sala: lo que necesita la cabecera, o null si no lleva la sala como máster.
  * { uid, registro: { uid: { id: { nombre } } }, estados: { id: {...} }, conectados: Set("uid|id") }
  */
+/* Modo máster: personajes de jugadores que no respondieron al pedirles la ficha (pedirFichaJugador). Cuentan como
+   desconectados hasta que den señales de vida: un evento suyo, una respuesta tardía o su entrada de la sala reescrita
+   (otra instancia u otro "visto", p. ej. al volver a entrar). "jugador|id" → { instancia, visto } */
+const sinRespuesta = new Map();
+function marcarSinRespuesta(jugador, id, instancia) {
+    const entrada = servicio.getPersonajesSala().find(p => p.jugador === jugador && p.id === id);
+    sinRespuesta.set(`${jugador}|${id}`, { instancia, visto: entrada?.visto ?? null });
+}
+function sigueSinResponder(p) {
+    const clave = `${p.jugador}|${p.id}`;
+    const marca = sinRespuesta.get(clave);
+    if (!marca) return false;
+    if (marca.instancia === p.instancia && marca.visto === (p.visto ?? null)) return true;
+    sinRespuesta.delete(clave);
+    return false;
+}
+/** Ha llegado algo de esta instancia: si estaba marcada como sin respuesta, vuelve a contar como conectada */
+function senalDeVida(instancia) {
+    if (!instancia || !sinRespuesta.size) return;
+    let cambia = false;
+    for (const [clave, marca] of sinRespuesta) {
+        if (marca.instancia === instancia) { sinRespuesta.delete(clave); cambia = true; }
+    }
+    if (cambia) ctx.alCambiarPersonajes?.(servicio.getPersonajesSala());
+}
+
 export function getSalaMaster() {
     const { usuario, sala } = servicio.getEstado();
     if (!ctx?.modoMaster || !usuario || !sala || sala.master !== usuario.uid) return null;
@@ -176,7 +202,7 @@ export function getSalaMaster() {
         uid: usuario.uid,
         registro: servicio.getRegistroSala(),
         estados: servicio.getEstadosSala(),
-        conectados: new Set(servicio.getPersonajesSala().filter(p => p.id).map(p => `${p.jugador}|${p.id}`)),
+        conectados: new Set(servicio.getPersonajesSala().filter(p => p.id && !sigueSinResponder(p)).map(p => `${p.jugador}|${p.id}`)),
         ocultos: new Set(sala.ocultos ?? [])
     };
 }
@@ -233,7 +259,10 @@ export async function inicializarOnline(contexto) {
         pintarSala();
         ctx.alCambiarEstado(estado);
     });
-    servicio.alRecibirEvento(recibirEvento);
+    servicio.alRecibirEvento(evento => {
+        senalDeVida(evento?.instancia);
+        recibirEvento(evento);
+    });
     servicio.alCambiarArtesSala(artes => ctx.alCambiarArtesSala(artes));
     servicio.alCambiarPersonajes(lista => {
         ctx.alCambiarPersonajes?.(lista);
@@ -1128,11 +1157,15 @@ const ESPERA_FICHA_COMPLETA_MS = 8000;
 let fichaCompletaPedida = null;
 
 /**
- * Modo máster: la ficha de un personaje de un jugador. Devuelve { json, actualizado (ms), aviso } o { error }.
+ * Modo máster: la ficha de un personaje de un jugador. Devuelve { json, actualizado (ms), aviso, sinRespuesta } o
+ * { error, sinRespuesta }. Si no se le puede pedir (no responde o falla el envío), pasa a contar como desconectado
+ * (sinRespuesta) y no se le vuelve a pedir hasta que dé señales de vida: se lee directamente la última copia.
  */
 export async function pedirFichaJugador(jugador, id) {
     let aviso = null;
-    const instancia = servicio.instanciaDePersonaje(jugador, id);
+    let sinRespuestaAhora = false;
+    const entrada = servicio.getPersonajesSala().find(p => p.jugador === jugador && p.id === id);
+    const instancia = entrada && !sigueSinResponder(entrada) ? entrada.instancia : null;
     if (instancia) {
         fichaCompletaPedida?.resolver(false);
         const respondio = await new Promise(resolver => {
@@ -1145,18 +1178,22 @@ export async function pedirFichaJugador(jugador, id) {
             fichaCompletaPedida = { id, instancia, resolver: terminar };
             emitirPrivado("pedirFichaCompleta", { para: instancia, id }).catch(() => terminar(false));
         });
-        if (!respondio) aviso = "No ha respondido: se muestra la última copia guardada.";
+        if (!respondio) {
+            aviso = "No ha respondido: pasa a contar como desconectado y se muestra la última copia guardada.";
+            marcarSinRespuesta(jugador, id, instancia);
+            sinRespuestaAhora = true;
+        }
     }
     try {
         const ficha = await servicio.leerFichaSala(id);
         if (!ficha) {
-            return { error: instancia
-                ? "No ha respondido y no hay ninguna copia de su ficha."
+            return { sinRespuesta: sinRespuestaAhora, error: instancia
+                ? "No ha respondido (cuenta como desconectado) y no hay ninguna copia de su ficha."
                 : "No hay ninguna copia de su ficha: su jugador tiene que guardarla en la nube estando en la sala." };
         }
-        return { ...ficha, aviso };
+        return { ...ficha, aviso, sinRespuesta: sinRespuestaAhora };
     } catch (error) {
-        return { error: servicio.mensajeError(error) };
+        return { error: servicio.mensajeError(error), sinRespuesta: sinRespuestaAhora };
     }
 }
 

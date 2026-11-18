@@ -1,5 +1,5 @@
 import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ESCUDO, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, ELEMENTOS, cargarValoresElementales, cargarDebilidades,
-    esArmaFuego, TIPOS_ARMA_FUEGO, TIPOS_ARMA_CAC, MAX_DISPAROS, MAX_CARGADOR } from "./equipamiento.js";
+    esArmaFuego, TIPOS_ARMA_FUEGO, TIPOS_ARMA_CAC, MAX_DISPAROS, MAX_CARGADOR, tipoArmaduraDe } from "./equipamiento.js";
 import {
     prepararDisparo, calcularDannoDisparo, sacarBala, disparosPosibles, motivoNoDisparar, partesDeArmaFuego, nombreArmaFuego,
     tieneBalasInfinitas, motivoNoRecargar, recargarArma, vaciarCargador, municionDisponible, huecosCargador, textoCargador
@@ -3684,7 +3684,8 @@ function actualizarBotonGuardar(boton, ranura) {
     boton.style.display = tiene ? "" : "none";
     if (!tiene) return;
     const motivo = motivoNoGuardar(personaje, ranura);
-    const coste = ranura === "equipoArmadura" ? "gasta todas las acciones del turno"
+    const coste = esZonaSegura(personaje) ? "en zona segura no gasta acciones"
+        : ranura === "equipoArmadura" ? "gasta todas las acciones del turno"
         : ranura.startsWith("accesorio-") ? "gasta la acción de una mano libre" : "gasta la acción de esa mano";
     boton.title = motivo ? `No se puede guardar: ${motivo}` : `Guardar en el inventario (${coste})`;
     boton.setAttribute("aria-label", boton.title);
@@ -4275,7 +4276,6 @@ const MAX_ACCESORIOS = 3;
 const NOMBRES_ARMADURA = { pesada: "pesada", media: "media", ligera: "ligera", ropa: "de ropa", real: "real" };
 
 function motivoBloqueoAccesorio(tipoArmadura, ranuras) {
-    if (!tipoArmadura) return "Equipa una armadura para tener ranuras de accesorio.";
     if (ranuras === 0) return `La armadura ${NOMBRES_ARMADURA[tipoArmadura] ?? tipoArmadura} no permite accesorios.`;
     return `La armadura ${NOMBRES_ARMADURA[tipoArmadura] ?? tipoArmadura} solo permite ${ranuras}.`;
 }
@@ -4283,7 +4283,7 @@ function motivoBloqueoAccesorio(tipoArmadura, ranuras) {
 function generarAccesorios() {
     const contenedor = document.getElementById("listaAccesorios");
     if (!contenedor) return;
-    const tipoArmadura = personaje.equipoArmadura?.tipo || "";
+    const tipoArmadura = tipoArmaduraDe(personaje); // sin armadura cuenta como ropa
     // Un NPC no tiene límite: siempre tiene una ranura libre más (ranurasAccesorio en objetos.js)
     const ranuras = ranurasAccesorio(personaje);
     const tarjetas = personaje.esNpc ? ranuras : MAX_ACCESORIOS;
@@ -4870,7 +4870,7 @@ function inicializarTurno() {
             actualizarTodo();
             return;
         }
-        const modoArmadura = modoSigiloPorArmadura(personaje.equipoArmadura?.tipo);
+        const modoArmadura = modoSigiloPorArmadura(tipoArmaduraDe(personaje));
         if (modoArmadura === null) {
             alert("Con armadura pesada no se puede entrar en sigilo.");
             return;
@@ -4923,7 +4923,7 @@ function actualizarAcciones() {
     btnSigilo.classList.toggle("activo", personaje.enSigilo);
     btnSigilo.textContent = personaje.enSigilo ? "Salir de sigilo" : "Sigilo";
     btnSigilo.disabled = !personaje.enSigilo && !puedeEntrarEnSigilo(personaje);
-    btnSigilo.title = modoSigiloPorArmadura(personaje.equipoArmadura?.tipo) === null
+    btnSigilo.title = modoSigiloPorArmadura(tipoArmaduraDe(personaje)) === null
         ? "Con armadura pesada no se puede entrar en sigilo"
         : "Entrar en sigilo gasta la acción de piernas";
 
@@ -7827,7 +7827,7 @@ function opcionesUso(objeto) {
         case "equipo": {
             const motivo = motivoNoEquipar(personaje, objeto);
             if (motivo || categoriaEquipo(objeto.equipo.tipo) !== "mano") {
-                const coste = categoriaEquipo(objeto.equipo.tipo) === "armadura" ? " (todas las acciones)" : " (mano libre)";
+                const coste = esZonaSegura(personaje) ? "" : categoriaEquipo(objeto.equipo.tipo) === "armadura" ? " (todas las acciones)" : " (mano libre)";
                 return [{ accion: "equipar", etiqueta: "Equipar" + coste, motivo }];
             }
             const manos = manosParaEquipar(personaje, objeto.equipo.tipo);

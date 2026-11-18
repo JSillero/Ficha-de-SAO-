@@ -889,7 +889,7 @@ function leerPersonajes(datos) {
                 const registro = p?.id ? datos.registro?.[jugador]?.[p.id] : null;
                 return {
                     jugador, instancia, nombre, oculto: ocultos.includes(claveOculto(jugador, nombre)), grupo: p?.grupo ?? null,
-                    id: p?.id ?? null, npc: Boolean(registro?.npc), trueque: Boolean(registro?.npc && registro?.trueque),
+                    id: p?.id ?? null, visto: p?.visto?.toMillis?.() ?? null, npc: Boolean(registro?.npc), trueque: Boolean(registro?.npc && registro?.trueque),
                     pesadilla: Boolean(registro?.npc && registro?.pesadilla)
                 };
             }))

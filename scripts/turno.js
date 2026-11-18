@@ -3,7 +3,7 @@
 // No toca el DOM: recibe el personaje, lo modifica y devuelve lo que ha pasado.
 
 import { TURNOS_PERMANENTE } from "./modificador.js";
-import { TIPOS_DOS_MANOS } from "./equipamiento.js";
+import { TIPOS_DOS_MANOS, tipoArmaduraDe } from "./equipamiento.js";
 import { esZonaSegura } from "./zonas.js";
 import { avanzarEnfriamientos } from "./reliquias.js";
 import { equiposDePartes, aciertoMaximo } from "./npc.js";
@@ -193,7 +193,7 @@ export function modoSigiloPorArmadura(tipoArmadura) {
 
 export function puedeEntrarEnSigilo(pj) {
     return !pj.enSigilo
-        && modoSigiloPorArmadura(pj.equipoArmadura?.tipo) !== null
+        && modoSigiloPorArmadura(tipoArmaduraDe(pj)) !== null
         && puedeGastar(pj, "pies");
 }
 

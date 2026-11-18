@@ -515,6 +515,8 @@ async function verFichaJugador(jugador, id) {
     try {
         if (fila.conectado) ctx.aviso(`Ficha de ${nombre}`, ["Pidiendo su ficha…"]);
         const resultado = await pedirFichaJugador(jugador, id);
+        // Si no ha respondido, ya cuenta como desconectado (gris en la cabecera)
+        if (resultado.sinRespuesta) actualizarHudMaster();
         if (resultado.error) {
             ctx.aviso(`Ficha de ${nombre}`, [resultado.error]);
             return;

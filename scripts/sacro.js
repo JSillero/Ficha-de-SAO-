@@ -4,7 +4,7 @@
 // o se absorbe (ambiente, cristales elementales del cinturón, lo quitado a otro). El daño de cada dedo es el daño
 // mágico × el multiplicador del elemento; los dedos con el mismo elemento suman y cada elemento hace su daño aparte.
 
-import { TIPOS_DOS_MANOS } from "./equipamiento.js";
+import { TIPOS_DOS_MANOS, tipoArmaduraDe } from "./equipamiento.js";
 import { MANOS, puedeGastarVarias, gastarVarias, puedeGastarTodas, gastarTodas, accionesUsadas } from "./turno.js";
 import { cinturonesPuestos } from "./cinturon.js";
 
@@ -67,8 +67,8 @@ export function motivoNoGuardarEnMano(pj, mano) {
  *  se muere), 0 fuera */
 export const minimoPV = (pj) => (pj?.zona === "segura" || pj?.zona === "base" ? 1 : 0);
 
-/** Los pies solo con ropa o armadura real */
-export const piesUsables = (pj) => ARMADURAS_PIES.includes(pj?.equipoArmadura?.tipo);
+/** Los pies solo con ropa o armadura real (sin armadura cuenta como ropa) */
+export const piesUsables = (pj) => ARMADURAS_PIES.includes(tipoArmaduraDe(pj));
 
 /** Por qué no se puede usar un dedo (null = se puede). No cuenta el límite del Sacro, que va por número de dedos. */
 export function motivoDedoNoUsable(pj, id) {

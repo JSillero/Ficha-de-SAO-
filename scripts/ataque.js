@@ -2,7 +2,7 @@
 // Ataques con armas (05-combate-y-estados.md §1, 04-tiradas.md §2, 10-sigilo.md §5).
 // No toca el DOM: prepara los valores de la tirada y calcula el daño.
 
-import { ARMAS, ELEMENTOS } from "./equipamiento.js";
+import { ARMAS, ELEMENTOS, tipoArmaduraDe } from "./equipamiento.js";
 import { combinarModos } from "./dados.js";
 import { ESTADOS_INFO, TIPOS_DANNO, CURAR_NEGATIVOS } from "./estados.js";
 import { anadirEstadosAlGolpe } from "./estadosAlAcertar.js";
@@ -58,7 +58,7 @@ export function prepararAtaque(pj, propMano, modosExtra = [1]) {
  * patada además lo multiplica según la armadura. */
 export const MULT_PATADA = { pesada: 4, media: 3 };
 export const MULT_PATADA_BASE = 2; // sin armadura, ropa, real o ligera
-export const multPatada = (pj) => MULT_PATADA[pj?.equipoArmadura?.tipo] ?? MULT_PATADA_BASE;
+export const multPatada = (pj) => MULT_PATADA[tipoArmaduraDe(pj)] ?? MULT_PATADA_BASE;
 
 /** Tirada de un puñetazo o una patada. tipo: "puno" | "patada" */
 export function prepararAtaqueSinArma(pj, tipo, modosExtra = [1]) {

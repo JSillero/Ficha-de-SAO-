@@ -6,7 +6,7 @@
 // Ciclos de módulos: PJ.js importa este módulo y este importa zonas.js, objetos.js, ataque.js...
 // Es seguro porque nada de lo importado se usa al cargarse, solo dentro de funciones.
 
-import { ARMAS, TIPOS_DOS_MANOS, ELEMENTOS, cargarValoresElementales } from "./equipamiento.js";
+import { ARMAS, TIPOS_DOS_MANOS, ELEMENTOS, cargarValoresElementales, tipoArmaduraDe } from "./equipamiento.js";
 import { MANOS, partesDeMano } from "./turno.js";
 import { esZonaSegura, MOTIVOS_ZONA } from "./zonas.js";
 import { gastarEstricto } from "./objetos.js";
@@ -295,7 +295,7 @@ export function cumpleRequisito(pj, req) {
         case "habilidad":
             return valorBase(pj, req) >= req.valor;
         case "armadura":
-            return req.tipos.includes(pj.equipoArmadura?.tipo);
+            return req.tipos.includes(tipoArmaduraDe(pj)); // sin armadura cuenta como ropa
         case "arma":
             return req.ambasManos
                 ? MANOS.every(mano => req.tipos.includes(pj[mano]?.tipo))

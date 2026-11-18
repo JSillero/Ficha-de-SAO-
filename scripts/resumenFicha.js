@@ -9,6 +9,7 @@ import { prepararAtaque, prepararAtaqueNpc } from "./ataque.js";
 import { equiposDePartes, esPesadilla } from "./npc.js";
 import { mediaDado } from "./dados.js";
 import { modoSigiloPorArmadura } from "./turno.js";
+import { tipoArmaduraDe } from "./equipamiento.js";
 
 export const VERSION_RESUMEN = 1;
 
@@ -69,7 +70,7 @@ const lista = (valor, cargar) => (Array.isArray(valor) ? valor.slice(0, MAX_LIST
 /* Tirada media para entrar en sigilo: dado medio según la armadura + Reflejos + Sigilo (como el botón de sigilo).
    null con armadura pesada (no se puede) o en un NPC (no tiene Sigilo). */
 function tiradaMediaSigilo(pj) {
-    const modo = pj.esNpc ? null : modoSigiloPorArmadura(pj.equipoArmadura?.tipo);
+    const modo = pj.esNpc ? null : modoSigiloPorArmadura(tipoArmaduraDe(pj));
     if (modo === null) return null;
     const valor = mediaDado(modo) + (Number(pj.reflejos) || 0) + Math.max(0, Number(pj.getGenerico("subterfugio")) || 0);
     return Math.round(valor * 10) / 10;

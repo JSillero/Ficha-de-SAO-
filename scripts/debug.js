@@ -497,7 +497,7 @@ export function comprobarSacro() {
     }
     const partes = partesHechizo([...dedos, { id: "pies-0", elemento: "akva", origen: "generar" }]);
     if (partes.sort().join() !== "cabeza,izquierda,pies") fallos.push(`Acciones: ${partes.join(", ")} (esperado cabeza, izquierda, pies).`);
-    if (!motivoNoDedos(pj, [{ id: "pies-0", elemento: "akva", origen: "generar" }]) && !["ropa", "real"].includes(pj.equipoArmadura?.tipo)) {
+    if (!motivoNoDedos(pj, [{ id: "pies-0", elemento: "akva", origen: "generar" }]) && !["ropa", "real"].includes(pj.equipoArmadura?.tipo || "ropa")) {
         fallos.push("Deja usar los pies sin ropa ni armadura real.");
     }
     if (!motivoNoDedos(pj, [{ id: "manoIzquierda-0", elemento: "morna", origen: "generar" }])) fallos.push("Deja generar Morna.");

@@ -177,6 +177,13 @@ export default class Equipamiento {
 
 /* Tipos de armadura y de accesorio (el resto de tipos de equipo son los de ARMAS) */
 export const TIPOS_ARMADURA = ["pesada", "media", "ligera", "ropa", "real"];
+/* Sin armadura se cuenta como si llevara ropa (accesorios, requisitos de artes, sigilo, patada, pies del Sacro) */
+export const ARMADURA_SIN_ARMADURA = "ropa";
+/** Tipo de armadura que cuenta para las reglas: el de la que lleva, o ropa si no lleva ninguna */
+export function tipoArmaduraDe(pj) {
+    const tipo = pj?.equipoArmadura?.tipo;
+    return tipo && tipo !== "ninguno" ? tipo : ARMADURA_SIN_ARMADURA;
+}
 export const TIPO_ACCESORIO = "accesorio";
 /* Reliquia que no es arma: se lleva en una mano (como un arma de una mano, pero sin ataque).
    Un arma también puede ser reliquia (campo reliquia). */
