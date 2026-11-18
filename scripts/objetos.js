@@ -11,6 +11,7 @@ import { cargarEfectos } from "./efectosEquipo.js";
 import { cargarEstadosAlAcertar, cargarEstadoAlAcertar, MAX_ESTADOS_AL_ACERTAR } from "./estadosAlAcertar.js";
 import { esPesadilla, equiposDePartes } from "./npc.js";
 import { ELEMENTOS_SACRO, ELEMENTOS_CRISTAL } from "./elementosSacro.js";
+import { cargarMascota } from "./mascotas.js";
 
 /* Huecos base del inventario; el modificador `inventario` los amplía (o reduce) */
 export const TAMANO_INVENTARIO = 5;
@@ -227,7 +228,16 @@ export function cargarObjeto(datos) {
  */
 export function cargarObjetosClave(datos) {
     return (Array.isArray(datos) ? datos : [])
-        .map(objeto => ({ nombre: String(objeto?.nombre ?? "").trim(), descripcion: String(objeto?.descripcion ?? "") }))
+        .map(objeto => {
+            const clave = { nombre: String(objeto?.nombre ?? "").trim(), descripcion: String(objeto?.descripcion ?? "") };
+            // Cristal de mascota (mascotas.js): la ficha de la mascota y si está invocada
+            const mascota = cargarMascota(objeto?.mascota);
+            if (mascota) {
+                clave.mascota = mascota;
+                if (objeto.invocada === true && !mascota.agrietado) clave.invocada = true;
+            }
+            return clave;
+        })
         .filter(objeto => objeto.nombre);
 }
 

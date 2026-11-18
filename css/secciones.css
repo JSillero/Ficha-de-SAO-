@@ -3564,6 +3564,8 @@ body:not(.modo-master) #divEquipamiento .mods-equipo .quitar-mod {
 .perfil-master.modo-npc .solo-personaje,
 .perfil-master:not(.modo-npc) .solo-npc,
 .perfil-master:not(.modo-jefe) .solo-jefe,
+.perfil-master:not(.modo-mascota) .solo-mascota,
+.perfil-master.modo-mascota .no-mascota,
 .perfil-master.modo-pesadilla .no-pesadilla,
 .perfil-master.modo-pesadilla #perfilMasterValoresNpc label:has(input[data-npc="puntosArteMax"]) {
     display: none;
@@ -6380,4 +6382,35 @@ body.modo-lectura #divEquipamiento .btn-extras-equipo {
 #dannoSacroMaster {
     display: flex;
     flex-direction: column;
+}
+
+/* Cristal de mascota (filaCristalMascota en interfaz.js): agrietado en rojo y los niveles por revisar en dorado */
+.fila-objeto.cristal-mascota .cristal-agrietado {
+    color: #c0392b;
+}
+
+.fila-objeto.cristal-mascota .niveles-pendientes {
+    color: #8a6d2a;
+}
+
+.fila-objeto.cristal-mascota.agrietado .objeto-icono {
+    opacity: 0.6;
+}
+
+/* Mascota en el perfil del máster (pintarMascotaPerfil en interfazMaster.js): fichas con los posibles dueños */
+.bloque-mascota-perfil {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.fichas-dueno {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+}
+
+.fichas-dueno .lista-vacia {
+    margin: 0;
 }

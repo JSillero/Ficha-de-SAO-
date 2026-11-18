@@ -10,8 +10,9 @@ import {
     htmlFilaHud, rellenarFilaHud, comprobarPlegadoHud, motivoNombreNoDisponible, motivoNombreSala, getEstadoOnline,
     getSalaMaster, publicarPersonajesMaster, echarPersonajeSala, mensajeErrorOnline, pedirFichaJugador,
     ocultarPersonajeSala, claveOcultoSala, leerCompendioNube, guardarCompendioNube, haySesionOnline, alCambiarSesionOnline,
-    salirPorMuerte
+    salirPorMuerte, getTodosPersonajesSala
 } from "./interfazOnline.js";
+import { emitirPrivado, registrarManejador } from "./eventos.js";
 import { PROFESIONES, VALORES_COMBATE, estadisticasProtagonista } from "./resumenFicha.js";
 import { ETIQUETAS_CARACTERISTICA, ETIQUETAS_HABILIDAD, ranurasUsadas, ranurasLibres, motivoInactiva, puedeTenerOniricas } from "./artes.js";
 import { iconoSao } from "./iconos.js";
@@ -21,7 +22,7 @@ import { crearFichas, prepararFormularioSao } from "./formularioSao.js";
 import { iniciarTurno } from "./turno.js";
 import {
     capacidadInventario, ajustarInventario, cabenEnInventario, transferirABaul, transferirAInventario,
-    categoriaEquipo, cargarObjeto, cargarEquipo, accesorioVacio, MAX_ACCESORIOS_NPC
+    categoriaEquipo, cargarObjeto, cargarEquipo, accesorioVacio, MAX_ACCESORIOS_NPC, cargarObjetosClave
 } from "./objetos.js";
 import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA } from "./equipamiento.js";
 import {
@@ -257,6 +258,8 @@ function filasCabecera() {
                 vida: estado?.vida ?? 1, pa: estado?.pa ?? 0, nivel: estado?.nivel ?? "?",
                 iniciativa: estado?.iniciativa ?? 0, estados: estado?.estados ?? [], turno: estado?.turno ?? 0,
                 notoriedad: estado?.notoriedad ?? 0, alerta: estado?.alerta ?? 0,
+                // Mascota de un jugador (con la franja de su dueño) o cristales de mascota de un personaje
+                mascota: Boolean(registro?.mascota), pendientes: estado?.pendientes ?? 0, mascotas: estado?.mascotas ?? [],
                 oculto: sala.ocultos.has(claveOcultoSala(jugador, estado?.nombre || registro?.nombre || ""))
             };
         }));
@@ -282,13 +285,14 @@ export function actualizarHudMaster() {
     hud.querySelector(".hud-grupo-numero").textContent = String(filas.length);
     const lista = el("hudMasterLista");
     const sala = getSalaMaster();
-    const firma = filas.map(f => f.clave).join(",") + "|" + idActivo + "|" + Boolean(sala);
+    const firma = filas.map(f => `${f.clave}:${(f.mascotas ?? []).length > 0}`).join(",") + "|" + idActivo + "|" + Boolean(sala);
     if (firma !== firmaHud) {
         firmaHud = firma;
         // El + va a la derecha del último; los demás dejan su hueco para que las barras queden alineadas
         lista.innerHTML = filas.map((f, i) => `
             <div class="hud-master-item" data-id="${escaparHtml(f.id)}" data-jugador="${escaparHtml(f.jugador ?? "")}">
                 ${htmlFilaHud()}
+                ${(f.mascotas ?? []).length ? `<button type="button" class="btn-hud-echar" data-accion="mascotas">${iconoSao("cristalMascota")}</button>` : ""}
                 ${sala ? `<button type="button" class="btn-hud-echar btn-hud-ocultar" data-accion="ocultar"></button>` : ""}
                 <button type="button" class="btn-hud-echar" data-accion="echar">${iconoSao("salir")}</button>
                 ${i === filas.length - 1
@@ -313,7 +317,16 @@ export function actualizarHudMaster() {
         fila.title = esActivo ? `${nombre} (en la ficha${f.jugador ? ", solo lectura: pulsa para actualizarla" : ""})`
             : f.jugador ? `Ver la ficha de ${nombre} (solo lectura${f.conectado ? "" : "; desconectado: la última copia guardada"})`
             : `Ver ${nombre} en la ficha`;
-        rellenarFilaHud(fila, f);
+        // Mascota: los niveles que ha subido y no se han revisado, junto al nombre
+        rellenarFilaHud(fila, f.mascota && f.pendientes ? { ...f, nombre: `${nombre} +${f.pendientes}` } : f);
+        if (f.mascota) fila.title = `Mascota ${nombre}${f.pendientes ? ` (+${f.pendientes} niveles por revisar)` : ""}: editar`;
+        const botonMascotas = item.querySelector('.btn-hud-echar[data-accion="mascotas"]');
+        if (botonMascotas) {
+            const pendientes = f.mascotas.reduce((suma, m) => suma + m.pendientes, 0);
+            botonMascotas.title = `Mascotas (${f.mascotas.length})${pendientes ? `: +${pendientes} niveles por revisar` : ""}`;
+            botonMascotas.setAttribute("aria-label", botonMascotas.title);
+            botonMascotas.classList.toggle("activo", pendientes > 0);
+        }
         // Ocultar: ojo abierto si se ve, tachado si está oculto (no recibe objetos, amistad ni grupo, ni turno a la vez)
         fila.classList.toggle("oculta", Boolean(f.oculto));
         if (f.oculto) fila.title += " · oculto";
@@ -551,13 +564,17 @@ function inicializarHud() {
             if (boton.disabled) return;
             reproducir("click");
             if (boton.dataset.accion === "ocultar") cambiarOculto(item.dataset.id, item.dataset.jugador || null);
+            else if (boton.dataset.accion === "mascotas") abrirMascotasMaster(item.dataset.jugador, item.dataset.id);
             else echar(item.dataset.id, item.dataset.jugador || null);
             return;
         }
         if (e.target.closest(".hud-grupo-fila")) {
             hud.classList.remove("abierto");
             if (item.dataset.jugador) {
-                verFichaJugador(item.dataset.jugador, item.dataset.id);
+                // Una mascota se edita en el perfil (se le pide a su dueño); un personaje, su ficha en modo lectura
+                const filaHud = filasCabecera().find(f => f.jugador === item.dataset.jugador && f.id === item.dataset.id);
+                if (filaHud?.mascota) pedirMascota(item.dataset.jugador, item.dataset.id);
+                else verFichaJugador(item.dataset.jugador, item.dataset.id);
                 return;
             }
             if (!ctx.lectura() && item.dataset.id === ctx.personaje().idPersonaje) return;
@@ -647,17 +664,27 @@ let plantillaEditada = null; // id de la plantilla del compendio que se edita (m
 let volverAlCompendio = false; // al cerrar el perfil se vuelve a abrir el compendio
 let tipoFijo = false; // al crear desde el compendio es un NPC: no se puede cambiar a personaje
 let faseEnJuego = 0; // jefe: fase en la que está en la ficha (las pestañas solo cambian la que se edita)
+/* Mascota (mascotas.js): { id (null al crear), dueno: { instancia, jugador, nombre } | null, original (instancia del
+   dueño al abrir), cristal: { nombre, descripcion, agrietado } }. No se guarda en el máster: se envía al dueño */
+let mascotaEditada = null;
 
 /**
  * Abre el perfil: { crear: true } para un personaje nuevo (npc: true lo empieza como NPC; jefe: true, como jefe;
  * jefeDe: id de una plantilla de NPC, jefe nuevo con ese NPC como fase 1);
  * pesadilla: true, como pesadilla; { plantilla: id } para editar una plantilla del compendio; si no, el de la ficha.
  */
-export function abrirPerfilMaster({ crear = false, npc = false, jefe = false, pesadilla = false, jefeDe = null, plantilla = null } = {}) {
+export function abrirPerfilMaster({ crear = false, npc = false, jefe = false, pesadilla = false, jefeDe = null, plantilla = null, mascota = false, mascotaDe = null } = {}) {
     creando = crear;
     plantillaEditada = !crear && plantilla && compendio.existe(plantilla) ? plantilla : null;
+    mascotaEditada = null;
     borrador = new PJ();
-    if (plantillaEditada) borrador.cargarJSON(JSON.parse(compendio.jsonDe(plantillaEditada)));
+    if (mascotaDe) {
+        // Mascota de un jugador (la ha enviado su dueño): se edita y se le devuelve al aceptar
+        creando = false;
+        borrador.cargarJSON(JSON.parse(mascotaDe.json));
+        borrador.esMascota = true;
+        mascotaEditada = { id: borrador.idPersonaje, dueno: mascotaDe.dueno, original: mascotaDe.dueno?.instancia ?? null, cristal: { ...mascotaDe.cristal } };
+    } else if (plantillaEditada) borrador.cargarJSON(JSON.parse(compendio.jsonDe(plantillaEditada)));
     else if (!crear) borrador.cargarJSON(JSON.parse(ctx.personaje().toJSONString()));
     else if (jefeDe && compendio.existe(jefeDe)) {
         // Jefe a partir de un NPC del compendio: personaje nuevo (otro id, sin plantilla) con el NPC como fase 1
@@ -668,8 +695,8 @@ export function abrirPerfilMaster({ crear = false, npc = false, jefe = false, pe
         convertirEnJefe(borrador);
     } else borrador.nombre = "";
     tipoFijo = false;
-    if (crear && (jefe || npc || pesadilla) && !borrador.esJefe) cambiarTipoBorrador(jefe ? "jefe" : pesadilla ? "pesadilla" : "npc");
-    tipoFijo = crear && (npc || jefe || pesadilla || Boolean(jefeDe));
+    if (crear && (jefe || npc || pesadilla || mascota) && !borrador.esJefe) cambiarTipoBorrador(jefe ? "jefe" : pesadilla ? "pesadilla" : mascota ? "mascota" : "npc");
+    tipoFijo = crear && (npc || jefe || pesadilla || mascota || Boolean(jefeDe));
     faseEnJuego = faseActual(borrador);
     // Personaje o NPC solo se elige al crear (y no desde el compendio, que siempre crea NPC)
     el("perfilMasterTipo").hidden = !crear || tipoFijo;
@@ -685,13 +712,15 @@ export function abrirPerfilMaster({ crear = false, npc = false, jefe = false, pe
 
 function ponerTituloPerfil() {
     el("modalPerfilMasterLabel").textContent = creando
-        ? (borrador.esJefe ? "Nuevo jefe" : esPesadilla(borrador) ? "Nueva pesadilla" : borrador.esNpc ? "Nuevo NPC" : "Nuevo personaje")
+        ? (borrador.esJefe ? "Nuevo jefe" : esPesadilla(borrador) ? "Nueva pesadilla" : borrador.esMascota ? "Nueva mascota"
+            : borrador.esNpc ? "Nuevo NPC" : "Nuevo personaje")
+        : mascotaEditada ? `Mascota: ${borrador.nombre || "Sin nombre"}`
         : plantillaEditada ? `Plantilla: ${borrador.nombre || "Sin nombre"}`
         : `Perfil de ${ctx.personaje().nombre || "Sin nombre"}`;
 }
 
 /* Tipo del borrador: personaje, npc, jefe o pesadilla */
-const tipoDe = (pj) => (pj.esJefe ? "jefe" : esPesadilla(pj) ? "pesadilla" : pj.esNpc ? "npc" : "personaje");
+const tipoDe = (pj) => (pj.esJefe ? "jefe" : esPesadilla(pj) ? "pesadilla" : pj.esMascota ? "mascota" : pj.esNpc ? "npc" : "personaje");
 
 /* Al crear: personaje, NPC, jefe o pesadilla. El NPC empieza con sus valores por defecto y la vida y los PA llenos;
    entre NPC, jefe y pesadilla se conserva lo que haya (el NPC pasa a ser la fase 1, o el jefe se queda con la fase
@@ -699,6 +728,12 @@ const tipoDe = (pj) => (pj.esJefe ? "jefe" : esPesadilla(pj) ? "pesadilla" : pj.
 function cambiarTipoBorrador(tipo) {
     if (!creando || tipoFijo || tipoDe(borrador) === tipo) return;
     borrador.esPesadilla = false;
+    // Mascota: un NPC normal de un jugador (se elige el dueño y el cristal en su bloque)
+    borrador.esMascota = tipo === "mascota";
+    borrador.nivelesPendientes = 0;
+    mascotaEditada = tipo === "mascota"
+        ? (mascotaEditada ?? { id: null, dueno: null, original: null, cristal: { nombre: "", descripcion: "", agrietado: false } })
+        : null;
     if (borrador.esNpc && tipo !== "personaje") {
         if (tipo === "jefe") convertirEnJefe(borrador);
         else if (tipo === "pesadilla") {
@@ -912,6 +947,8 @@ function pintarPerfil() {
     el("formPerfilMaster").classList.toggle("modo-npc", pj.esNpc);
     el("formPerfilMaster").classList.toggle("modo-jefe", esJefe(pj));
     el("formPerfilMaster").classList.toggle("modo-pesadilla", esPesadilla(pj));
+    el("formPerfilMaster").classList.toggle("modo-mascota", Boolean(mascotaEditada));
+    pintarMascotaPerfil();
     el("perfilMasterTipo").querySelectorAll("[data-tipo]").forEach(boton => {
         boton.setAttribute("aria-pressed", String(boton.dataset.tipo === tipoDe(pj)));
     });
@@ -919,7 +956,7 @@ function pintarPerfil() {
     el("perfilMasterNombre").value = pj.nombre;
     el("perfilMasterNombreReal").value = pj.nombreReal;
     // Pasar los cambios de una copia en juego a su plantilla (no al crear ni al editar una plantilla)
-    el("perfilMasterCompendio").hidden = creando || Boolean(plantillaEditada);
+    el("perfilMasterCompendio").hidden = creando || Boolean(plantillaEditada) || Boolean(mascotaEditada);
     const tienePlantilla = compendio.existe(pj.idPlantilla);
     el("perfilMasterPlantilla").textContent = tienePlantilla ? "(es una copia de una plantilla)" : "(sin plantilla en el compendio)";
     const sobrescribir = el("perfilMasterCompendio").querySelector('[data-compendio="sobrescribir"]');
@@ -1434,6 +1471,7 @@ function recalcularConservandoMaximos(cambio) {
 function aplicarCampo(input) {
     const pj = borrador;
     const clave = input.dataset.clave;
+    if (mascotaEditada && aplicarCampoMascota(input)) return;
     if (input.dataset.habUw) {
         pj.setHabilidadUnderworld(input.dataset.habUw, input.value);
     } else if (input.classList.contains("check-underworld")) {
@@ -1519,6 +1557,10 @@ function aceptarPerfil() {
         aviso.scrollIntoView({ block: "nearest" });
         return;
     }
+    if (mascotaEditada) {
+        enviarMascota();
+        return;
+    }
     reproducir("click");
     // Pesadilla: sin recompensa, EXP que dar, PA ni neutralidad
     limpiarPesadilla(pj);
@@ -1570,6 +1612,7 @@ function inicializarPerfilMaster() {
     const ICONOS_PROFESION = { herrero: "martillo_guerra", armero: "armadura", cocinero: "comida", alquimista: "pocion" };
     sincronizarProfesion = crearFichas(el("perfilMasterProfesion"), { icono: (v) => ICONOS_PROFESION[v] ?? null });
     prepararFormularioSao(el("formPerfilMaster"));
+    inicializarMascotasMaster();
     el("perfilMasterTipo").addEventListener("click", (e) => {
         const boton = e.target.closest("[data-tipo]");
         if (!boton || !borrador) return;
@@ -1992,4 +2035,229 @@ export function inicializarMaster(contexto) {
     inicializarPersonajesMaster();
     inicializarPerfilMaster();
     inicializarCompendio();
+}
+
+/* Mascotas de los jugadores (mascotas.js) _________________________________________
+ * El máster crea una mascota en su perfil (tipo Mascota) eligiendo a qué personaje conectado pertenece: no se guarda
+ * aquí, se le envía al dueño en un cristal (evento privado mascotaNueva). Para editarla (subir sus valores, quitar los
+ * niveles por revisar, revivirla) se le pide al dueño (pedirMascota → mascotaDatos), se abre en el perfil y al aceptar
+ * se le devuelve (mascotaActualizada; con otro dueño, mascotaQuitada al anterior y mascotaNueva al nuevo). */
+
+/* Los eventos de la sala tienen un límite de tamaño (reglas): una mascota muy grande no se puede enviar */
+const MAX_CARACTERES_MASCOTA = 18000;
+
+/* Personajes de jugadores conectados a la sala (posibles dueños): [{ instancia, jugador, nombre }] */
+function posiblesDuenos() {
+    const sala = getEstadoOnline().sala;
+    const uid = getEstadoOnline().usuario?.uid;
+    if (!sala) return [];
+    return getTodosPersonajesSala().filter(p => p.jugador !== uid && !p.npc && !p.mascota && p.nombre)
+        .map(p => ({ instancia: p.instancia, jugador: p.jugador, nombre: p.nombre }))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre));
+}
+
+function pintarMascotaPerfil() {
+    if (!mascotaEditada) return;
+    const m = mascotaEditada;
+    const duenos = posiblesDuenos();
+    // El dueño actual aunque ya no esté conectado (para que se vea a quién pertenece)
+    if (m.dueno && !duenos.some(d => d.instancia === m.dueno.instancia)) duenos.unshift({ ...m.dueno, desconectado: true });
+    const html = duenos.length ? duenos.map(d => `
+        <button type="button" class="btn-eleccion" data-dueno="${escaparHtml(d.instancia)}" aria-pressed="${m.dueno?.instancia === d.instancia}"
+            ${d.desconectado ? `disabled title="No está conectado"` : ""}>${escaparHtml(d.nombre)}</button>`).join("")
+        : `<p class="lista-vacia">No hay personajes de jugadores conectados a la sala.</p>`;
+    const cont = el("perfilMasterDueno");
+    if (cont.dataset.html !== html) {
+        cont.dataset.html = html;
+        cont.innerHTML = html;
+    }
+    const nombreCristal = el("perfilMasterCristalNombre");
+    if (document.activeElement !== nombreCristal) nombreCristal.value = m.cristal.nombre;
+    nombreCristal.placeholder = `Cristal de ${borrador.nombre || "…"}`;
+    const descripcion = el("perfilMasterCristalDescripcion");
+    if (document.activeElement !== descripcion) descripcion.value = m.cristal.descripcion;
+    el("perfilMasterPendientes").value = borrador.nivelesPendientes;
+    el("perfilMasterAgrietado").checked = m.cristal.agrietado;
+    el("perfilMasterQuitarMascota").hidden = !m.id;
+}
+
+/* Campos propios de la mascota; devuelve true si era uno de ellos */
+function aplicarCampoMascota(input) {
+    const m = mascotaEditada;
+    if (input.id === "perfilMasterCristalNombre") m.cristal.nombre = input.value.trim().slice(0, 60);
+    else if (input.id === "perfilMasterCristalDescripcion") m.cristal.descripcion = input.value.trim().slice(0, 500);
+    else if (input.id === "perfilMasterPendientes") borrador.nivelesPendientes = Math.max(0, Math.min(150, Math.trunc(Number(input.value) || 0)));
+    else if (input.id === "perfilMasterAgrietado") m.cristal.agrietado = input.checked;
+    else return false;
+    return true;
+}
+
+/* El cristal que se envía al dueño (con la ficha de la mascota) */
+function cristalDelBorrador() {
+    const pj = borrador;
+    const m = mascotaEditada;
+    return {
+        nombre: m.cristal.nombre || `Cristal de ${pj.nombre}`,
+        descripcion: m.cristal.descripcion,
+        mascota: { json: pj.toJSONString(), agrietado: m.cristal.agrietado }
+    };
+}
+
+/* Aceptar el perfil de una mascota: se envía a su dueño (nueva, cambiada o con otro dueño) */
+async function enviarMascota() {
+    const pj = borrador;
+    const m = mascotaEditada;
+    const aviso = el("avisoPerfilMaster");
+    pj.esNpc = true;
+    pj.esMascota = true;
+    pj.esJefe = false;
+    pj.esPesadilla = false;
+    const motivo = !m.dueno ? "Elige a qué personaje pertenece."
+        : !posiblesDuenos().some(d => d.instancia === m.dueno.instancia) ? `${m.dueno.nombre} no está conectado: no se le puede enviar.`
+        : !m.cristal.agrietado && pj.vida <= 0 ? "Sin vida volvería al cristal agrietado: dale vida para revivirla (o deja el cristal agrietado)."
+        : null;
+    const objetoClave = motivo ? null : cristalDelBorrador();
+    const demasiado = objetoClave && JSON.stringify(objetoClave).length > MAX_CARACTERES_MASCOTA
+        ? "La mascota es demasiado grande para enviarla (quita artes, objetos o texto)." : null;
+    if (motivo || demasiado) {
+        aviso.textContent = motivo || demasiado;
+        aviso.scrollIntoView({ block: "nearest" });
+        return;
+    }
+    reproducir("click");
+    try {
+        if (m.id && m.original && m.original !== m.dueno.instancia) {
+            await emitirPrivado("mascotaQuitada", { para: m.original, id: m.id });
+            await emitirPrivado("mascotaNueva", { para: m.dueno.instancia, objetoClave });
+        } else if (m.id) {
+            await emitirPrivado("mascotaActualizada", { para: m.dueno.instancia, id: m.id, objetoClave });
+        } else {
+            await emitirPrivado("mascotaNueva", { para: m.dueno.instancia, objetoClave });
+        }
+    } catch (error) {
+        aviso.textContent = mensajeErrorOnline(error);
+        return;
+    }
+    ctx.aviso("Mascota", [`${pj.nombre || "La mascota"} se ha enviado a ${m.dueno.nombre}.`]);
+    mascotaEditada = null;
+    bootstrap.Modal.getOrCreateInstance(el("modalPerfilMaster")).hide();
+}
+
+/* Pide al dueño una mascota para editarla; la respuesta (mascotaDatos) la abre en el perfil */
+let mascotaPedida = null; // { id, temporizador }
+const MS_ESPERA_MASCOTA = 8000;
+function instanciaDuenoDe(jugador, idMascota) {
+    const conectados = getTodosPersonajesSala();
+    // Invocada: su propia instancia "p-<id>" la atiende la pestaña del dueño
+    const propia = conectados.find(p => p.jugador === jugador && p.instancia === `p-${idMascota}`);
+    if (propia) return propia.instancia;
+    const dueno = filasCabecera().find(f => f.jugador === jugador && (f.mascotas ?? []).some(m => m.id === idMascota));
+    return dueno ? conectados.find(p => p.jugador === jugador && p.id === dueno.id && !p.mascota)?.instancia ?? null : null;
+}
+async function pedirMascota(jugador, idMascota) {
+    reproducir("click");
+    const instancia = instanciaDuenoDe(jugador, idMascota);
+    if (!instancia) {
+        ctx.aviso("Mascota", ["Su dueño no está conectado: solo se puede editar con él en la sala."]);
+        return;
+    }
+    clearTimeout(mascotaPedida?.temporizador);
+    mascotaPedida = {
+        id: idMascota,
+        temporizador: setTimeout(() => {
+            mascotaPedida = null;
+            ctx.aviso("Mascota", ["Su dueño no responde. Vuelve a intentarlo más tarde."]);
+        }, MS_ESPERA_MASCOTA)
+    };
+    try {
+        await emitirPrivado("pedirMascota", { para: instancia, id: idMascota });
+    } catch (error) {
+        clearTimeout(mascotaPedida?.temporizador);
+        mascotaPedida = null;
+        ctx.aviso("Mascota", [mensajeErrorOnline(error)]);
+    }
+}
+
+/* Cristales de un personaje de un jugador (botón de su fila en la cabecera) */
+function abrirMascotasMaster(jugador, id) {
+    const fila = filasCabecera().find(f => f.jugador === jugador && f.id === id);
+    const mascotas = fila?.mascotas ?? [];
+    if (mascotas.length === 1) {
+        pedirMascota(jugador, mascotas[0].id);
+        return;
+    }
+    reproducir("click");
+    el("modalMascotasMasterLabel").textContent = `Mascotas de ${fila?.nombre || "Sin nombre"}`;
+    el("listaMascotasMaster").dataset.jugador = jugador;
+    el("listaMascotasMaster").innerHTML = mascotas.length ? mascotas.map(m => `
+        <div class="fila-objeto" data-id="${escaparHtml(m.id)}">
+            <span class="objeto-icono">${iconoSao("cristalMascota")}</span>
+            <div class="objeto-info">
+                <div class="objeto-cabecera"><span class="objeto-nombre">${escaparHtml(m.nombre || "Sin nombre")}</span></div>
+                <div class="objeto-detalle">${[m.invocada ? "Invocada" : "En el cristal", m.agrietado ? "Agrietado" : "",
+                    m.pendientes ? `+${m.pendientes} niveles por revisar` : ""].filter(Boolean).map(escaparHtml).join(" · ")}</div>
+            </div>
+            <div class="objeto-acciones">
+                <button type="button" class="btn-objeto" data-accion="editar" title="Editar" aria-label="Editar">${iconoSao("editar")}</button>
+            </div>
+        </div>`).join("") : `<p class="lista-vacia">Sin mascotas.</p>`;
+    bootstrap.Modal.getOrCreateInstance(el("modalMascotasMaster")).show();
+}
+
+function inicializarMascotasMaster() {
+    el("perfilMasterDueno").addEventListener("click", (e) => {
+        const boton = e.target.closest("[data-dueno]");
+        if (!boton || boton.disabled || !mascotaEditada) return;
+        reproducir("click");
+        const dueno = posiblesDuenos().find(d => d.instancia === boton.dataset.dueno);
+        if (dueno) mascotaEditada.dueno = dueno;
+        el("avisoPerfilMaster").textContent = "";
+        pintarPerfil();
+    });
+    el("btnQuitarMascotaPerfil").addEventListener("click", async () => {
+        const m = mascotaEditada;
+        if (!m?.id || !m.original) return;
+        reproducir("click");
+        const ok = await ctx.confirmar({ titulo: "Quitar la mascota", texto: `${borrador.nombre || "La mascota"} desaparecerá de los objetos clave de ${m.dueno?.nombre || "su dueño"}. ¿Seguir?` });
+        if (!ok) return;
+        try {
+            await emitirPrivado("mascotaQuitada", { para: m.original, id: m.id });
+        } catch (error) {
+            el("avisoPerfilMaster").textContent = mensajeErrorOnline(error);
+            return;
+        }
+        mascotaEditada = null;
+        bootstrap.Modal.getOrCreateInstance(el("modalPerfilMaster")).hide();
+    });
+    el("listaMascotasMaster").addEventListener("click", (e) => {
+        const id = e.target.closest('button[data-accion="editar"]')?.closest("[data-id]")?.dataset.id;
+        if (!id) return;
+        const jugador = el("listaMascotasMaster").dataset.jugador;
+        const ventana = el("modalMascotasMaster");
+        ventana.addEventListener("hidden.bs.modal", () => pedirMascota(jugador, id), { once: true });
+        bootstrap.Modal.getOrCreateInstance(ventana).hide();
+    });
+    // El dueño responde con el cristal (al día): se abre en el perfil
+    registrarManejador("mascotaDatos", (evento) => {
+        const d = evento.datos ?? {};
+        if (!mascotaPedida || String(d.id ?? "") !== mascotaPedida.id) return;
+        clearTimeout(mascotaPedida.temporizador);
+        mascotaPedida = null;
+        if (d.error) {
+            ctx.aviso("Mascota", [String(d.error).slice(0, 200)]);
+            return;
+        }
+        const [cristal] = cargarObjetosClave([d.objetoClave]);
+        if (!cristal?.mascota) {
+            ctx.aviso("Mascota", ["La mascota recibida no es válida."]);
+            return;
+        }
+        abrirPerfilMaster({
+            mascotaDe: {
+                json: cristal.mascota.json,
+                cristal: { nombre: cristal.nombre, descripcion: cristal.descripcion, agrietado: cristal.mascota.agrietado },
+                dueno: { instancia: String(d.dueno?.instancia ?? evento.instancia), jugador: evento.jugador, nombre: String(d.dueno?.nombre ?? evento.personaje ?? "") }
+            }
+        });
+    });
 }

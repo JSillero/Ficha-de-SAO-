@@ -1244,6 +1244,24 @@
         </div>
     </div>
 
+    <!-- Modo máster: cristales de mascota de un personaje de un jugador (abrirMascotasMaster en interfazMaster.js): al
+         elegir uno se le pide al dueño y se abre en el perfil del máster -->
+    <div class="modal fade modal-sao" id="modalMascotasMaster" tabindex="-1" aria-labelledby="modalMascotasMasterLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalMascotasMasterLabel">Mascotas</h5>
+                </div>
+                <div class="modal-body">
+                    <div id="listaMascotasMaster" class="lista-objetos"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-modal-sao cancelar" data-bs-dismiss="modal" title="Cerrar" aria-label="Cerrar"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Modo máster: compendio de NPC (plantillas; compendio.js, pintarCompendio en interfazMaster.js). Se guarda en
          el navegador y, con sesión, en la nube. Añadir a la sesión crea una copia -->
     <div class="modal fade modal-sao" id="modalCompendio" tabindex="-1" aria-labelledby="modalCompendioLabel" aria-hidden="true">
@@ -1396,6 +1414,41 @@
                             <button type="button" class="btn-eleccion" data-tipo="npc" aria-pressed="false">NPC</button>
                             <button type="button" class="btn-eleccion" data-tipo="jefe" aria-pressed="false">Jefe</button>
                             <button type="button" class="btn-eleccion" data-tipo="pesadilla" aria-pressed="false">Pesadilla</button>
+                            <button type="button" class="btn-eleccion" data-tipo="mascota" aria-pressed="false" title="NPC de un jugador, en un cristal de mascota">Mascota</button>
+                        </div>
+                        <!-- Mascota (.modo-mascota, mascotas.js): a quién pertenece, su cristal y su estado (pintarMascotaPerfil en
+                             interfazMaster.js). No se guarda aquí: al aceptar se envía al dueño -->
+                        <div class="solo-mascota bloque-mascota-perfil">
+                            <div class="ranura ranura-alta">
+                                <span class="ranura-icono" data-icono="personaje"></span>
+                                <span class="ranura-etiqueta">Dueño</span>
+                                <div id="perfilMasterDueno" class="fichas-dueno" role="radiogroup" aria-label="Dueño"></div>
+                            </div>
+                            <div class="ranura">
+                                <span class="ranura-icono" data-icono="cristalMascota"></span>
+                                <label class="ranura-etiqueta" for="perfilMasterCristalNombre">Cristal</label>
+                                <input type="text" id="perfilMasterCristalNombre" maxlength="60" placeholder="Cristal de…">
+                            </div>
+                            <div class="ranura ranura-alta">
+                                <span class="ranura-icono" data-icono="editar"></span>
+                                <label class="ranura-etiqueta" for="perfilMasterCristalDescripcion">Descripción del cristal</label>
+                                <textarea id="perfilMasterCristalDescripcion" rows="2" maxlength="500"></textarea>
+                            </div>
+                            <div class="ranuras-dobles">
+                                <div class="ranura" title="Niveles que ha subido con EXP y aún no has revisado">
+                                    <span class="ranura-icono" data-icono="artes"></span>
+                                    <label class="ranura-etiqueta" for="perfilMasterPendientes">Niveles por revisar</label>
+                                    <input type="number" id="perfilMasterPendientes" min="0" max="150">
+                                </div>
+                                <div class="ranura" title="Se quedó sin vida: no se puede invocar. Quítalo (y dale vida) para revivirla">
+                                    <span class="ranura-icono" data-icono="cristal"></span>
+                                    <label class="ranura-etiqueta" for="perfilMasterAgrietado">Agrietado</label>
+                                    <input type="checkbox" id="perfilMasterAgrietado">
+                                </div>
+                            </div>
+                            <div class="botones-ranura" id="perfilMasterQuitarMascota" hidden>
+                                <button type="button" class="btn-pastilla-sao" id="btnQuitarMascotaPerfil">Quitar la mascota a su dueño</button>
+                            </div>
                         </div>
                         <!-- Jefe (.modo-jefe): pestañas de las fases, siempre arriba, y las opciones de la fase (pintarFasesPerfil
                              en interfazMaster.js). Lo que se ve debajo (valores, acciones, equipo, artes...) es de la fase elegida -->

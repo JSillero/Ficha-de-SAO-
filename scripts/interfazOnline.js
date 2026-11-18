@@ -79,7 +79,7 @@ export function esDelMasterDeSala(evento) {
 /** Personajes de la sala a los que se puede ofrecer algo: [{ jugador, instancia, nombre }]
  *  (sin el de esta pestaña ni los ocultos) */
 export const getPersonajesSala = () => servicio.getPersonajesSala()
-    .filter(p => !esDeEstaPestana(p.instancia) && !p.oculto);
+    .filter(p => !esDeEstaPestana(p.instancia) && !p.oculto && !p.mascota); // las mascotas solo las ve su grupo
 /* ¿Es un personaje de esta pestaña? (en modo máster, cualquiera de los suyos) */
 const esDeEstaPestana = (instancia) => instancia === getInstancia() || servicio.esInstanciaPropia(instancia);
 export const setIdPersonajeNube = (id) => cambiarIdNube(id);
@@ -252,8 +252,9 @@ export async function inicializarOnline(contexto) {
             // Lo ve todo solo la pestaña del máster en modo máster: una de jugador con la misma cuenta, como un jugador
             esMaster: servicio.esMasterEnSala, enMiGrupo: (otra) => servicio.enMiGrupo(otra),
             // NPC y jefes del máster (registro de la sala): sus pop-ups siempre resumidos para los jugadores
-            esNpc: (otra) => servicio.getPersonajesSala().some(p => p.instancia === otra && p.npc),
-            instancia: servicio.instanciaActual, esPropia: servicio.esInstanciaPropia });
+            esNpc: (otra) => servicio.getPersonajesSala().some(p => p.instancia === otra && p.npc && !p.mascota), // una mascota, como un compañero
+            // Con la mascota en la ficha, sus pop-ups salen con su instancia
+            instancia: servicio.instanciaEventos, esPropia: servicio.esInstanciaPropia });
         setPublicador(estado.sala ? servicio.publicarEvento : null);
         if (!estado.usuario && idPersonajeNube) cambiarIdNube(null);
         pintarCuenta();
@@ -465,7 +466,7 @@ async function pintarJugadores() {
     const { sala, usuario } = servicio.getEstado();
     if (!sala || !usuario) return;
     const soyMaster = sala.master === usuario.uid;
-    const personajes = servicio.getPersonajesSala().filter(p => soyMaster || !p.oculto || p.jugador === usuario.uid);
+    const personajes = servicio.getPersonajesSala().filter(p => soyMaster || ((!p.oculto || p.jugador === usuario.uid) && !p.mascota));
     const porJugador = new Map();
     personajes.forEach(p => porJugador.set(p.jugador, [...(porJugador.get(p.jugador) ?? []), p]));
     if (!porJugador.size) {
@@ -861,7 +862,7 @@ const enviadas = new Set();
 function pintarAnadirAmigo() {
     const candidatos = servicio.getPersonajesSala()
         .filter(p => p.instancia !== servicio.instanciaActual() && p.instancia !== getInstancia()
-            && !p.oculto && p.nombre && !esAmigo(p.jugador, p.nombre));
+            && !p.oculto && !p.mascota && p.nombre && !esAmigo(p.jugador, p.nombre));
     el("listaAnadirAmigo").innerHTML = candidatos.length ? candidatos.map(p => `
         <div class="fila-online" data-instancia="${escaparHtml(p.instancia)}">
             <span class="nombre-online">${escaparHtml(p.nombre)}</span>
@@ -1118,7 +1119,8 @@ function pintarGrupo() {
     }
     const lleno = grupo.miembros.length >= 6;
     const candidatos = servicio.getPersonajesSala()
-        .filter(p => p.instancia !== servicio.instanciaActual() && p.instancia !== getInstancia() && !p.oculto && !p.grupo && p.nombre && !p.pesadilla);
+        .filter(p => p.instancia !== servicio.instanciaActual() && p.instancia !== getInstancia() && !p.oculto && !p.grupo && p.nombre && !p.pesadilla
+            && !p.mascota && !servicio.esInstanciaPropia(p.instancia));
     el("listaInvitarGrupo").innerHTML = lleno
         ? `<p class="lista-vacia">El grupo está lleno.</p>`
         : candidatos.length ? candidatos.map(p => `
@@ -1235,7 +1237,8 @@ function inicializarFichaResumen() {
     inicializarFichaCompleta();
     registrarManejador("pedirFicha", (evento) => {
         const para = evento.datos?.para;
-        if (!servicio.enMiGrupo(evento.instancia, para)) return;
+        // Tu mascota: el grupo es el de su dueño
+        if (!servicio.enMiGrupo(evento.instancia, String(para ?? "").startsWith("p-") ? servicio.instanciaActual() : para)) return;
         emitirPrivado("fichaResumen", { para: evento.instancia, resumen: ctx.resumenDe ? ctx.resumenDe(para) : ctx.resumenPropio() }, como(para))
             .catch(error => console.warn("No se pudo enviar tu ficha:", error));
     });
@@ -1290,7 +1293,7 @@ export function colorFranja({ npc = false, neutral = false, notoriedad = 0, pesa
 
 /* Quien mira los colores: el personaje de la ficha (en modo máster, el que tenga en pantalla) */
 function observadorActual() {
-    const pj = ctx?.personaje?.();
+    const pj = ctx?.observador?.() ?? ctx?.personaje?.(); // con la mascota en la ficha, mira su dueño
     return pj ? { nivel: Number(pj.nivel) || 0, npc: Boolean(pj.esNpc) } : null;
 }
 
@@ -1538,24 +1541,26 @@ let estadoPropioHud = null;
 function actualizarHudGrupo() {
     const hud = el("hudGrupo");
     const grupo = servicio.getGrupo();
-    const propia = getInstancia();
     const npcs = npcsPorInstancia();
     const personajesSala = new Map(servicio.getPersonajesSala().map(p => [p.instancia, p]));
     const jefes = new Map(servicio.getJefesSala().map(j => [`m-${j.id}`, j]));
-    const miembros = (ctx.modoMaster ? [] : (grupo?.miembros ?? [])).map(m => {
+    // Tus filas (tú y tu mascota invocada) con los valores al momento; sin grupo, solas si hay mascota
+    const locales = ctx.modoMaster ? [] : (ctx.filasLocalesGrupo?.() ?? []);
+    const porInstancia = new Map(locales.map(f => [f.instancia, f]));
+    const delGrupo = ctx.modoMaster ? [] : (grupo?.miembros ?? []);
+    const base = grupo ? [...delGrupo, ...locales.filter(f => !delGrupo.some(m => m.instancia === f.instancia))]
+        : (locales.length > 1 ? locales : []);
+    const miembros = base.map(m => {
+        const local = porInstancia.get(m.instancia);
+        if (local) {
+            return { ...m, ...local, npc: false, neutral: false, propia: true, lider: Boolean(m.lider) };
+        }
         // Un NPC del máster en el grupo: color según su nivel (o amarillo si es neutral)
         const npc = npcs.get(m.instancia);
-        const esNpc = Boolean(npc || personajesSala.get(m.instancia)?.npc);
-        const datos = { ...m, npc: esNpc, neutral: npc?.neutral ?? jefes.get(m.instancia)?.neutral ?? false };
-        if (m.instancia !== propia) return datos;
-        // Tu fila, al día desde la ficha
-        const e = estadoPropioHud;
-        return {
-            ...datos, propia: true, nombre: ctx.personaje()?.nombre || m.nombre, turno: Number(ctx.turnoPropio?.()) || 0,
-            ...(e ? { vida: e.vida, pa: e.pa, nivel: e.nivel, estados: e.estados, iniciativa: Number(e.iniciativa) || 0, notoriedad: e.notoriedad } : {})
-        };
+        const esNpc = !m.mascota && Boolean(npc || personajesSala.get(m.instancia)?.npc); // la mascota, color de su dueño
+        return { ...m, npc: esNpc, neutral: npc?.neutral ?? jefes.get(m.instancia)?.neutral ?? false };
     }).sort((a, b) => (Number(b.iniciativa) || 0) - (Number(a.iniciativa) || 0) || (a.nombre || "").localeCompare(b.nombre || ""));
-    const hayCompaneros = miembros.some(m => !m.propia);
+    const hayCompaneros = miembros.length > 1;
     hud.hidden = !hayCompaneros;
     if (!hayCompaneros) {
         hud.classList.remove("abierto");
@@ -1579,12 +1584,18 @@ function actualizarHudGrupo() {
         const fila = lista.children[i];
         fila.classList.toggle("en-turno", m.turno > 0 && m.turno >= ultimoTurno);
         fila.dataset.instancia = m.instancia;
-        fila.classList.toggle("propia", Boolean(m.propia));
-        fila.setAttribute("aria-current", m.propia ? "true" : "false");
-        fila.classList.toggle("desconectado", !m.propia && !enLinea.has(m.instancia));
+        // La flecha, en el que está en la ficha (tú o tu mascota)
+        const enFicha = Boolean(m.propia && m.enFicha);
+        fila.classList.toggle("propia", enFicha);
+        fila.classList.toggle("local", Boolean(m.propia));
+        fila.classList.toggle("mascota", Boolean(m.mascota));
+        fila.setAttribute("aria-current", enFicha ? "true" : "false");
+        fila.classList.toggle("desconectado", !m.propia && grupo !== null && !enLinea.has(m.instancia));
         fila.classList.toggle("lider", m.lider);
-        fila.title = m.propia ? `${m.nombre || "Sin nombre"} (tú${m.lider ? ", líder" : ""}): ver tu perfil`
-            : `${m.nombre || "Sin nombre"}${m.lider ? " (líder)" : ""}${enLinea.has(m.instancia) ? "" : " · desconectado"}`;
+        const nombre = m.nombre || "Sin nombre";
+        fila.title = enFicha ? `${nombre} (en la ficha${m.lider ? ", líder" : ""}): ver su perfil`
+            : m.propia ? `Cambiar la ficha a ${nombre}`
+            : `${nombre}${m.mascota ? " (mascota)" : ""}${m.lider ? " (líder)" : ""}${enLinea.has(m.instancia) ? "" : " · desconectado"}`;
         rellenarFilaHud(fila, m);
     });
     comprobarPlegadoHud(hud);
@@ -1664,7 +1675,9 @@ function inicializarGrupo() {
         if (!fila) return;
         reproducir("click");
         hud.classList.remove("abierto");
+        // El de la ficha abre su perfil; tu otro personaje (tú o tu mascota) pasa a la ficha; el resto, su ficha resumida
         if (fila.classList.contains("propia")) ctx.abrirPerfil?.();
+        else if (fila.classList.contains("local")) ctx.cambiarFicha?.(fila.dataset.instancia);
         else verFichaCompanero(fila.dataset.instancia);
     });
     document.addEventListener("click", (e) => {
@@ -1705,6 +1718,18 @@ export function avisarEstadoGrupo(datos) {
         servicio.publicarEstadoGrupo(datos).catch(error => console.warn("No se pudo actualizar tu estado en el grupo:", error));
         // El máster de la sala lo ve en su cabecera (también iniciativa)
         servicio.publicarEstadoSala(datos).catch(error => console.warn("No se pudo publicar tu estado en la sala:", error));
+    }, RETARDO_ESTADO_GRUPO_MS);
+}
+
+/* La mascota invocada (datosMascotaParaSala en interfaz.js, o null): su presencia en la sala cambia al momento (solo
+   si cambia cuál es); su estado, para el grupo y el máster, tras un rato sin cambios y solo si cambia */
+let temporizadorMascota = null;
+export function avisarEstadoMascota(datos) {
+    servicio.configurarMascota(datos ? { id: datos.id, nombre: datos.nombre } : null, Boolean(datos?.enFicha));
+    clearTimeout(temporizadorMascota);
+    if (!datos) return;
+    temporizadorMascota = setTimeout(() => {
+        servicio.publicarEstadoMascota(datos).catch(error => console.warn("No se pudo publicar el estado de tu mascota:", error));
     }, RETARDO_ESTADO_GRUPO_MS);
 }
 

@@ -68,10 +68,16 @@ const CAMPOS_SIMPLES = [
     'numeroAcciones', 'izquierda', 'derecha', 'cabeza', 'pies', 'reaccionGuardada',
     'enSigilo', 'valorSigilo',
     'comidaActiva', 'tipoProfesion', 'esUnderworld', 'protagonista', 'zona', 'cor', 'puntosEgo', 'nombreReal',
-    'esNpc', 'esJefe', 'esPesadilla', 'permitirTrueque', 'neutral', 'notoriedad', 'alertaSistema', 'idPlantilla', 'underworldHabilitado', 'habilidadesUnderworld', 'alertaSistemaBotin',
+    'esNpc', 'esJefe', 'esPesadilla', 'esMascota', 'nivelesPendientes', 'permitirTrueque', 'neutral', 'notoriedad', 'alertaSistema', 'idPlantilla', 'underworldHabilitado', 'habilidadesUnderworld', 'alertaSistemaBotin',
     'desbloqueosArteExtra', 'desbloqueosArteGastados',
     'notas', 'listadoArtes', 'notasBaul', 'listaDeAmigos', 'recetasProfesion', 'comportamientoCombate'
 ];
+
+/** EXP que hace falta para pasar del nivel dado al siguiente (personajes y mascotas) */
+export function experienciaParaSubir(nivel) {
+    if (nivel >= 150) return 99999999999999999;
+    return (nivel + 1) * (nivel >= 60 ? 1500 : 100);
+}
 
 /* Identificador estable del personaje (no cambia al renombrarlo): lo usan el modo máster y la sala */
 export function nuevoIdPersonaje() {
@@ -119,6 +125,8 @@ export default class PJ {
         this.esNpc = false;
         this.esJefe = false; // NPC con fases (jefes.js)
         this.esPesadilla = false; // NPC pesadilla (npc.js, esPesadilla): sin PA, recompensa ni curación
+        this.esMascota = false; // NPC mascota de un jugador (mascotas.js): sube de nivel con EXP
+        this.nivelesPendientes = 0; // mascota: niveles subidos que el máster aún no ha revisado
         this.idPlantilla = null;
         this.npc = crearNpc();
 
@@ -222,11 +230,14 @@ export default class PJ {
             throw TypeError("El valor de experiencia tiene que ser numerico.")
         }
         this.experiencia = experiencia;
-        if (this.esNpc) return; // los NPC no suben de nivel con EXP: el nivel se escribe a mano
+        // Los NPC no suben de nivel con EXP: el nivel se escribe a mano. Las mascotas sí, pero cada nivel queda
+        // pendiente de que el máster ajuste sus valores (nivelesPendientes)
+        if (this.esNpc && !this.esMascota) return;
 
-        while(this.experiencia >= this.experienciaMax && this.nivel <= 150) {
+        while(this.experienciaMax > 0 && this.experiencia >= this.experienciaMax && this.nivel <= 150) {
             this.experiencia = this.experiencia - this.experienciaMax;
             this.nivel = this.nivel + 1;
+            if (this.esMascota) this.nivelesPendientes = (Number(this.nivelesPendientes) || 0) + 1;
             this.calcularCaracteristicas();
         }
 
@@ -235,14 +246,7 @@ export default class PJ {
     calcularCaracteristicas() {
         if (this.esNpc) return this.calcularNpc();
         this.ajustarHabilidadesUnderworld();
-        let nivelSiguiente = this.nivel + 1;
-        if (this.nivel >= 150) {
-            this.experienciaMax = 99999999999999999;
-        } else if (this.nivel >= 60) {
-            this.experienciaMax = nivelSiguiente * 1500;
-        } else {
-            this.experienciaMax = nivelSiguiente * 100;
-        }
+        this.experienciaMax = experienciaParaSubir(this.nivel);
 
         this.puntosArteMax = 3 + (this.nivel > 30 ? Math.floor((this.nivel - 16) / 15) : 0) + this.getModificador("arte");
         // Sin memoria de artes hasta el nivel 16
@@ -275,7 +279,8 @@ export default class PJ {
        habilidades). Las artes no tienen memoria: siempre queda un hueco libre más (artes.js no la limita). */
     calcularNpc() {
         const npc = this.npc;
-        this.experienciaMax = 0;
+        // Las mascotas suben de nivel como un personaje; los demás NPC no
+        this.experienciaMax = this.esMascota ? experienciaParaSubir(this.nivel) : 0;
         // Los NPC no tienen artes sin equipar: todas están equipadas
         (this.artes || []).forEach(arte => { arte.equipada = true; });
         // Las pesadillas no tienen PA
@@ -668,6 +673,9 @@ export default class PJ {
 
         // Pesadilla (npc.js): solo los NPC; nunca es jefe ni neutral
         this.esPesadilla = this.esNpc && this.esPesadilla === true;
+        // Mascota (mascotas.js): un NPC normal (ni jefe ni pesadilla) con sus niveles por revisar
+        this.esMascota = this.esNpc && !this.esPesadilla && this.esJefe !== true && this.esMascota === true;
+        this.nivelesPendientes = this.esMascota ? Math.max(0, Math.min(150, Math.trunc(Number(this.nivelesPendientes) || 0))) : 0;
         limpiarPesadilla(this);
 
         // Jefe (jefes.js): solo los NPC. Uno sin fases (fichas a medias) pasa a tener una, su estado actual

@@ -390,6 +390,15 @@ const GLIFOS = {
         <path class="tf" style="stroke-width:4" d="M24 34H64"/>
         ${poligonoEstrella(72, 66, 14, 5, 4, "p")}
         ${poligonoEstrella(74, 28, 8, 3, 4, "s")}`,
+    // Cristal de mascota (mascotas.js): el cristal con una huella al lado
+    cristalMascota: `
+        <polygon class="p" points="38,12 56,30 38,78 20,30"/>
+        <polygon class="s" points="38,12 56,30 38,78"/>
+        <path class="tf" style="stroke-width:4" d="M20 30H56"/>
+        <ellipse class="p" cx="70" cy="74" rx="11" ry="9"/>
+        <circle class="p" cx="58" cy="58" r="5"/>
+        <circle class="p" cx="70" cy="53" r="5"/>
+        <circle class="p" cx="82" cy="58" r="5"/>`,
     material: `
         <polygon class="p" points="50,16 80,32 80,68 50,84 20,68 20,32"/>
         <polygon class="s" points="50,50 80,32 80,68 50,84"/>

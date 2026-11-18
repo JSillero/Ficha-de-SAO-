@@ -76,6 +76,8 @@ export function crearPersonajePrueba() {
     // Solo existen en un NPC (cargarJSON los pone a false sin esNpc): tienen sus propias fichas de prueba
     pj.esJefe = false;
     pj.esPesadilla = false;
+    pj.esMascota = false; // mascota: comprobarMascota en interfaz.js
+    pj.nivelesPendientes = 0;
 
     ESTADOS_LISTA.forEach((estado, i) => {
         pj.estados[estado] = { valor: i + 1, turnos: i % 2 ? TURNOS_PERMANENTE : i + 2 };

@@ -21,6 +21,11 @@ import {
 } from "./sacro.js";
 import { inicializarSacro, abrirSacro, actualizarSacro, aplicarResultadoHechizo, aplicarAmbienteSacro, abrirTransfusion, recibirTransfusion } from "./interfazSacro.js";
 import { idsEnSesion } from "./personajesMaster.js";
+import {
+    esCristalMascota, pjDeCristal, guardarPjEnCristal, mascotaInvocada, resumenCristal, idMascotaDeCristal, motivoNoInvocar,
+    motivoNoGuardar as motivoNoGuardarMascota, invocar as invocarMascota, guardar as guardarMascota, agrietar, descansarMascotas,
+    moverMascotas, indiceCristalDe, resumenDePj
+} from "./mascotas.js";
 import { puedeUsarMagia, minimoTransfusion } from "./sacro.js";
 import { inicializarSacroMaster, abrirHechizosMaster, hechizosPendientes, encolarHechizoLocal, cancelarHechizoLocal, pedirAmbienteLocal } from "./interfazSacroMaster.js";
 import { cinturonesPuestos, huecosCinturon, motivoNoCinturon, meterEnCinturon, sacarDeCinturon, descartarDeCinturon, anadirACinturon, objetoCinturon, destinoSacar } from "./cinturon.js";
@@ -53,8 +58,9 @@ import { getInstancia } from "./instancia.js";
 import { inicializarVentanas, abrirCapa, cerrarCapa } from "./ventanas.js";
 import {
     inicializarOnline, getEstadoOnline, getPersonajesSala, getTodosPersonajesSala, getSalaMaster, avisarNombrePersonaje, setIdPersonajeNube, motivoNombreNoDisponible,
-    abrirAmigos, abrirAnadirAmigo, abrirGrupo, crearGrupo, salirGrupo, getGrupoSala, avisarEstadoGrupo, avisarTurno, verTurnoSala, abrirCuenta, abrirSala, abrirPersonajesNube,
-    guardarEnNube, compartirArte, editarArteSala, quitarArteDeSala, publicarEstadoDe, estaOcultoEnSala, salirPorMuerte, ponerFranja, colorFranja, rellenarBarrasFases
+    abrirAmigos, abrirAnadirAmigo, abrirGrupo, crearGrupo, salirGrupo, getGrupoSala, avisarEstadoGrupo, avisarEstadoMascota, avisarTurno, verTurnoSala, abrirCuenta, abrirSala, abrirPersonajesNube,
+    guardarEnNube, compartirArte, editarArteSala, quitarArteDeSala, publicarEstadoDe, estaOcultoEnSala, salirPorMuerte, ponerFranja, colorFranja, rellenarBarrasFases,
+    esDelMasterDeSala
 } from "./interfazOnline.js";
 import {
     ZONAS, MOTIVOS_ZONA, cambiarZona, esZonaSegura, baulAccesible, puedeRepartirHabilidades, puedeRecibirDanno,
@@ -86,6 +92,8 @@ import {
 } from "./artes.js";
 
 let personaje = new PJ(); //objeto que almaacena y define el comportamiento y limites de toda la informacion relevante
+/* Mascota en la ficha (bloque "Mascotas en la ficha"): el dueño queda aquí mientras se ve la mascota, o null */
+let propietarioPj = null;
 // Los pop-ups compartidos llevan el nombre del personaje (eventos.js)
 configurarOrigen({ personaje: () => personaje.nombre, idPersonaje: () => personaje.idPersonaje });
 
@@ -232,7 +240,7 @@ inputNombre.addEventListener('click', () => {
 
 /* Perfil: el tuyo; en modo máster, su perfil editable; en modo lectura, la ficha resumida del jugador */
 function abrirPerfilSegunModo() {
-    if (lectura) mostrarFichaResumen(`Ficha de ${personaje.nombre || "Sin nombre"}`, resumenPropio());
+    if (lectura || viendoMascota()) mostrarFichaResumen(`Ficha de ${personaje.nombre || "Sin nombre"}`, resumenPropio());
     else if (MODO_MASTER) abrirPerfilMaster();
     else abrirPerfil();
 }
@@ -420,6 +428,8 @@ function aplicarModoNpc() {
 function actualizarTodo() {
     // Jefe: si la vida de su fase ha bajado de 0, pasa a la siguiente antes de pintar (cambia equipo, artes...)
     if (!lectura) comprobarFaseJefe();
+    // Mascota en la ficha a 0 PV o menos: vuelve al cristal agrietado y la ficha pasa al dueño (que repinta)
+    if (comprobarMascotaCaida()) return;
     aplicarModoNpc();
     ajustarInventario(personaje); // la capacidad cambia con el equipo, la comida o los modificadores
     comprobarTruequeColgado(); // trueque que se quedó a medias (pestaña cerrada): devuelve lo apartado
@@ -461,6 +471,7 @@ function actualizarTodo() {
     comprobarCambios();
     // Modo máster: sus personajes en la cabecera, con el de la ficha al día
     actualizarHudMaster();
+    aplicarBloqueoMascota(); // mascota en la ficha: solo actúa en combate
     // Modo lectura: no se publica nada (la ficha es de un jugador) y no se puede tocar nada
     if (lectura) {
         actualizarBrilloTurno();
@@ -468,26 +479,37 @@ function actualizarTodo() {
         return;
     }
     actualizarBrilloTurno();
+    // Con la mascota en la ficha, lo del personaje es del dueño (en memoria aparte)
+    const dueno = duenoActual();
     // En una sala, la lista de personajes conectados lleva el nombre (solo se envía si cambia)
-    avisarNombrePersonaje(personaje.nombre, personaje.idPersonaje);
+    avisarNombrePersonaje(dueno.nombre, dueno.idPersonaje);
     // En un grupo, tus compañeros ven tu vida, PA (sin números), nivel y estados (solo se envía si cambia)
-    avisarEstadoGrupo({
-        vida: personaje.vidaMax > 0 ? personaje.vida / personaje.vidaMax : 0,
-        pv: personaje.vida, pvMax: personaje.vidaMax, // en números, para la transfusión de los compañeros
-        pa: personaje.puntosArteMax > 0 ? personaje.puntosArte / personaje.puntosArteMax : 0,
-        nivel: personaje.nivel,
-        iniciativa: personaje.iniciativa, // para el orden en la cabecera del máster
-        estados: Object.keys(ESTADOS_INFO).filter(clave => estaActivo(personaje, clave)),
-        turno: turnoDe(personaje.idPersonaje),
-        id: personaje.idPersonaje, // en modo máster, a qué personaje suyo (y su grupo) va
+    avisarEstadoGrupo(estadoParaGrupo(dueno));
+    // La mascota invocada publica el suyo (su entrada del grupo y su estado para el máster)
+    avisarEstadoMascota(datosMascotaParaSala());
+}
+
+/* Vida, PA, nivel, estados... de un personaje para el grupo y el máster (avisarEstadoGrupo) */
+function estadoParaGrupo(pj) {
+    return {
+        vida: pj.vidaMax > 0 ? pj.vida / pj.vidaMax : 0,
+        pv: pj.vida, pvMax: pj.vidaMax, // en números, para la transfusión de los compañeros
+        pa: pj.puntosArteMax > 0 ? pj.puntosArte / pj.puntosArteMax : 0,
+        nivel: pj.nivel,
+        iniciativa: pj.iniciativa, // para el orden en la cabecera del máster
+        estados: Object.keys(ESTADOS_INFO).filter(clave => estaActivo(pj, clave)),
+        turno: turnoDe(pj.idPersonaje),
+        id: pj.idPersonaje, // en modo máster, a qué personaje suyo (y su grupo) va
         // Solo para el máster (estado de la sala, no el grupo): estadísticas si es protagonista y si tiene
         // las habilidades del Underworld habilitadas (aviso al matar un NPC)
-        stats: personaje.protagonista && !personaje.esNpc ? estadisticasProtagonista(personaje) : null,
-        uw: personaje.tieneUnderworldActivo(),
+        stats: pj.protagonista && !pj.esNpc ? estadisticasProtagonista(pj) : null,
+        uw: pj.tieneUnderworldActivo(),
         // Notoriedad: la franja de color (la ven el grupo y el máster); alerta del sistema: solo el máster
-        notoriedad: personaje.notoriedad,
-        alerta: personaje.alertaSistema
-    });
+        notoriedad: pj.notoriedad,
+        alerta: pj.alertaSistema,
+        // Cristales de mascota (el máster los ve en su cabecera para revisarlos)
+        mascotas: MODO_MASTER ? [] : listaMascotas(pj)
+    };
 }
 
 /* Botín que te ofrece un compañero: va al inventario; lo que no cabe se pierde */
@@ -696,7 +718,8 @@ function restosDe(pj) {
             ...unicos.map(e => ({ ...equipoComoObjeto(e), equipo: { ...JSON.parse(JSON.stringify(e)), enUso: false } })),
             ...pj.inventario.filter(Boolean).map(objeto => JSON.parse(JSON.stringify(objeto)))
         ].slice(0, 50),
-        objetosClave: pj.objetosClave.map(objeto => ({ ...objeto })).slice(0, 50)
+        // Sin los cristales de mascota: copiarlos duplicaría la mascota
+        objetosClave: pj.objetosClave.filter(objeto => !esCristalMascota(objeto)).map(objeto => ({ ...objeto })).slice(0, 50)
     };
 }
 
@@ -1322,7 +1345,7 @@ function inicializarMuerte() {
 function golpeDePersonaje(origen) {
     if (!origen?.instancia) return false;
     const entrada = getTodosPersonajesSala().find(p => p.instancia === origen.instancia);
-    if (entrada) return !entrada.npc;
+    if (entrada) return !entrada.npc || entrada.mascota; // la notoriedad de una mascota va a su dueño
     if (MODO_MASTER && origen.instancia.startsWith("m-")) {
         const pj = npcPorId(origen.instancia.slice(2));
         return Boolean(pj) && !pj.esNpc;
@@ -1344,6 +1367,8 @@ function golpeDePesadilla(origen) {
 
 /* +1 de notoriedad al personaje de esta pestaña de esa instancia (atacante) por dejar a la víctima bajo el 50 % */
 function sumarNotoriedad(para, victima) {
+    // Lo que hace una mascota lo gana su dueño (el personaje de esta pestaña)
+    if (!MODO_MASTER && para?.startsWith("p-")) para = getInstancia();
     const pj = leerPersonajeDeInstancia(para);
     if (!pj || pj.esNpc) return;
     conPersonajeDeInstancia(para, p => { p.notoriedad = (Number(p.notoriedad) || 0) + 1; });
@@ -1432,6 +1457,7 @@ function alTurnoSala(evento) {
     ultimoTurnoVisto = Math.max(ultimoTurnoVisto, hora);
     verTurnoSala(hora);
     if (MODO_MASTER) alIniciarTurnoMaster(hora, iniciativa, quien);
+    empezarTurnoOtroLocal(hora, iniciativa);
     if (lectura || personaje.zona !== "noSegura" || turnoDe(personaje.idPersonaje) === hora
         || !mismaIniciativa(iniciativa, personaje.iniciativa) || estaOcultoEnSala(personaje.nombre)) {
         actualizarBrilloTurno();
@@ -1452,6 +1478,20 @@ function alTurnoSala(evento) {
     ]);
 }
 registrarManejador("turnoSala", alTurnoSala);
+
+/* Mascotas: el otro personaje de esta pestaña (el dueño con la mascota en la ficha, o la mascota invocada) también
+   empieza a la vez si tiene la misma iniciativa y está en zona no segura (los pop-ups propios no llegan) */
+function empezarTurnoOtroLocal(hora, iniciativa) {
+    if (MODO_MASTER || lectura) return;
+    const instancia = viendoMascota() ? getInstancia() : datosMascotaParaSala()?.instancia;
+    if (!instancia) return;
+    const pj = leerPersonajeDeInstancia(instancia);
+    if (!pj || pj === personaje || pj.zona !== "noSegura" || turnoDe(pj.idPersonaje) === hora
+        || !mismaIniciativa(iniciativa, pj.iniciativa) || muereAlEmpezarTurno(pj)) return;
+    conPersonajeDeInstancia(instancia, p => iniciarTurno(p));
+    turnos.set(pj.idPersonaje, hora);
+    avisarTurno(hora, pj.idPersonaje);
+}
 
 /* Modo lectura (modo máster) _________________________________________________
    El máster mira la ficha de un personaje de un jugador: se carga en la ficha tal y como estaba al pulsarla
@@ -1639,14 +1679,14 @@ function abrirFichaMaster(json, guardada) {
 }
 
 function marcarGuardado() {
-    fichaGuardada = personaje.toJSONString();
+    fichaGuardada = jsonDeLaFicha();
     hayCambiosSinGuardar = false;
     escribirCache(fichaGuardada);
 }
 
 function comprobarCambios() {
     if (fichaGuardada === null || lectura) return; // aún arrancando, o mirando la ficha de un jugador
-    const ficha = personaje.toJSONString();
+    const ficha = jsonDeLaFicha();
     hayCambiosSinGuardar = ficha !== fichaGuardada;
     escribirCache(ficha);
 }
@@ -1698,7 +1738,8 @@ function actualizarInformacion() {
     const hud = document.querySelector(".sao-bar-wrapper");
     hud?.classList.toggle("muerto", personaje.vida <= 0);
     /* Franja de color: notoriedad (personajes) o neutral (NPC), como en las filas de la cabecera */
-    if (hud) ponerFranja(hud, { npc: personaje.esNpc, neutral: personaje.neutral, notoriedad: personaje.notoriedad, pesadilla: esPesadilla(personaje) });
+    if (hud) ponerFranja(hud, viendoMascota() ? { notoriedad: duenoActual().notoriedad }
+        : { npc: personaje.esNpc, neutral: personaje.neutral, notoriedad: personaje.notoriedad, pesadilla: esPesadilla(personaje) });
     document.getElementById("npcNeutral").checked = Boolean(personaje.neutral);
 
     /* Jefe: una barra por fase (como la ven los jugadores) en vez de la de vida */
@@ -2078,6 +2119,7 @@ function actualizarCaracteristicas() {
    (o sustituye al mismo): opciones.idNube es su id en la nube. */
 function cargarFicha(jsonData, opciones = {}) {
     if (MODO_MASTER) return anadirFichaCargada(jsonData, opciones);
+    olvidarMascotaEnFicha();
     personaje.cargarJSON(jsonData);
     desbloqueosNaturalesVistos = null; // ficha nueva: no avisar de los desbloqueos que ya tenía
     actualizarTodo();
@@ -4841,12 +4883,15 @@ function inicializarTurno() {
             return;
         }
         const resumen = boton.accion(personaje);
+        // Las mascotas descansan con su dueño (las agrietadas no)
+        if (esDescanso && !viendoMascota()) descansarMascotas(personaje, boton.accion === descansoLargo);
         // Inicio de turno: parpadea el HUD y quienes tengan tu misma iniciativa empiezan a la vez
         if (boton.accion === iniciarTurno) {
             const hora = Math.max(Date.now(), ultimoTurnoVisto + 1, (MODO_MASTER ? getUltimoTurnoMaster() : 0) + 1);
             marcarTurno(hora);
             if (MODO_MASTER && !estaOcultoEnSala(personaje.nombre)) alIniciarTurnoMaster(hora, personaje.iniciativa, personaje.nombre);
             enviarTurnoSala(hora);
+            empezarTurnoOtroLocal(hora, personaje.iniciativa); // tu mascota (o tú) con la misma iniciativa
         }
         actualizarTodo();
         mostrarPopupInfo(boton.titulo, resumen.map(escaparHtml));
@@ -5362,7 +5407,8 @@ setObjetivoPropio(esObjetivoPropio);
 
 /* ¿Ese personaje es de esta pestaña? (también los de la sesión del máster aunque no haya sala) */
 function esObjetivoPropio(instancia) {
-    return esDeEstaPestana(instancia) || instancia === instanciaEmisora() || (MODO_MASTER && idsEnSesion().some(id => `m-${id}` === instancia));
+    return esDeEstaPestana(instancia) || instancia === instanciaEmisora() || (MODO_MASTER && idsEnSesion().some(id => `m-${id}` === instancia))
+        || (!MODO_MASTER && Boolean(instancia) && instancia === datosMascotaParaSala()?.instancia); // tu mascota invocada
 }
 
 /* Lo que pierde alguien en una transfusión va a quien la recibe: aquí si es de esta pestaña, si no por privado */
@@ -5426,7 +5472,8 @@ function recibirTransfusionFuera(golpe, instancia, { autor, titulo, tirada, orig
     return true;
 }
 // Modo máster: sus pop-ups también se pueden recibir, en el personaje que tenga en pantalla
-setGolpesPropiosAplicables(() => MODO_MASTER);
+// Con una mascota invocada, el jugador puede recibir un golpe en cada uno de sus dos personajes (como el máster)
+setGolpesPropiosAplicables(() => MODO_MASTER || (!lectura && mascotaInvocada(duenoActual()) >= 0));
 
 /* Comida o poción que te ofrece otro jugador (pop-up "oferta"): gasta la boca y avisa a toda la sala */
 function consumirOferta(datosObjeto, { autor, para, coger = false }) {
@@ -5897,6 +5944,7 @@ function inicializarZona() {
         })),
         alElegir: (clave, menu) => {
             if (cambiarZona(personaje, clave)) reproducir("click");
+            if (!viendoMascota()) moverMascotas(personaje, clave); // las mascotas van con su dueño
             menu.cerrar({ devolverFoco: true });
             actualizarTodo();
         }
@@ -7160,6 +7208,8 @@ function inicializarOpciones() {
                 : { clave: "sonido", etiqueta: "Silenciar audio", icono: "sonido" }
         ],
         alElegir: (clave, menu) => {
+            // Cargar, guardar y la ficha nueva son del dueño: con la mascota en la ficha, se vuelve a él antes
+            if (["cargar", "guardar", "nueva", "guardarNube", "cargarNube"].includes(clave)) volverAPropietario();
             switch (clave) {
                 case "cuenta":
                 case "sala":
@@ -7595,11 +7645,28 @@ function resumenPropio(pj = personaje) {
 const idDeInstancia = (instancia) => (MODO_MASTER && instancia?.startsWith("m-") ? instancia.slice(2) : null);
 const esElDeLaFicha = (id) => !id || (!lectura && id === personaje.idPersonaje);
 function leerPersonajeDeInstancia(instancia) {
+    const destino = destinoMascota(instancia);
+    if (destino?.tipo === "dueno") return propietarioPj;
+    if (destino?.tipo === "cristal") return pjDeCristal(duenoActual().objetosClave[destino.indice]) ?? personaje;
     const id = idDeInstancia(instancia);
     return esElDeLaFicha(id) ? personaje : (leerPersonajeMaster(id) ?? personaje);
 }
 /* Aplica un cambio (fn(pj)) al personaje de esa instancia y lo guarda; devuelve lo que devuelva fn */
 function conPersonajeDeInstancia(instancia, fn) {
+    const destino = destinoMascota(instancia);
+    if (destino?.tipo === "ninguno") return undefined; // una mascota que ya no está en sus cristales
+    if (destino?.tipo === "dueno" || destino?.tipo === "cristal") {
+        const cristal = destino.tipo === "cristal" ? duenoActual().objetosClave[destino.indice] : null;
+        const pj = cristal ? pjDeCristal(cristal) : propietarioPj;
+        if (!pj) return undefined;
+        const resultado = fn(pj);
+        if (cristal) {
+            guardarPjEnCristal(cristal, pj);
+            if (pj.vida <= 0 && cristal.invocada) agrietarMascota(destino.indice, pj.nombre);
+        }
+        actualizarTodo();
+        return resultado;
+    }
     const id = idDeInstancia(instancia);
     if (esElDeLaFicha(id)) {
         const resultado = fn(personaje);
@@ -7607,6 +7674,322 @@ function conPersonajeDeInstancia(instancia, fn) {
         return resultado;
     }
     return conPersonajeMaster(id, fn);
+}
+
+/* Mascotas en la ficha (mascotas.js) ____________________________________________
+ * Con una mascota invocada, el jugador la pone en la ficha para actuar con ella pulsando su fila del grupo (y la suya
+ * para volver). Se usa el mismo objeto personaje (como el máster con los suyos): se carga la ficha de la mascota y el
+ * dueño queda aparte en propietarioPj. La caché, los cambios sin guardar, cargar y guardar son siempre del dueño, con
+ * la mascota al día en su cristal (jsonDeLaFicha). La mascota solo actúa en combate: body.modo-mascota bloquea el resto
+ * (BLOQUEADOS_MASCOTA, CAMPOS_BLOQUEADOS_MASCOTA). Descansa y cambia de zona con su dueño. */
+function viendoMascota() { return propietarioPj !== null; }
+function duenoActual() { return propietarioPj ?? personaje; }
+
+/* La mascota en la ficha se copia a su cristal (en el dueño) */
+function sincronizarMascota() {
+    if (!viendoMascota()) return;
+    const indice = indiceCristalDe(propietarioPj, personaje.idPersonaje);
+    if (indice >= 0) guardarPjEnCristal(propietarioPj.objetosClave[indice], personaje);
+}
+
+/* La ficha que se guarda (caché, cambios sin guardar): siempre el dueño, con su mascota al día */
+function jsonDeLaFicha() {
+    if (!viendoMascota()) return personaje.toJSONString();
+    sincronizarMascota();
+    return propietarioPj.toJSONString();
+}
+
+/** Pone en la ficha la mascota invocada. Devuelve false si no se puede */
+function cambiarAMascota() {
+    if (viendoMascota() || lectura || MODO_MASTER) return false;
+    const indice = mascotaInvocada(personaje);
+    if (indice < 0) return false;
+    const json = personaje.objetosClave[indice].mascota.json;
+    const dueno = new PJ();
+    dueno.cargarJSON(JSON.parse(personaje.toJSONString()));
+    propietarioPj = dueno;
+    personaje.cargarJSON(JSON.parse(json));
+    personaje.esMascota = true;
+    desbloqueosNaturalesVistos = null;
+    actualizarTodo();
+    return true;
+}
+
+/** Vuelve a poner al dueño en la ficha (la mascota queda en su cristal, al día) */
+function volverAPropietario() {
+    if (!viendoMascota()) return false;
+    sincronizarMascota();
+    const json = propietarioPj.toJSONString();
+    propietarioPj = null;
+    personaje.cargarJSON(JSON.parse(json));
+    desbloqueosNaturalesVistos = null;
+    actualizarTodo();
+    return true;
+}
+
+/* Cargar otra ficha: la mascota en pantalla se olvida (la ficha cargada trae sus cristales) */
+function olvidarMascotaEnFicha() {
+    propietarioPj = null;
+}
+
+/** Cambia la ficha al personaje de esta pestaña con esa instancia (tú o tu mascota), desde el grupo */
+function cambiarFichaLocal(instancia) {
+    if (instancia?.startsWith("p-")) return cambiarAMascota();
+    return volverAPropietario();
+}
+
+/* La mascota de la ficha se ha quedado sin vida: vuelve al cristal agrietado y la ficha pasa al dueño */
+function comprobarMascotaCaida() {
+    if (!viendoMascota() || personaje.vida > 0) return false;
+    const nombre = personaje.nombre;
+    const id = personaje.idPersonaje;
+    volverAPropietario();
+    agrietarMascota(indiceCristalDe(personaje, id), nombre);
+    actualizarTodo();
+    return true;
+}
+
+/* Agrieta el cristal (en el dueño) y lo cuenta a la sala */
+function agrietarMascota(indice, nombre) {
+    if (indice < 0) return;
+    agrietar(duenoActual(), indice);
+    turnos.delete(idMascotaDeCristal(duenoActual().objetosClave[indice]));
+    emitirEvento("objeto", {
+        titulo: nombre || "Mascota", subtitulo: "Vuelve a su cristal",
+        lineas: ["Se ha quedado sin vida y el cristal se ha agrietado. Solo el máster puede revivirla."]
+    });
+}
+
+/* Instancia de un personaje de esta pestaña que no es la ficha: el dueño ({ tipo: "dueno" }) con la mascota en
+   pantalla, o una mascota guardada en un cristal ({ tipo: "cristal", indice }); "ninguno" si es "p-" y no está.
+   null: no es de las mascotas (lo de siempre) */
+function destinoMascota(instancia) {
+    if (MODO_MASTER || lectura || !instancia) return null;
+    if (instancia.startsWith("p-")) {
+        const id = instancia.slice(2);
+        if (viendoMascota() && personaje.idPersonaje === id) return null; // la de la ficha
+        const indice = indiceCristalDe(duenoActual(), id);
+        return indice >= 0 ? { tipo: "cristal", indice } : { tipo: "ninguno" };
+    }
+    if (viendoMascota() && instancia === getInstancia()) return { tipo: "dueno" };
+    return null;
+}
+
+/* Cristales de un personaje para el máster: [{ id, nombre, pendientes, agrietado, invocada }] */
+function listaMascotas(pj) {
+    return (pj.objetosClave ?? []).filter(esCristalMascota).map(resumenCristal).filter(Boolean)
+        .map(({ id, nombre, pendientes, agrietado, invocada }) => ({ id, nombre, pendientes, agrietado, invocada }));
+}
+
+/* La mascota invocada para la sala y el grupo (su fila y su estado), o null: con los valores al momento si está en
+   la ficha y, si no, los de su cristal. Con la franja del dueño (su notoriedad) */
+function datosMascotaParaSala() {
+    if (MODO_MASTER || lectura) return null;
+    const dueno = duenoActual();
+    const indice = mascotaInvocada(dueno);
+    if (indice < 0) return null;
+    const cristal = dueno.objetosClave[indice];
+    const r = viendoMascota() ? resumenDePj(personaje) : resumenCristal(cristal);
+    if (!r) return null;
+    return {
+        id: r.id, instancia: `p-${r.id}`, nombre: r.nombre, mascota: true,
+        vida: r.vidaMax > 0 ? r.vida / r.vidaMax : 0, pv: r.vida, pvMax: r.vidaMax,
+        pa: r.paMax > 0 ? r.pa / r.paMax : 0, nivel: r.nivel, estados: r.estados, iniciativa: r.iniciativa,
+        turno: turnoDe(r.id), notoriedad: dueno.notoriedad, pendientes: r.pendientes, enFicha: viendoMascota()
+    };
+}
+
+/* Filas de esta pestaña en el grupo de la cabecera (interfazOnline.js): tú y tu mascota invocada, con los valores
+   al momento; enFicha = el que está en pantalla (lleva la flecha) */
+function filasLocalesGrupo() {
+    if (MODO_MASTER || lectura) return [];
+    const dueno = duenoActual();
+    const propio = estadoParaGrupo(dueno);
+    const filas = [{ ...propio, instancia: getInstancia(), nombre: dueno.nombre, enFicha: !viendoMascota() }];
+    const mascota = datosMascotaParaSala();
+    if (mascota) filas.push(mascota);
+    return filas;
+}
+
+/* Bloqueo de la ficha de la mascota: solo actúa en combate (turno, ataques, artes, efectos, daño, estados y
+   modificadores temporales). Lo demás lo cambia el máster; los descansos y la zona van con el dueño */
+const BLOQUEADOS_MASCOTA = [
+    "#btnInventario", "#btnZona", "#anadirParteNpc", "#listaPartesNpc button", "#anadirTiradaNpc",
+    "#tiradasNpcDiv [data-accion='quitar']", ".btn-extras-equipo", "#btnCatalogoArtesNpc", "#btnCrearArteNpc",
+    "#btnCrearOnirica", ...["editar", "borrar", "desequipar", "equipar", "editarSala", "quitarSala", "anadir"]
+        .map(accion => `#modalArtesEquipadas [data-accion='${accion}']`)
+].join(", ");
+const CAMPOS_BLOQUEADOS_MASCOTA = "#valoresCombateDiv input, #tiradasNpcDiv input, #comportamientoCombate, #nivel, #experiencia";
+
+let ultimoAvisoMascota = 0;
+function bloquearEnMascota(e) {
+    if (!viendoMascota() || !(e.target instanceof Element)) return;
+    const objetivo = e.target;
+    // Los descansos van con el dueño: con la mascota, Play solo empieza el turno (zona no segura)
+    const bloqueado = objetivo.closest(BLOQUEADOS_MASCOTA)
+        || (objetivo.closest("#btnIniciarTurno") && personaje.zona !== "noSegura");
+    if (!bloqueado) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    if (Date.now() - ultimoAvisoMascota < 3000) return;
+    ultimoAvisoMascota = Date.now();
+    mostrarPopupInfo("Mascota", [escaparHtml(`Con ${personaje.nombre || "tu mascota"} solo puedes actuar en combate: lo demás lo cambia el máster, y los descansos y la zona van con su dueño.`)]);
+}
+document.addEventListener("click", bloquearEnMascota, true);
+
+/* Debug (?debug): un cristal de mascota de prueba, sin máster */
+function crearMascotaPrueba(nombre = "Pina") {
+    volverAPropietario();
+    const mascota = new PJ();
+    mascota.esNpc = true;
+    mascota.esMascota = true;
+    mascota.nombre = nombre;
+    mascota.calcularCaracteristicas();
+    mascota.vida = mascota.vidaMax;
+    personaje.objetosClave.push({ nombre: `Cristal de ${nombre}`, descripcion: "Mascota de prueba", mascota: { json: mascota.toJSONString(), agrietado: false } });
+    actualizarTodo();
+    return `Cristal de ${nombre} añadido a los objetos clave`;
+}
+
+/* Debug: prueba el ciclo de una mascota sobre la ficha actual y la deja como estaba. Devuelve la lista de fallos */
+function comprobarMascota() {
+    if (MODO_MASTER || lectura) return ["Solo en una ficha de jugador"];
+    const fallos = [];
+    const comprobar = (condicion, texto) => { if (!condicion) fallos.push(texto); };
+    volverAPropietario();
+    const antes = personaje.toJSONString();
+    const guardadaAntes = fichaGuardada;
+    try {
+        personaje.zona = "segura"; // sin gastar manos
+        crearMascotaPrueba("Prueba");
+        const indice = personaje.objetosClave.length - 1;
+        comprobar(invocarMascota(personaje, indice, () => true).ok, "No se ha podido invocar");
+        comprobar(mascotaInvocada(personaje) === indice, "No queda invocada");
+        comprobar(cambiarAMascota(), "No cambia a la mascota");
+        comprobar(personaje.esMascota && viendoMascota(), "La ficha no es la mascota");
+        comprobar(document.body.classList.contains("modo-mascota"), "Falta body.modo-mascota");
+        const id = personaje.idPersonaje;
+        personaje.vida = Math.max(1, personaje.vida - 1);
+        const vida = personaje.vida;
+        const dueno = JSON.parse(jsonDeLaFicha());
+        comprobar(!dueno.esNpc, "La caché guardaría la mascota en vez del dueño");
+        comprobar(pjDeCristal(cargarObjetosClave(dueno.objetosClave)[indice])?.vida === vida, "La caché no lleva la mascota al día");
+        comprobar(volverAPropietario() && !personaje.esMascota, "No vuelve al dueño");
+        comprobar(pjDeCristal(personaje.objetosClave[indice])?.vida === vida, "El cristal no guarda la vida de la mascota");
+        const recargado = new PJ();
+        recargado.cargarJSON(JSON.parse(personaje.toJSONString()));
+        comprobar(recargado.objetosClave[indice]?.invocada && resumenCristal(recargado.objetosClave[indice])?.id === id, "Al cargar se pierde el cristal o la invocación");
+        cambiarAMascota();
+        personaje.vida = 0;
+        actualizarTodo();
+        comprobar(!viendoMascota(), "A 0 PV no vuelve al dueño");
+        comprobar(personaje.objetosClave[indice]?.mascota.agrietado && !personaje.objetosClave[indice].invocada, "A 0 PV no se agrieta");
+        comprobar(Boolean(motivoNoInvocar(personaje, indice)), "Agrietado se puede invocar");
+        const copia = pjDeCristal(personaje.objetosClave[indice]);
+        copia.setExp(copia.experienciaMax * 3);
+        comprobar(copia.nivelesPendientes >= 2, "La EXP no marca los niveles por revisar");
+    } catch (error) {
+        fallos.push(`Error: ${error.message}`);
+    } finally {
+        olvidarMascotaEnFicha();
+        personaje.cargarJSON(JSON.parse(antes));
+        fichaGuardada = guardadaAntes;
+        actualizarTodo();
+    }
+    return fallos;
+}
+
+/* Cristales que manda el máster (interfazMaster.js, "Mascotas de los jugadores"): solo los del máster de la sala */
+const MAX_CARACTERES_MASCOTA = 18000; // como en interfazMaster.js: los eventos de la sala tienen un límite
+
+/* Cristal recibido (validado), sin invocar */
+function cristalRecibido(datos) {
+    const [cristal] = cargarObjetosClave([datos]);
+    if (!cristal?.mascota) return null;
+    delete cristal.invocada;
+    return cristal;
+}
+
+/* Cambia los cristales del dueño con el dueño en la ficha (si la mascota estaba en ella, vuelve después si puede) */
+function conCristalesDelDueno(id, fn) {
+    const estaba = viendoMascota() && personaje.idPersonaje === id;
+    if (estaba) volverAPropietario();
+    fn(personaje);
+    actualizarTodo();
+    if (estaba && mascotaInvocada(personaje) === indiceCristalDe(personaje, id)) cambiarAMascota();
+}
+
+registrarManejador("mascotaNueva", (evento) => {
+    if (MODO_MASTER || !esDelMasterDeSala(evento)) return;
+    const cristal = cristalRecibido(evento.datos?.objetoClave);
+    if (!cristal) return;
+    const id = idMascotaDeCristal(cristal);
+    conCristalesDelDueno(id, (pj) => {
+        const indice = indiceCristalDe(pj, id);
+        if (indice >= 0) pj.objetosClave[indice] = cristal; // ya la tenía: se sustituye
+        else pj.objetosClave.push(cristal);
+    });
+    mostrarPopupInfo("Cristal de mascota", [escaparHtml(`El máster te da ${cristal.nombre}. Está en tus objetos clave.`)]);
+});
+
+registrarManejador("mascotaActualizada", (evento) => {
+    if (MODO_MASTER || !esDelMasterDeSala(evento)) return;
+    const cristal = cristalRecibido(evento.datos?.objetoClave);
+    const id = String(evento.datos?.id ?? "");
+    if (!cristal || idMascotaDeCristal(cristal) !== id) return;
+    conCristalesDelDueno(id, (pj) => {
+        const indice = indiceCristalDe(pj, id);
+        if (indice < 0) return;
+        // Sigue invocada si lo estaba y no se ha agrietado
+        if (pj.objetosClave[indice].invocada && !cristal.mascota.agrietado) cristal.invocada = true;
+        pj.objetosClave[indice] = cristal;
+    });
+    mostrarPopupInfo("Cristal de mascota", [escaparHtml(`El máster ha cambiado a la mascota de ${cristal.nombre}.`)]);
+});
+
+registrarManejador("mascotaQuitada", (evento) => {
+    if (MODO_MASTER || !esDelMasterDeSala(evento)) return;
+    const id = String(evento.datos?.id ?? "");
+    let nombre = "";
+    conCristalesDelDueno(id, (pj) => {
+        const indice = indiceCristalDe(pj, id);
+        if (indice < 0) return;
+        nombre = pj.objetosClave[indice].nombre;
+        pj.objetosClave.splice(indice, 1);
+    });
+    if (nombre) mostrarPopupInfo("Cristal de mascota", [escaparHtml(`El máster se ha llevado ${nombre}.`)]);
+});
+
+// El máster pide una mascota para editarla: se le envía el cristal al día (en nombre del dueño)
+registrarManejador("pedirMascota", (evento) => {
+    if (MODO_MASTER || lectura || !esDelMasterDeSala(evento)) return;
+    sincronizarMascota();
+    const dueno = duenoActual();
+    const id = String(evento.datos?.id ?? "");
+    const indice = indiceCristalDe(dueno, id);
+    if (indice < 0) return;
+    const { invocada: _invocada, ...cristal } = dueno.objetosClave[indice];
+    const demasiado = JSON.stringify(cristal).length > MAX_CARACTERES_MASCOTA;
+    emitirPrivado("mascotaDatos", {
+        para: evento.instancia, id, dueno: { instancia: getInstancia(), nombre: dueno.nombre },
+        ...(demasiado ? { error: "La mascota es demasiado grande para enviarla." } : { objetoClave: cristal })
+    }, { instancia: getInstancia(), personaje: dueno.nombre }).catch(error => console.warn("No se pudo enviar la mascota al máster:", error));
+});
+
+/* Al final de actualizarTodo: campos desactivados con la mascota en la ficha (y vueltos a activar al salir) */
+function aplicarBloqueoMascota() {
+    const activo = viendoMascota();
+    document.body.classList.toggle("modo-mascota", activo);
+    document.querySelectorAll(CAMPOS_BLOQUEADOS_MASCOTA).forEach(campo => {
+        if (activo && !campo.disabled) {
+            campo.disabled = true;
+            campo.dataset.bloqueoMascota = "1";
+        } else if (!activo && campo.dataset.bloqueoMascota) {
+            campo.disabled = false;
+            delete campo.dataset.bloqueoMascota;
+        }
+    });
 }
 
 /* HTML de la ficha resumida. Todo el texto se escapa: puede venir de otro jugador.
@@ -8186,6 +8569,7 @@ const listaObjetosClaveEl = document.getElementById("listaObjetosClave");
 let abrirEditorObjetoClave = () => {};
 
 function filaObjetoClave(objeto, indice) {
+    if (esCristalMascota(objeto)) return filaCristalMascota(objeto, indice);
     return `<div class="fila-objeto objeto-clave" data-index="${indice}">
         <span class="objeto-icono" title="Objeto clave">${iconoSao("llave")}</span>
         <div class="objeto-info">
@@ -8196,8 +8580,36 @@ function filaObjetoClave(objeto, indice) {
     </div>`;
 }
 
+/* Cristal de mascota (mascotas.js): la mascota, su nivel y si está agrietado o tiene niveles por revisar; invocar
+   y guardar. No se edita ni se descarta (lo hace el máster) */
+function filaCristalMascota(objeto, indice) {
+    const r = resumenCristal(objeto);
+    const marcas = [
+        r ? `LV ${r.nivel}` : "",
+        r?.agrietado ? `<span class="cristal-agrietado">Agrietado</span>` : "",
+        r?.pendientes ? `<span class="niveles-pendientes">+${r.pendientes} ${r.pendientes === 1 ? "nivel" : "niveles"} por revisar</span>` : "",
+        r?.invocada ? "Invocada" : ""
+    ].filter(Boolean).join(" · ");
+    const enFicha = viendoMascota();
+    const motivoEnFicha = "Vuelve a tu personaje para hacerlo";
+    const accion = objeto.invocada
+        ? botonObjeto("guardarMascota", "guardar", enFicha ? motivoEnFicha : motivoNoGuardarMascota(personaje, indice) ?? "Guardar en el cristal",
+            enFicha || Boolean(motivoNoGuardarMascota(personaje, indice)))
+        : botonObjeto("invocarMascota", "usar", enFicha ? motivoEnFicha : motivoNoInvocar(personaje, indice) ?? "Invocar",
+            enFicha || Boolean(motivoNoInvocar(personaje, indice)));
+    return `<div class="fila-objeto objeto-clave cristal-mascota${r?.agrietado ? " agrietado" : ""}" data-index="${indice}">
+        <span class="objeto-icono" title="Cristal de mascota">${iconoSao("cristalMascota")}</span>
+        <div class="objeto-info">
+            <div class="objeto-cabecera"><span class="objeto-nombre">${escaparHtml(objeto.nombre)}</span></div>
+            <div class="objeto-detalle">${escaparHtml(r?.nombre ?? "Mascota no válida")}${marcas ? ` · ${marcas}` : ""}</div>
+            ${objeto.descripcion ? `<div class="objeto-descripcion">${escaparHtml(objeto.descripcion)}</div>` : ""}
+        </div>
+        <div class="objeto-acciones">${accion}</div>
+    </div>`;
+}
+
 function actualizarObjetosClave() {
-    const lista = personaje.objetosClave;
+    const lista = duenoActual().objetosClave;
     pintarLista(listaObjetosClaveEl, lista.length
         ? lista.map(filaObjetoClave).join("")
         : `<p class="lista-vacia">No tienes objetos clave.</p>`);
@@ -8256,8 +8668,18 @@ function inicializarObjetosClave() {
         const boton = e.target.closest("button[data-accion]");
         const indice = Number(boton?.closest(".fila-objeto")?.dataset.index);
         const objeto = personaje.objetosClave[indice];
-        if (!objeto) return;
+        if (!objeto || viendoMascota()) return;
         reproducir("click");
+        if (boton.dataset.accion === "invocarMascota" || boton.dataset.accion === "guardarMascota") {
+            const invocando = boton.dataset.accion === "invocarMascota";
+            const { resultado, fallo } = conEmbriaguez("objeto", () => (invocando ? invocarMascota : guardarMascota)(personaje, indice, gastarAccionesOConfirmar));
+            if (fallo) return actualizarTodo();
+            if (!resultado.ok) mostrarPopupInfo("Mascota", resultado.resumen.map(escaparHtml));
+            else emitirEvento("objeto", { titulo: objeto.nombre, subtitulo: invocando ? "Invoca a su mascota" : "Guarda a su mascota", lineas: resultado.resumen });
+            actualizarTodo();
+            return;
+        }
+        if (esCristalMascota(objeto)) return; // los cristales no se editan ni se descartan
         if (boton.dataset.accion === "editar") {
             abrirEditorObjetoClave(indice);
         } else if (boton.dataset.accion === "descartar" && confirm(`¿Descartar ${objeto.nombre}? Se pierde.`)) {
@@ -9093,6 +9515,11 @@ function inicializarDebug() {
             actualizarTodo();
             return resultado.resumen.join(" · ");
         },
+        // Mascotas (mascotas.js): crearMascotaPrueba() añade un cristal sin máster; comprobarMascota() prueba guardar y
+        // cargar, invocar, cambiar de ficha, la caché, agrietar y la EXP (lista de fallos; vacía si todo va bien)
+        crearMascotaPrueba,
+        comprobarMascota,
+        cambiarAMascota, volverAPropietario,
         requisitosArtes: () => catalogoArtes.map(arte => {
             const { cumple, obligatorios, alternativos } = estadoRequisitos(personaje, arte);
             const marcar = (lista) => lista.map(r => `${r.ok ? "✓" : "✗"} ${r.texto}`).join(", ");
@@ -9387,6 +9814,11 @@ document.addEventListener("DOMContentLoaded", () => {
         resumenPropio,
         mostrarFichaResumen,
         abrirPerfil: abrirPerfilSegunModo, // al pulsar tu fila del grupo en la cabecera
+        // Mascotas: tus filas del grupo (tú y tu mascota invocada), cambiar de ficha entre ellas y quién mira los
+        // colores de los NPC (el dueño, aunque la mascota esté en la ficha)
+        filasLocalesGrupo,
+        cambiarFicha: cambiarFichaLocal,
+        observador: () => duenoActual(),
         // Personaje al que va un evento privado (en modo máster, uno de los suyos aunque no esté en la ficha)
         leerPersonaje: leerPersonajeDeInstancia,
         conPersonaje: conPersonajeDeInstancia,

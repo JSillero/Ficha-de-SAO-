@@ -16,7 +16,10 @@
  *        Todo NPC entra oculto)
  *       (cada entrada de personaje lleva también grupo: id del grupo en el que está, o null, e id: su idPersonaje.
  *        En modo máster, cada personaje de su sesión tiene una entrada "m-<idPersonaje>")
+ *       (mascota de un jugador, mascotas.js: en su registro { nombre, npc: true, mascota: true } y conectada como
+ *        "p-<idMascota>" mientras está invocada; en el grupo de su dueño va en el mapa mascotas, no en miembros)
  * - salas/{codigo}/estados/{idPersonaje}: { jugador, master, nombre, vida, pa, nivel, iniciativa, estados, turno, stats, uw }
+ *       (+ mascotas: cristales del personaje para el máster; una mascota: mascota: true y pendientes)
  *       stats: estadísticas de protagonista (o null, estadisticasProtagonista de resumenFicha.js); uw: habilidades
  *       del Underworld habilitadas (aviso al matar un NPC)
  *       lo escribe cada jugador al cambiar; solo lo escucha el máster (cabecera del modo máster)
@@ -87,6 +90,9 @@ const nombresCache = new Map();
 
 /* Personaje de esta pestaña: instancia (instancia.js), nombre e id (idPersonaje), para la lista de conectados */
 const personajeLocal = { instancia: null, nombre: "", id: null };
+/* Mascota invocada del personaje de esta pestaña (mascotas.js): instancia "p-<id>", id, nombre; enFicha = es la que
+   está en la ficha (sus pop-ups salen con su instancia). Solo en una pestaña de jugador */
+const mascotaLocal = { instancia: null, id: null, nombre: "", enFicha: false };
 /* Grupos (ver la sección de grupos): el de la pestaña se recuerda en sessionStorage { codigo, id } */
 const CLAVE_GRUPO = "fichaSAO.grupo";
 const MAX_GRUPO = 6;
@@ -439,13 +445,62 @@ export async function crearSala(nombre) {
 const campoPersonaje = (uid) => `personajes.${uid}.${personajeLocal.instancia}`;
 const datosPersonaje = (f) => ({ nombre: personajeLocal.nombre || "", visto: f.serverTimestamp(), grupo: grupos.get(personajeLocal.instancia)?.id ?? null, id: personajeLocal.id });
 
-/* Cambios del registro para el personaje de esta pestaña: su entrada y, si tenías otro con su nombre, borrarlo */
+/* Cambios del registro para el personaje de esta pestaña: su entrada y, si tenías otro con su nombre, borrarlo.
+   Las mascotas (registro con mascota: true) no cuentan como repetidas */
 function cambiosRegistroPropio(f, uid, registro) {
     if (!personajeLocal.id) return {};
     const cambios = { [`registro.${uid}.${personajeLocal.id}`]: { nombre: personajeLocal.nombre || "" } };
     registroRepetido(uid, personajeLocal.nombre, personajeLocal.id, registro)
+        .filter(otro => !registro?.[uid]?.[otro]?.mascota)
         .forEach(otro => { cambios[`registro.${uid}.${otro}`] = f.deleteField(); });
+    return { ...cambios, ...cambiosMascotaSala(f, uid, registro) };
+}
+
+/* Mascota invocada en la sala: su entrada del registro (npc y mascota: no ocupa nombre ni sale para los demás) y su
+   presencia "p-<id>" con el grupo del dueño (para la EXP del grupo). Se quitan las presencias de otras mascotas tuyas
+   de esta pestaña (guardadas o cambiadas) */
+const grupoDeMascota = () => (mascotaLocal.instancia ? grupos.get(personajeLocal.instancia)?.id ?? null : null);
+function cambiosMascotaSala(f, uid, registro = datosSala?.registro) {
+    const cambios = {};
+    if (mascotaLocal.id) {
+        const entrada = { nombre: mascotaLocal.nombre || "", npc: true, mascota: true };
+        const actual = registro?.[uid]?.[mascotaLocal.id];
+        if (actual?.nombre !== entrada.nombre || !actual?.mascota) cambios[`registro.${uid}.${mascotaLocal.id}`] = entrada;
+        cambios[`personajes.${uid}.${mascotaLocal.instancia}`] = {
+            nombre: mascotaLocal.nombre || "", visto: f.serverTimestamp(), grupo: grupoDeMascota(), id: mascotaLocal.id
+        };
+    }
+    Object.keys(datosSala?.personajes?.[uid] ?? {})
+        .filter(inst => inst.startsWith("p-") && inst !== mascotaLocal.instancia && mascotasDeEstaPestana.has(inst))
+        .forEach(inst => { cambios[`personajes.${uid}.${inst}`] = f.deleteField(); });
     return cambios;
+}
+/* Instancias de mascota que ha usado esta pestaña (para quitar sus presencias al guardarlas) */
+const mascotasDeEstaPestana = new Set();
+
+/**
+ * La ficha avisa de su mascota invocada ({ id, nombre } o null) y de si está en la ficha. En una sala (sin ser el
+ * máster) se publica su presencia y entra o sale del grupo del dueño. Solo escribe si algo cambia.
+ */
+export function configurarMascota(datos, enFicha = false) {
+    const id = datos?.id ? String(datos.id).slice(0, 80) : null;
+    const nombre = String(datos?.nombre ?? "").trim().slice(0, 60);
+    mascotaLocal.enFicha = Boolean(id && enFicha);
+    if (id === mascotaLocal.id && nombre === mascotaLocal.nombre) return;
+    const anterior = mascotaLocal.instancia;
+    mascotaLocal.id = id;
+    mascotaLocal.nombre = nombre;
+    mascotaLocal.instancia = id ? `p-${id}` : null;
+    if (mascotaLocal.instancia) mascotasDeEstaPestana.add(mascotaLocal.instancia);
+    if (anterior && anterior !== mascotaLocal.instancia) estadosGrupo.delete(anterior);
+    if (!estado.sala || !estado.usuario || masterEnSala() || !sdk) return;
+    const { db, f } = sdk;
+    const cambios = cambiosMascotaSala(f, estado.usuario.uid);
+    if (Object.keys(cambios).length) {
+        f.updateDoc(f.doc(db, "salas", estado.sala.codigo), cambios)
+            .catch(error => console.warn("No se pudo publicar la mascota en la sala:", error));
+    }
+    sincronizarMascotaGrupo().catch(error => console.warn("No se pudo actualizar la mascota en el grupo:", error));
 }
 
 /* Datos de jefe del registro iguales (campo a campo: Firestore puede devolver las claves en otro orden) */
@@ -585,6 +640,16 @@ function cargarEstadisticas(datos) {
 
 let ultimoEstadoSala = null; // último estado que ha dado la ficha
 let estadoSalaEscrito = null; // id + JSON de lo último escrito
+let ultimoEstadoMascota = null; // último estado de la mascota invocada
+let estadoMascotaEscrito = null;
+
+/* Cristales de mascota de un personaje para el máster (validados al leer): [{ id, nombre, pendientes, agrietado, invocada }] */
+function cargarMascotasEstado(lista) {
+    return (Array.isArray(lista) ? lista : []).slice(0, 20).map(m => ({
+        id: String(m?.id ?? "").slice(0, 80), nombre: String(m?.nombre ?? "").slice(0, 60),
+        pendientes: enteroPositivo(m?.pendientes), agrietado: m?.agrietado === true, invocada: m?.invocada === true
+    })).filter(m => m.id);
+}
 
 /** La ficha da su vida y PA (fracciones), nivel, iniciativa y estados; en una sala (sin ser el máster) se publican */
 export async function publicarEstadoSala(datos) {
@@ -607,7 +672,9 @@ export async function publicarEstadoSala(datos) {
         uw: datos.uw === true,
         // Notoriedad (franja de color) y alerta del sistema (contador oculto): solo las lee el máster
         notoriedad: enteroPositivo(datos.notoriedad),
-        alerta: enteroPositivo(datos.alerta)
+        alerta: enteroPositivo(datos.alerta),
+        // Sus cristales de mascota: el máster los ve y los revisa
+        mascotas: cargarMascotasEstado(datos.mascotas)
     };
     const clave = `${estado.sala.codigo}|${personajeLocal.id}|${JSON.stringify(documento)}`;
     if (clave === estadoSalaEscrito) return;
@@ -616,6 +683,36 @@ export async function publicarEstadoSala(datos) {
         await f.setDoc(f.doc(db, "salas", estado.sala.codigo, "estados", personajeLocal.id), documento);
     } catch (error) {
         estadoSalaEscrito = null;
+        throw error;
+    }
+}
+
+/** Estado de la mascota invocada para el máster (estados/<idMascota>): como el de un personaje, con mascota: true,
+ *  sus niveles pendientes y la notoriedad del dueño (su franja). También su entrada en el grupo del dueño */
+export async function publicarEstadoMascota(datos) {
+    ultimoEstadoMascota = datos;
+    if (datos?.id && datos.id === mascotaLocal.id) {
+        estadosGrupo.set(mascotaLocal.instancia, normalizarEstadoGrupo(datos));
+        sincronizarMascotaGrupo().catch(error => console.warn("No se pudo actualizar la mascota en el grupo:", error));
+    }
+    if (!datos?.id || !estado.sala || !estado.usuario || masterEnSala() || !sdk) return;
+    const { db, f } = sdk;
+    const redondear = (n) => Math.round(Math.max(0, Math.min(1, Number(n) || 0)) * 100) / 100;
+    const documento = {
+        jugador: estado.usuario.uid, master: estado.sala.master, nombre: String(datos.nombre ?? "").slice(0, 60),
+        vida: redondear(datos.vida), pa: redondear(datos.pa), nivel: Math.trunc(Number(datos.nivel) || 0),
+        iniciativa: Math.round((Number(datos.iniciativa) || 0) * 10) / 10,
+        estados: (Array.isArray(datos.estados) ? datos.estados : []).map(String).slice(0, 30),
+        turno: Math.max(0, Math.trunc(Number(datos.turno) || 0)),
+        notoriedad: enteroPositivo(datos.notoriedad), mascota: true, pendientes: enteroPositivo(datos.pendientes)
+    };
+    const clave = `${estado.sala.codigo}|${datos.id}|${JSON.stringify(documento)}`;
+    if (clave === estadoMascotaEscrito) return;
+    estadoMascotaEscrito = clave;
+    try {
+        await f.setDoc(f.doc(db, "salas", estado.sala.codigo, "estados", String(datos.id).slice(0, 80)), documento);
+    } catch (error) {
+        estadoMascotaEscrito = null;
         throw error;
     }
 }
@@ -669,7 +766,7 @@ export async function entrarSala(codigo, { actividad = Date.now() } = {}) {
     if (datos.expulsados?.[uid]) cambios[`expulsados.${uid}`] = f.deleteField();
     const limite = Date.now() - HORAS_PERSONAJE_CADUCADO * HORA_MS;
     Object.entries(datos.personajes?.[uid] ?? {}).forEach(([instancia, p]) => {
-        if (instancia !== personajeLocal.instancia && !instancia.startsWith("m-") && msDe(p?.visto) < limite) {
+        if (instancia !== personajeLocal.instancia && instancia !== mascotaLocal.instancia && !instancia.startsWith("m-") && msDe(p?.visto) < limite) {
             cambios[`personajes.${uid}.${instancia}`] = f.deleteField();
         }
     });
@@ -687,6 +784,8 @@ export async function entrarSala(codigo, { actividad = Date.now() } = {}) {
     avisar("estado", copiaEstado());
     // El máster ve tu vida, PA... en su cabecera: se publica ya lo último que dio la ficha
     if (ultimoEstadoSala) publicarEstadoSala(ultimoEstadoSala).catch(error => console.warn("No se pudo publicar tu estado:", error));
+    estadoMascotaEscrito = null;
+    if (ultimoEstadoMascota && !comoMaster) publicarEstadoMascota(ultimoEstadoMascota).catch(error => console.warn("No se pudo publicar tu mascota:", error));
     return copiaEstado();
 }
 
@@ -740,7 +839,7 @@ function camposAlDesconectar(uid) {
         return Object.keys(datosSala?.personajes?.[uid] ?? {}).filter(inst => inst.startsWith("m-"))
             .map(inst => ["personajes", uid, inst]);
     }
-    return personajeLocal.instancia ? [["personajes", uid, personajeLocal.instancia]] : [];
+    return [personajeLocal.instancia, mascotaLocal.instancia].filter(Boolean).map(inst => ["personajes", uid, inst]);
 }
 
 /* Al cerrar la pestaña, el SDK no llega a enviar la escritura: el navegador corta las peticiones de la página.
@@ -933,7 +1032,9 @@ function leerPersonajes(datos) {
                 return {
                     jugador, instancia, nombre, oculto: ocultos.includes(claveOculto(jugador, nombre)), grupo: p?.grupo ?? null,
                     id: p?.id ?? null, visto: p?.visto?.toMillis?.() ?? null, npc: Boolean(registro?.npc), trueque: Boolean(registro?.npc && registro?.trueque),
-                    pesadilla: Boolean(registro?.npc && registro?.pesadilla)
+                    pesadilla: Boolean(registro?.npc && registro?.pesadilla),
+                    // Mascota de un jugador: no sale para ofrecer, amistad ni grupo; solo la ve su grupo
+                    mascota: Boolean(registro?.npc && registro?.mascota)
                 };
             }))
         .sort((x, y) => x.nombre.localeCompare(y.nombre));
@@ -974,7 +1075,8 @@ function escucharSala(codigo) {
                 const datos = d.data();
                 return [d.id, {
                     ...datos, stats: cargarEstadisticas(datos.stats), uw: datos.uw === true,
-                    notoriedad: enteroPositivo(datos.notoriedad), alerta: enteroPositivo(datos.alerta)
+                    notoriedad: enteroPositivo(datos.notoriedad), alerta: enteroPositivo(datos.alerta),
+                    mascotas: cargarMascotasEstado(datos.mascotas), mascota: datos.mascota === true, pendientes: enteroPositivo(datos.pendientes)
                 }];
             }));
             avisar("estadosSala", getEstadosSala());
@@ -1081,14 +1183,24 @@ const refGrupo = (f, db, id) => f.doc(db, "salas", estado.sala.codigo, "grupos",
 /* Personajes del máster en la sala: instancia "m-<id>" → nombre (de la última lista publicada) */
 const nombresMaster = new Map();
 
-/** Instancia con la que actúa esta pestaña: la suya o, en modo máster en su sala, la del personaje de la ficha */
+/** Instancia con la que actúa esta pestaña: la suya o, en modo máster en su sala, la del personaje de la ficha.
+ *  Con la mascota en la ficha sigue siendo la del dueño (grupos); sus pop-ups usan instanciaEventos */
 export const instanciaActual = () => (masterEnSala() && personajeLocal.id ? `m-${personajeLocal.id}` : personajeLocal.instancia);
-/* Instancia de un personaje de esta pestaña por su id (en modo máster, la de ese personaje suyo) */
-const instanciaDeId = (id) => (masterEnSala() && id ? `m-${id}` : personajeLocal.instancia);
-/** ¿Es una instancia de esta pestaña? (la suya o, en modo máster, la de uno de sus personajes de la sala) */
+/** Instancia con la que salen los pop-ups: la que actúa o, con la mascota en la ficha, la de la mascota */
+export const instanciaEventos = () => (mascotaLocal.enFicha && mascotaLocal.instancia ? mascotaLocal.instancia : instanciaActual());
+/* Instancia de un personaje de esta pestaña por su id (en modo máster, la de ese personaje suyo; la mascota, la suya) */
+const instanciaDeId = (id) => {
+    if (masterEnSala() && id) return `m-${id}`;
+    if (id && id === mascotaLocal.id) return mascotaLocal.instancia;
+    return personajeLocal.instancia;
+};
+/** ¿Es una instancia de esta pestaña? (la suya, la de su mascota invocada o, en modo máster, la de uno de sus
+ *  personajes de la sala) */
 export const esInstanciaPropia = (instancia) => Boolean(instancia)
-    && (instancia === personajeLocal.instancia || (masterEnSala() && nombresMaster.has(instancia)));
-const nombreDe = (instancia) => (instancia.startsWith("m-") ? nombresMaster.get(instancia) : personajeLocal.nombre) || "";
+    && (instancia === personajeLocal.instancia || (Boolean(mascotaLocal.instancia) && instancia === mascotaLocal.instancia)
+        || (masterEnSala() && nombresMaster.has(instancia)));
+const nombreDe = (instancia) => (instancia.startsWith("m-") ? nombresMaster.get(instancia)
+    : instancia === mascotaLocal.instancia ? mascotaLocal.nombre : personajeLocal.nombre) || "";
 
 /* Estado que cada personaje de esta pestaña publica en su grupo: { vida, pa, nivel, estados, iniciativa, turno }
    (lo da la interfaz). turno = hora (ms) en la que pulsó Play por última vez, o 0: el más reciente parpadea. */
@@ -1142,6 +1254,22 @@ function grupoPublico(id, datos, instancia) {
         orden: Number(m?.orden) || 0,
         lider: inst === datos.lider
     })).sort((x, y) => x.orden - y.orden);
+    // Mascotas (mapa aparte: no cuentan para el máximo): solo las de un integrante, detrás de los personajes
+    const enMiembros = new Set(miembros.map(m => m.instancia));
+    Object.entries(datos.mascotas ?? {}).forEach(([inst, m]) => {
+        const propietario = String(m?.propietario ?? "");
+        if (!inst.startsWith("p-") || !enMiembros.has(propietario)) return;
+        miembros.push({
+            instancia: inst, jugador: m?.jugador ?? "", nombre: String(m?.nombre ?? ""),
+            vida: Number(m?.vida) || 0, pa: Number(m?.pa) || 0, nivel: Number(m?.nivel) || 0,
+            estados: Array.isArray(m?.estados) ? m.estados.map(String) : [],
+            iniciativa: Number(m?.iniciativa) || 0, turno: Number(m?.turno) || 0,
+            pv: m?.pvMax !== undefined && m?.pvMax !== null ? enteroPv(m.pv) : null,
+            pvMax: m?.pvMax !== undefined && m?.pvMax !== null ? Math.max(0, enteroPv(m.pvMax)) : null,
+            notoriedad: enteroPositivo(m?.notoriedad), pesadilla: false, orden: Infinity, lider: false,
+            mascota: true, propietario
+        });
+    });
     return {
         id, instancia, lider: datos.lider, soyLider: datos.lider === instancia,
         invitados: Object.keys(datos.invitados ?? {}), miembros
@@ -1203,6 +1331,10 @@ function escucharGrupo(instancia, id, { reanudando = false } = {}) {
         avisar("grupo", getGrupo());
         // Al volver (recarga) o tras un cambio de nombre, se pone al día su entrada
         sincronizarEntrada(instancia).catch(error => console.warn("No se pudo actualizar el estado en el grupo:", error));
+        // La mascota invocada entra con su dueño (y se pone al día)
+        if (instancia === personajeLocal.instancia) {
+            sincronizarMascotaGrupo().catch(error => console.warn("No se pudo actualizar la mascota en el grupo:", error));
+        }
     }, error => console.warn("Error escuchando el grupo:", error));
 }
 
@@ -1234,7 +1366,8 @@ export async function invitarAGrupo(otra) {
     const { db, f } = exigirSala();
     const g = grupos.get(instanciaActual());
     if (!g?.datos?.soyLider) throw new Error("Solo el líder del grupo puede invitar");
-    if (g.datos.miembros.length >= MAX_GRUPO) throw new Error(`El grupo ya tiene ${MAX_GRUPO} integrantes`);
+    if (g.datos.miembros.filter(m => !m.mascota).length >= MAX_GRUPO) throw new Error(`El grupo ya tiene ${MAX_GRUPO} integrantes`);
+    if (personajesSala.some(p => p.instancia === otra && p.mascota)) throw new Error("Las mascotas entran en el grupo con su dueño");
     if (personajesSala.some(p => p.instancia === otra && p.pesadilla)) throw new Error("Las pesadillas no pueden estar en un grupo");
     await f.updateDoc(refGrupo(f, db, g.id), { [`invitados.${otra}`]: true });
     return g.id;
@@ -1271,8 +1404,12 @@ export async function salirDeGrupo({ actualizarSala = true, instancia = instanci
     }
     const { db, f } = sdk;
     const ref = refGrupo(f, db, g.id);
-    const resto = (g.datos?.miembros ?? []).filter(m => m.instancia !== instancia);
+    const resto = (g.datos?.miembros ?? []).filter(m => m.instancia !== instancia && !m.mascota);
     const esLider = g.datos?.soyLider;
+    // Su mascota sale antes (en otra escritura: las reglas no dejan cambiar miembros y mascotas a la vez)
+    if (resto.length && instancia === personajeLocal.instancia) {
+        await quitarMascotasDelGrupo(g, f, db).catch(error => console.warn("No se pudo sacar la mascota del grupo:", error));
+    }
     pararGrupo(instancia);
     recordarGrupo(instancia, null);
     if (!resto.length) await f.deleteDoc(ref);
@@ -1296,7 +1433,49 @@ export async function echarDeGrupo(otra) {
     const g = grupos.get(instancia);
     if (!g?.datos?.soyLider) throw new Error("Solo el líder del grupo puede echar");
     if (otra === instancia) return;
-    await f.updateDoc(refGrupo(f, db, g.id), { [`miembros.${otra}`]: f.deleteField() });
+    // Con sus mascotas (el líder puede quitarlas en la misma escritura)
+    const cambios = { [`miembros.${otra}`]: f.deleteField() };
+    g.datos.miembros.filter(m => m.mascota && m.propietario === otra).forEach(m => { cambios[`mascotas.${m.instancia}`] = f.deleteField(); });
+    await f.updateDoc(refGrupo(f, db, g.id), cambios);
+}
+
+/* Mascotas en el grupo del dueño ______________________________________________
+   Van en el mapa "mascotas" del documento del grupo ({ "p-<id>": { jugador, propietario, nombre, vida, ... } }),
+   aparte de miembros para no contar en el máximo. Las escribe la pestaña del dueño, una clave por escritura
+   ("ultimaMascota" dice cuál, para las reglas). Entra al invocarla con el dueño en un grupo (o al entrar el dueño en
+   uno) y sale al guardarla, al agrietarse o al salir el dueño. */
+async function sincronizarMascotaGrupo() {
+    const g = grupos.get(personajeLocal.instancia);
+    if (!g?.datos || !estado.sala || !estado.usuario || masterEnSala() || !sdk) return;
+    const { db, f } = sdk;
+    const uid = estado.usuario.uid;
+    // Las de este jugador que ya no están invocadas en esta pestaña (de esta pestaña: las de otra son suyas)
+    const sobrantes = g.datos.miembros.filter(m => m.mascota && m.jugador === uid && m.propietario === personajeLocal.instancia
+        && m.instancia !== mascotaLocal.instancia);
+    for (const m of sobrantes) {
+        await f.updateDoc(refGrupo(f, db, g.id), { [`mascotas.${m.instancia}`]: f.deleteField(), ultimaMascota: m.instancia });
+    }
+    if (!mascotaLocal.instancia) return;
+    const deseado = {
+        jugador: uid, propietario: personajeLocal.instancia, nombre: mascotaLocal.nombre || "",
+        ...(estadosGrupo.get(mascotaLocal.instancia) ?? ESTADO_GRUPO_INICIAL)
+    };
+    const actual = g.datos.miembros.find(m => m.instancia === mascotaLocal.instancia);
+    if (actual) {
+        const comparable = { jugador: actual.jugador, propietario: actual.propietario, nombre: actual.nombre, notoriedad: actual.notoriedad,
+            vida: actual.vida, pa: actual.pa, nivel: actual.nivel, estados: actual.estados, iniciativa: actual.iniciativa, turno: actual.turno,
+            ...(actual.pvMax !== null ? { pv: actual.pv, pvMax: actual.pvMax } : {}) };
+        if (JSON.stringify(comparable) === JSON.stringify(deseado)) return;
+    }
+    await f.updateDoc(refGrupo(f, db, g.id), { [`mascotas.${mascotaLocal.instancia}`]: deseado, ultimaMascota: mascotaLocal.instancia });
+}
+
+/* Saca del grupo las mascotas de esta pestaña (antes de que salga el dueño) */
+async function quitarMascotasDelGrupo(g, f, db) {
+    const propias = (g.datos?.miembros ?? []).filter(m => m.mascota && m.propietario === personajeLocal.instancia);
+    for (const m of propias) {
+        await f.updateDoc(refGrupo(f, db, g.id), { [`mascotas.${m.instancia}`]: f.deleteField(), ultimaMascota: m.instancia });
+    }
 }
 
 /**
@@ -1309,6 +1488,12 @@ export async function publicarTurno(turno, id = personajeLocal.id) {
     const hora = Math.max(0, Math.trunc(Number(turno) || 0));
     estadosGrupo.set(instancia, { ...(estadosGrupo.get(instancia) ?? ESTADO_GRUPO_INICIAL), turno: hora });
     if (ultimoEstadoSala && !masterEnSala()) ultimoEstadoSala = { ...ultimoEstadoSala, turno: hora };
+    // La mascota: su entrada del grupo y su estado para el máster, ya
+    if (instancia && instancia === mascotaLocal.instancia) {
+        if (ultimoEstadoMascota) ultimoEstadoMascota = { ...ultimoEstadoMascota, turno: hora };
+        await Promise.all([sincronizarMascotaGrupo(), ultimoEstadoMascota ? publicarEstadoMascota(ultimoEstadoMascota) : null]);
+        return;
+    }
     await Promise.all([
         sincronizarEntrada(instancia),
         ultimoEstadoSala && !masterEnSala() ? publicarEstadoSala(ultimoEstadoSala) : null

@@ -27,6 +27,8 @@ const MAX_COR = 1e7;
 const entero = (valor, maximo = MAX_COR) => Math.max(0, Math.min(maximo, Math.floor(Number(valor) || 0)));
 
 export const ofertaVacia = () => ({ objetos: [], objetosClave: [], cor: 0 });
+/* Tamaño máximo de los objetos clave de una oferta (caracteres): un cristal de mascota lleva la ficha entera */
+const MAX_CARACTERES_CLAVES = 15000;
 
 /* Origen de un objeto del cinturón: "cinturon/accesorio-N" (sin ":", que separa las claves de la ventana) */
 const PREFIJO_CINTURON = "cinturon/";
@@ -96,7 +98,9 @@ export function disponiblesTrueque(pj) {
     cinturonesPuestos(pj).forEach(({ ranura, equipo }) => equipo.cinturon.objetos.forEach((objeto, indice) => {
         if (objeto) objetos.push({ origen: `${PREFIJO_CINTURON}${ranura}`, indice, objeto });
     }));
-    return { objetos, objetosClave: (pj.objetosClave ?? []).map((objeto, indice) => ({ indice, objeto })), cor: Number(pj.cor) || 0 };
+    // Un cristal de mascota con la mascota invocada no se puede dar (hay que guardarla antes)
+    const objetosClave = (pj.objetosClave ?? []).map((objeto, indice) => ({ indice, objeto })).filter(({ objeto }) => !objeto.invocada);
+    return { objetos, objetosClave, cor: Number(pj.cor) || 0 };
 }
 
 /**
@@ -120,6 +124,11 @@ export function apartarOferta(pj, seleccion, { permitirVacia = false } = {}) {
         if (entero(fila.cantidad) > objeto.cantidad) return fallo(`No tienes tantos ${objeto.nombre}.`);
     }
     if (claves.some(i => !pj.objetosClave[i])) return fallo("Uno de los objetos clave ya no está.");
+    if (claves.some(i => pj.objetosClave[i].invocada)) return fallo("Guarda antes a tu mascota en su cristal.");
+    // Los eventos de la sala tienen un límite de tamaño: un cristal de mascota muy grande no cabe
+    if (claves.reduce((suma, i) => suma + JSON.stringify(pj.objetosClave[i]).length, 0) > MAX_CARACTERES_CLAVES) {
+        return fallo("Los objetos clave que ofreces ocupan demasiado para enviarlos (un cristal de mascota muy grande).");
+    }
     if (cor > (Number(pj.cor) || 0)) return fallo(`No tienes suficiente Cor (tienes ${Number(pj.cor) || 0}).`);
 
     const oferta = ofertaVacia();
@@ -162,7 +171,7 @@ export function devolverOferta(pj, oferta) {
             alBotin.push(`${objeto.nombre} ×${resto}`);
         }
     }
-    pj.objetosClave.push(...oferta.objetosClave.map(objeto => ({ ...objeto })));
+    pj.objetosClave.push(...oferta.objetosClave.map(({ invocada: _invocada, ...objeto }) => ({ ...objeto })));
     if (oferta.cor > 0) anadirCor(pj, oferta.cor);
     const resumen = [`Vuelve: ${describirOferta(oferta)}`];
     if (alBotin.length) resumen.push(`No cabe en el inventario (al botín): ${alBotin.join(", ")}`);
@@ -213,7 +222,7 @@ export function gastarManoTrueque(pj) {
 export function recibirOferta(pj, oferta) {
     if (ofertaSinNada(oferta)) return ["No recibes nada."];
     pj.botin.push(...oferta.objetos.map(({ objeto }) => cargarObjeto(JSON.parse(JSON.stringify(objeto)))).filter(Boolean));
-    pj.objetosClave.push(...oferta.objetosClave.map(objeto => ({ ...objeto })));
+    pj.objetosClave.push(...oferta.objetosClave.map(({ invocada: _invocada, ...objeto }) => ({ ...objeto })));
     if (oferta.cor > 0) anadirCor(pj, oferta.cor);
     const resumen = [`Recibes: ${describirOferta(oferta)}`];
     if (oferta.objetos.length) resumen.push("Los objetos están en el botín (menú del inventario).");
