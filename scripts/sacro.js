@@ -254,7 +254,7 @@ const claveTipo = (elemento) => (elemento === DANNO_FISICO ? "fisico-normal" : `
 
 /**
  * Golpes que resuelve el máster a partir de sus filas [{ elemento (o DANNO_FISICO), cantidad, bruto?, estados }]: un golpe por fila;
- * juntarPorTipo suma las filas del mismo tipo de daño y unico lo junta todo en un golpe. Se suma con decimales (bruto: el
+ * juntarPorTipo suma las filas del mismo tipo de daño y unico lo junta todo en un golpe (sumando lo del mismo elemento). Se suma con decimales (bruto: el
  * daño sin redondear de la sugerencia, mientras el máster no cambie la cantidad) y el radio se aplica al final; el
  * resultado se redondea con redondearMagia (sube desde ,51). Un golpe lleva los estados si alguna de sus filas los lleva.
  * @returns [{ danno: [{ elemento, cantidad }], estados: boolean }]
@@ -277,7 +277,12 @@ export function golpesDeFilas(filas, { juntarPorTipo = false, unico = false, rad
         }
         golpes = [...grupos.values()];
     }
-    if (unico && golpes.length) golpes = [{ danno: golpes.flatMap(g => g.danno), estados: golpes.some(g => g.estados) }];
+    // Un único golpe: lo del mismo elemento se suma en una sola ficha (1,6 + 1,6 de Termika = 3,2 → 3)
+    if (unico && golpes.length) {
+        const porElemento = new Map();
+        golpes.flatMap(g => g.danno).forEach(e => porElemento.set(e.elemento, (porElemento.get(e.elemento) ?? 0) + e.cantidad));
+        golpes = [{ danno: [...porElemento].map(([elemento, cantidad]) => ({ elemento, cantidad })), estados: golpes.some(g => g.estados) }];
+    }
     const factor = factorRadio(radio);
     return golpes.map(g => ({ ...g, danno: g.danno.map(e => ({ ...e, cantidad: redondearMagia(e.cantidad * factor) })) }))
         .filter(g => g.danno.some(e => e.cantidad > 0) || g.estados);

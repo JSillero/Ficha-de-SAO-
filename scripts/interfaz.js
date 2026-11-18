@@ -5229,10 +5229,20 @@ function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null, obje
         mostrarPopupInfo("No se puede", [escaparHtml(`Este golpe lo ha dado ${autor}, que es el personaje que tienes en pantalla. Cambia al que lo recibe.`)]);
         return false;
     }
-    // La transfusión sí se puede hacer en zona segura o en la base (deja al menos 1 PV, minimoTransfusion)
+    // La transfusión sí se puede hacer en zona segura o en la base (deja al menos 1 PV, minimoTransfusion). Lo que cura
+    // también: la Hela (la Morna en un NPC, a los que cura la oscuridad), p. ej. la energía de Aligi o un ataque con
+    // ella; del resto del golpe no se aplica nada
+    let soloCura = false;
     if (!puedeRecibirDanno(personaje) && golpe.esTransfusion !== true) {
-        mostrarPopupInfo("No puedes recibir daño", [escaparHtml(MOTIVOS_ZONA.danno)]);
-        return false;
+        const queCura = personaje.esNpc ? "morna" : "hela";
+        const curativas = esPesadilla(personaje) ? []
+            : (Array.isArray(golpe.elemental) ? golpe.elemental : []).filter(e => e?.sacro === queCura && Number(e.cantidad) > 0);
+        if (!curativas.length) {
+            mostrarPopupInfo("No puedes recibir daño", [escaparHtml(MOTIVOS_ZONA.danno)]);
+            return false;
+        }
+        golpe = { ...golpe, total: 0, elemental: curativas, efecto: null, transfusion: null };
+        soloCura = true;
     }
     // Para dar, el ataque tiene que igualar o superar la Defensa (con escudos en uso)
     const defensa = Number(personaje.defensa) || 0;
@@ -5282,6 +5292,7 @@ function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null, obje
         lineas.push(`Transfusión: pierde ${perdidos} PV (PV: ${antes} → ${personaje.vida})`);
         if (perdidos > 0) avisarTransfusion(String(transfusion.para), perdidos, personaje.nombre || "Alguien");
     }
+    if (soloCura) lineas.push(`${ZONAS[personaje.zona]?.etiqueta ?? "Zona segura"}: solo se aplica lo que cura`);
     // Arma de fuego (armasFuego.js): el golpe no cuenta para la notoriedad ni quita la neutralidad, y si mata nadie
     // recibe recompensa
     const deFuego = golpe.armaFuego === true;
@@ -5289,7 +5300,7 @@ function recibirGolpe(golpe, { autor, titulo, tirada = null, origen = null, obje
     const deMagia = golpe.magia === true;
     // NPC neutral: deja de serlo cuando le golpea un personaje
     const deUnPersonaje = golpeDePersonaje(origen);
-    if (personaje.esNpc && personaje.neutral && deUnPersonaje && !deFuego) {
+    if (personaje.esNpc && personaje.neutral && deUnPersonaje && !deFuego && !soloCura) {
         personaje.neutral = false;
         mostrarPopupInfo("Ya no es neutral", [escaparHtml(`${personaje.nombre || "El NPC"} ha sido atacado por ${autor}.`)]);
     }

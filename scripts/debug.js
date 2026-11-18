@@ -514,7 +514,9 @@ export function comprobarSacro() {
     const juntos = golpesDeFilas(filas, { juntarPorTipo: true });
     if (juntos.length !== 3 || juntos[0].danno[0].cantidad !== 8 || !juntos[0].estados) fallos.push(`Juntar por tipo: ${JSON.stringify(juntos)} (esperado 3 golpes, hielo 8 con estados, Akva y Kristala aparte).`);
     const unico = golpesDeFilas(filas, { unico: true, radio: 2 });
-    if (unico.length !== 1 || unico[0].danno.length !== 4 || unico[0].danno[0].cantidad !== 2) fallos.push("Un único golpe con radio 2: un golpe con 4 fichas y la mitad de daño.");
+    if (unico.length !== 1 || unico[0].danno.length !== 3 || unico[0].danno[0].cantidad !== 4) fallos.push(`Un único golpe con radio 2: ${JSON.stringify(unico)} (esperado un golpe con 3 fichas, las dos Kriogenia juntas: 8 × ½ = 4).`);
+    const termika = golpesDeFilas([{ elemento: "termika", cantidad: 1.6 }, { elemento: "termika", cantidad: 1.6 }], { unico: true });
+    if (termika[0]?.danno.length !== 1 || termika[0].danno[0].cantidad !== 3) fallos.push(`Un único golpe con 1,6 + 1,6 de Termika: ${JSON.stringify(termika)} (esperado una ficha de 3).`);
     // Propuesta de objetos: un cristal por Kristala (capacidad = daño de un dedo, 5) llenado por orden; Metala sola = lingote
     const propuesta = propuestaObjetos(pj, [...dedos, { id: "manoDerecha-0", elemento: "kristala", origen: "generar" }]);
     if (propuesta.length !== 2 || propuesta[0].capacidad !== 5 || propuesta[0].elemento?.clave !== "termika" || propuesta[0].elemento.puntos !== 5 || propuesta[1].elemento?.clave !== "hela") {
