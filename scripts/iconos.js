@@ -39,6 +39,13 @@ const flecha = (x1, x2) => {
     return `<path class="t" style="stroke-width:5" d="M${x1} 52H${x2}M${x2 + 7 * d} 45L${x2} 52L${x2 + 7 * d} 59"/>`;
 };
 
+/* Puño cerrado (imgs/puño.svg, Font Awesome, 640 x 640): con un borde del color de fondo que lo separa de lo que
+   tenga detrás (la estrella del golpe) */
+const PUNO_D = "M288 64C305.7 64 320 78.3 320 96L320 208L256 208L256 96C256 78.3 270.3 64 288 64zM160 128C160 110.3 174.3 96 192 96C209.7 96 224 110.3 224 128L224 208L160 208L160 128zM352 128C352 110.3 366.3 96 384 96C401.7 96 416 110.3 416 128L416 224C416 241.7 401.7 256 384 256C366.3 256 352 241.7 352 224L352 128zM448 192C448 174.3 462.3 160 480 160C497.7 160 512 174.3 512 192L512 256C512 273.7 497.7 288 480 288C462.3 288 448 273.7 448 256L448 192zM352 280L352 279.4C361.4 284.8 372.3 288 384 288C397.2 288 409.4 284 419.6 277.2C428.3 302.1 452.1 320 480 320C491.7 320 502.6 316.9 512 311.4L512 320C512 372.3 486.9 418.8 448 448L448 544C448 561.7 433.7 576 416 576L256 576C238.3 576 224 561.7 224 544L224 465.6C206.7 457.7 190.8 446.8 177.1 433.1L165.5 421.5C141.5 397.5 128 364.9 128 331L128 304C128 268.7 156.7 240 192 240L280 240C302.1 240 320 257.9 320 280C320 302.1 302.1 320 280 320L224 320C215.2 320 208 327.2 208 336C208 344.8 215.2 352 224 352L280 352C319.8 352 352 319.8 352 280z";
+const PUNO = `<path class="f" style="stroke:var(--fondo);stroke-width:56;stroke-linejoin:round" d="${PUNO_D}"/><path class="p" d="${PUNO_D}"/>`;
+/* Persona corriendo (imgs/correr.svg, potrace): icono de la habilidad Atletismo */
+const CORRER = `<g transform="translate(18.5 84.6) scale(0.0054 -0.0054)"><path class="p" d="M9270 12789 c-229 -29 -473 -124 -657 -256 -272 -194 -468 -494 -539 -825 -25 -114 -25 -369 -1 -491 94 -472 445 -861 918 -1021 167 -56 260 -70 459 -70 199 0 292 14 459 70 400 135 727 449 864 829 50 141 70 257 71 425 1 176 -11 259 -59 406 -165 505 -614 864 -1166 934 -96 12 -254 11 -349 -1z"/><path class="p" d="M5145 10889 c-80 -12 -193 -69 -252 -127 -42 -41 -1667 -2180 -1780 -2342 -24 -35 -54 -97 -69 -143 -23 -69 -27 -100 -27 -197 -1 -103 2 -124 29 -200 70 -200 212 -329 394 -362 128 -22 284 28 378 123 27 27 397 512 823 1078 l774 1030 443 0 443 1 -19 -27 c-11 -16 -769 -1026 -1684 -2246 l-1664 -2219 -1215 -1 -1214 -2 -68 -27 c-93 -38 -164 -87 -239 -166 -323 -343 -232 -974 171 -1186 134 -70 29 -66 1631 -66 1549 0 1541 0 1705 51 124 38 264 118 331 190 18 19 321 405 674 859 354 454 648 831 655 838 10 11 162 -154 768 -832 417 -465 757 -852 757 -860 0 -9 -140 -728 -311 -1598 -223 -1137 -312 -1611 -316 -1681 -21 -363 196 -688 508 -762 302 -71 612 129 718 465 11 36 180 886 376 1890 195 1004 376 1926 401 2049 40 196 45 239 46 355 0 197 -40 357 -124 486 -27 42 -731 859 -1325 1537 l-55 62 728 968 c400 532 728 969 729 971 1 1 211 -240 467 -535 256 -296 489 -560 517 -586 63 -59 178 -115 260 -127 144 -20 301 37 430 156 98 91 1610 1844 1649 1912 57 100 77 181 76 317 0 87 -5 137 -18 180 -49 163 -154 293 -292 361 -77 39 -79 39 -193 39 -104 -1 -122 -3 -174 -27 -32 -15 -77 -41 -100 -58 -24 -17 -328 -358 -677 -760 -349 -401 -638 -728 -641 -727 -4 1 -354 402 -780 891 -440 506 -796 907 -827 931 -30 24 -80 55 -111 71 -127 62 -38 58 -1401 60 -685 1 -1272 -2 -1305 -7z"/></g>`;
+
 /* Las armas se dibujan en vertical (punta arriba) y se giran 45° como el icono de Combate */
 const enDiagonal = (contenido) => `<g transform="rotate(45 50 50)">${contenido}</g>`;
 
@@ -131,17 +138,7 @@ const GLIFOS = {
     // de impacto de Combate, como los demás botones de atacar (elegidos en tests/demoIconosAtaque.html, B y B)
     puno: `
         <g transform="translate(60 42) rotate(5.5) scale(0.95) translate(-54 -47.5)">${ESTRELLA_IMPACTO}</g>
-        <g transform="translate(40 56) rotate(-12) scale(0.72) translate(-50 -52)">
-            <rect class="f" x="18" y="16" width="64" height="72" rx="14"/>
-            <rect class="p" x="27" y="26" width="11" height="24" rx="5.5"/>
-            <rect class="p" x="40" y="22" width="11" height="28" rx="5.5"/>
-            <rect class="p" x="53" y="23" width="11" height="27" rx="5.5"/>
-            <rect class="p" x="66" y="28" width="10" height="22" rx="5"/>
-            <rect class="p" x="27" y="40" width="49" height="28" rx="10"/>
-            <path class="tf" style="stroke-width:5" d="M30 56H58"/>
-            <rect class="s" x="24" y="51" width="36" height="11" rx="5.5"/>
-            <rect class="p" x="36" y="68" width="28" height="14" rx="3"/>
-        </g>`,
+        <g transform="translate(40 56) rotate(-12) scale(0.11) translate(-320 -320)">${PUNO}</g>`,
     patada: `
         <g transform="translate(64 36) rotate(5.5) scale(0.85) translate(-54 -47.5)">${ESTRELLA_IMPACTO}</g>
         <g transform="translate(42 56) rotate(-38) scale(0.78) translate(-61 -48)">
@@ -676,8 +673,8 @@ GLIFOS.jefe = `
         <rect class="f" x="41" y="72" width="3" height="6"/>
         <rect class="f" x="48.5" y="72" width="3" height="6"/>
         <rect class="f" x="56" y="72" width="3" height="6"/>`;
-// La habilidad Atletismo usa la misma silueta que usar una habilidad (imgs/atletismo.svg)
-GLIFOS.atletismo = GLIFOS.usarHabilidad;
+// La habilidad Atletismo: persona corriendo (imgs/atletismo_correr.svg); usar una habilidad sigue con imgs/atletismo.svg
+GLIFOS.atletismo = CORRER;
 GLIFOS.lanzarCuchillo = lanzando(GLIFOS.cuchillo);
 GLIFOS.lanzarLanza = lanzando(GLIFOS.lanza);
 GLIFOS.recogerCuchillo = recogiendo(GLIFOS.cuchillo);
