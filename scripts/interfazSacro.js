@@ -1,7 +1,7 @@
 // scripts/interfazSacro.js
 // Ventana de magia (#modalSacro, 13-sacro.md §6 y §13): se abre al pulsar la habilidad Sacro. Las dos manos (silueta de
 // imgs/mano.svg.svg, siluetasSacro.js) y la fila de los pies; cada punta de dedo es una diana a la que se arrastra un
-// elemento (o se toca la ficha y después el dedo). Fuentes: Generar (PV), Cinturón (cristales elementales llenos),
+// elemento (o se toca la ficha: va al dedo elegido tocándolo antes o, si no, al primero libre). Fuentes: Generar (PV), Cinturón (cristales elementales llenos),
 // Ambiente (lo que conceda el máster) y Quitado (tras escanear). Resumen en vivo con el coste, las acciones y el daño.
 // Lo puesto en un dedo se puede arrastrar a otro (se intercambian) o fuera (vuelve a su fuente).
 // "Usar ahora" (sin el máster): Guardar en una mano y Llenar cristal (va solo al cristal del cinturón donde quepa,
@@ -20,7 +20,7 @@ import {
     motivoNoGenerar, partesHechizo, entradaDannoSacro, maximoPorDedo, guardarEnMano,
     llenarCristal, describirEnergia, puedeUsarMagia, cargarDedos, cargarAmbiente, gastarHechizo, esElementoSacro,
     energiaDe, quitarElementos, devolverElementos, maxTransfusion, MODOS_TRANSFUSION, minimoTransfusion,
-    motivoNoGuardarEnMano, cristalParaLlenar, sugerenciaPorDedo, propuestaObjetos, TIPOS_HECHIZO, DANNO_FISICO, esDannoMagia
+    motivoNoGuardarEnMano, cristalParaLlenar, sugerenciaPorDedo, propuestaObjetos, TIPOS_HECHIZO, DANNO_FISICO, esDannoMagia, DEDOS
 } from "./sacro.js";
 import { fichaDannoMagia } from "./elementosSacro.js";
 import { noSeCura } from "./estados.js";
@@ -44,7 +44,7 @@ const pj = () => ctx.personaje();
 
 /* Lo puesto en los dedos mientras la ventana está abierta: id → { id, elemento, origen, fuente, puntos? } */
 const dedos = new Map();
-let elegida = null; // ficha tocada (alternativa a arrastrar)
+let dedoElegido = null; // dedo vacío tocado: el siguiente elemento tocado va ahí (si no, al primer dedo libre)
 let esperandoAmbiente = false; // se ha preguntado al máster qué hay en el ambiente
 /* Escaneo (13-sacro.md §12): { id, terminado, resultados: Map(instancia → { instancia, nombre, npc, elementos }) } */
 let escaneo = null;
@@ -103,8 +103,7 @@ const fichaDe = (origen, fuente) => Object.values(fuentes()).flat().find(f => f.
 
 const htmlFicha = (f) => {
     const info = ELEMENTOS_SACRO[f.elemento];
-    const activa = elegida && elegida.origen === f.origen && String(elegida.fuente) === String(f.fuente);
-    return `<button type="button" class="ficha-elemento${activa ? " elegida" : ""}" data-origen="${f.origen}" data-fuente="${escaparHtml(String(f.fuente))}"
+    return `<button type="button" class="ficha-elemento" data-origen="${f.origen}" data-fuente="${escaparHtml(String(f.fuente))}"
         ${f.quedan === 0 ? "disabled" : ""} title="${escaparHtml(`${info.etiqueta} (${info.que.toLowerCase()}, daño de ${info.textoDanno})`)}">
         ${iconoElemento(f.elemento)}${escaparHtml(info.etiqueta)} <small>${escaparHtml(f.texto)}</small></button>`;
 };
@@ -116,12 +115,13 @@ function htmlDiana(id, cx, cy, r) {
     const asignado = dedos.get(id);
     const sinDedos = !asignado && !motivo && dedos.size >= dedosSacro(p);
     const titulo = motivo ?? (asignado ? `${ELEMENTOS_SACRO[asignado.elemento].etiqueta}: toca para quitarlo`
-        : sinDedos ? "Tu Sacro no da para más dedos" : "Suelta aquí un elemento");
+        : sinDedos ? "Tu Sacro no da para más dedos" : dedoElegido === id ? "Elegido: toca un elemento para ponerlo aquí"
+        : "Toca para elegirlo, o suelta aquí un elemento");
     const glifo = asignado ? iconoSao(ELEMENTOS_SACRO[asignado.elemento].icono).replace(/^\s*<svg[^>]*>/, "").replace(/<\/svg>\s*$/, "") : "";
     const contenido = asignado
         ? `<g class="icono-activo" style="${conColor(asignado.elemento)}"><g class="icono-sao" transform="translate(${cx - r} ${cy - r}) scale(${(2 * r) / 100})">${glifo}</g></g>`
         : "";
-    return `<g class="dedo-sacro${asignado ? " lleno" : ""}${motivo ? " bloqueado" : ""}${sinDedos ? " sin-dedos" : ""}" data-dedo="${id}" role="button"
+    return `<g class="dedo-sacro${asignado ? " lleno" : ""}${dedoElegido === id && !asignado && !motivo ? " elegido" : ""}${motivo ? " bloqueado" : ""}${sinDedos ? " sin-dedos" : ""}" data-dedo="${id}" role="button"
         tabindex="${motivo ? -1 : 0}" aria-label="${escaparHtml(titulo)}"><title>${escaparHtml(titulo)}</title><circle class="anillo" cx="${cx}" cy="${cy}" r="${r}"/>${contenido}</g>`;
 }
 
@@ -269,8 +269,15 @@ function poner(id, f) {
     // Lo quitado lleva la potencia que tenía en la mano de su dueño (del escaneo); no se le quita hasta resolver
     const puntos = f.origen === "quitado" ? puntosQuitado(f.fuente) : f.puntos;
     dedos.set(id, { id, elemento: f.elemento, origen: f.origen, fuente: f.fuente, ...(Number.isFinite(puntos) ? { puntos } : {}) });
-    elegida = null;
+    dedoElegido = null;
+    ctx.reproducir("click");
     pintar();
+}
+
+/* Primer dedo libre y usable: mano izquierda, mano derecha y pies (orden de DEDOS) */
+function primerDedoLibre() {
+    const p = pj();
+    return DEDOS.find(id => !dedos.has(id) && !motivoDedoNoUsable(p, id)) ?? null;
 }
 
 /* Mueve lo puesto en un dedo a otro (si el otro está lleno, se intercambian) */
@@ -354,9 +361,12 @@ function alPulsar(e) {
     if (dedo) {
         if (ignorarClic) return;
         if (dedo.classList.contains("bloqueado")) { mensaje = motivoDedoNoUsable(pj(), dedo.dataset.dedo) ?? ""; return pintar(); }
-        if (elegida) return poner(dedo.dataset.dedo, elegida);
-        if (dedos.has(dedo.dataset.dedo)) { dedos.delete(dedo.dataset.dedo); mensaje = ""; ctx.reproducir("click"); return pintar(); }
-        mensaje = "Elige primero un elemento: arrástralo o tócalo.";
+        const id = dedo.dataset.dedo;
+        if (dedos.has(id)) { dedos.delete(id); mensaje = ""; ctx.reproducir("click"); return pintar(); }
+        // Dedo vacío: queda elegido para el siguiente elemento que se toque (otro toque lo deselecciona)
+        dedoElegido = dedoElegido === id ? null : id;
+        mensaje = dedoElegido ? "Toca un elemento para ponerlo en este dedo." : "";
+        ctx.reproducir("click");
         return pintar();
     }
     const tipo = e.target.closest(".tipo-sacro");
@@ -373,7 +383,7 @@ function alPulsar(e) {
         case "guardar": return guardar(boton.dataset.mano);
         case "llenar": return llenar();
         case "enviar": return enviar();
-        case "vaciar": dedos.clear(); mensaje = ""; break;
+        case "vaciar": dedos.clear(); dedoElegido = null; mensaje = ""; break;
         case "escanear": escanear(); break;
         case "pedirAmbiente": {
             esperandoAmbiente = true;
@@ -403,7 +413,7 @@ function alPulsar(e) {
     pintar();
 }
 
-/* Arrastrar (ratón y táctil): una ficha a un dedo (un toque sin moverse la deja elegida), o lo puesto en un dedo a
+/* Arrastrar (ratón y táctil): una ficha a un dedo (un toque sin moverse la pone en el dedo elegido o en el primero libre), o lo puesto en un dedo a
    otro dedo (se mueve o se intercambia) o fuera de los dedos (vuelve a su fuente) */
 function alApretar(e) {
     const boton = e.target.closest(".ficha-elemento");
@@ -437,10 +447,12 @@ function alApretar(e) {
         document.removeEventListener("pointermove", mover);
         document.removeEventListener("pointerup", soltar);
         if (!fantasma) {
-            // Un toque en un dedo lleno lo quita (lo hace el clic); en una ficha, la deja elegida
+            // Un toque en un dedo lo quita o lo elige (lo hace el clic); en una ficha, la pone en el dedo elegido o en
+            // el primero libre
             if (boton) {
-                elegida = elegida && elegida.origen === f.origen && String(elegida.fuente) === String(f.fuente) ? null : f;
-                pintar();
+                const destino = dedoElegido && !dedos.has(dedoElegido) && !motivoDedoNoUsable(pj(), dedoElegido) ? dedoElegido : primerDedoLibre();
+                if (!destino) { mensaje = "No queda ningún dedo libre."; return pintar(); }
+                poner(destino, f);
             }
             return;
         }
@@ -1094,7 +1106,7 @@ export function abrirSacro() {
     }
     // Quedan golpes por lanzar de la última magia: primero eso
     if (p.magiaPendiente) return abrirGolpes(null);
-    elegida = null;
+    dedoElegido = null;
     mensaje = "";
     pintar();
     bootstrap.Modal.getOrCreateInstance(ventana()).show();
@@ -1124,7 +1136,7 @@ export function inicializarSacro(contexto) {
     modal.addEventListener("hidden.bs.modal", () => {
         if (conservarAlCerrar) { conservarAlCerrar = false; return; }
         dedos.clear();
-        elegida = null;
+        dedoElegido = null;
         mensaje = "";
     });
     modal.addEventListener("input", (e) => { if (e.target.id === "formaSacro") forma = e.target.value; });

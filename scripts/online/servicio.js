@@ -21,7 +21,8 @@
  * - salas/{codigo}/estados/{idPersonaje}: { jugador, master, nombre, vida, pa, nivel, iniciativa, estados, turno, stats, uw }
  *       (+ mascotas: cristales del personaje para el máster; una mascota: mascota: true y pendientes)
  *       stats: estadísticas de protagonista (o null, estadisticasProtagonista de resumenFicha.js); uw: habilidades
- *       del Underworld habilitadas (aviso al matar un NPC)
+ *       del Underworld habilitadas (aviso al matar un NPC); statsSinUw (solo con uw y protagonista): las mismas sin
+ *       ellas (estadisticasSinUnderworld), para el panel de protagonistas del máster
  *       lo escribe cada jugador al cambiar; solo lo escucha el máster (cabecera del modo máster)
  * - salas/{codigo}/fichas/{idPersonaje}: { jugador, master, json, actualizado }
  *       copia de la ficha completa para que el máster la vea en modo lectura. Se escribe al guardar en la nube
@@ -670,6 +671,9 @@ export async function publicarEstadoSala(datos) {
         // Estadísticas de protagonista (o null) y habilidades del Underworld habilitadas: solo las lee el máster
         stats: cargarEstadisticas(datos.stats),
         uw: datos.uw === true,
+        // Las mismas sin las habilidades del Underworld (solo con uw): el máster compara en el panel de protagonistas.
+        // Solo se escribe si hay (las reglas de firestore.rules deben admitir statsSinUw)
+        ...(datos.uw === true && cargarEstadisticas(datos.statsSinUw) ? { statsSinUw: cargarEstadisticas(datos.statsSinUw) } : {}),
         // Notoriedad (franja de color) y alerta del sistema (contador oculto): solo las lee el máster
         notoriedad: enteroPositivo(datos.notoriedad),
         alerta: enteroPositivo(datos.alerta),
@@ -1075,6 +1079,7 @@ function escucharSala(codigo) {
                 const datos = d.data();
                 return [d.id, {
                     ...datos, stats: cargarEstadisticas(datos.stats), uw: datos.uw === true,
+                    statsSinUw: datos.uw === true ? cargarEstadisticas(datos.statsSinUw) : null,
                     notoriedad: enteroPositivo(datos.notoriedad), alerta: enteroPositivo(datos.alerta),
                     mascotas: cargarMascotasEstado(datos.mascotas), mascota: datos.mascota === true, pendientes: enteroPositivo(datos.pendientes)
                 }];

@@ -199,7 +199,7 @@ service cloud.firestore {
       let d = request.resource.data;
       return d.jugador == request.auth.uid
         && d.keys().hasOnly(['jugador', 'master', 'nombre', 'vida', 'pa', 'nivel', 'iniciativa', 'estados', 'turno', 'stats', 'uw', 'notoriedad', 'alerta',
-          'mascotas', 'mascota', 'pendientes'])
+          'mascotas', 'mascota', 'pendientes', 'statsSinUw'])
         // Cristales de mascota del personaje (lista corta) o, en una mascota, sus niveles por revisar; el máster valida al leer
         && (d.get('mascotas', []) is list && d.get('mascotas', []).size() <= 20)
         && d.get('mascota', false) is bool
@@ -214,6 +214,10 @@ service cloud.firestore {
         && d.get('uw', false) is bool
         && (d.get('stats', null) == null
           || (d.stats is map && d.stats.keys().hasOnly(['vidaMax', 'nivel', 'defensa', 'defensaEscudo', 'armadura', 'acierto', 'tiradaMedia',
+            'iniciativa', 'danno', 'tiradaSigilo', 'tiradaCarisma', 'vMovimiento', 'dFisico', 'dDistancia', 'dMagico', 'aguante', 'perspicacia', 'percepcionPasiva'])))
+        // Las mismas sin las habilidades del Underworld (panel de protagonistas del máster)
+        && (d.get('statsSinUw', null) == null
+          || (d.statsSinUw is map && d.statsSinUw.keys().hasOnly(['vidaMax', 'nivel', 'defensa', 'defensaEscudo', 'armadura', 'acierto', 'tiradaMedia',
             'iniciativa', 'danno', 'tiradaSigilo', 'tiradaCarisma', 'vMovimiento', 'dFisico', 'dDistancia', 'dMagico', 'aguante', 'perspicacia', 'percepcionPasiva'])));
     }
 

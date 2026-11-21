@@ -13,7 +13,7 @@ import {
     salirPorMuerte, getTodosPersonajesSala
 } from "./interfazOnline.js";
 import { emitirPrivado, registrarManejador } from "./eventos.js";
-import { PROFESIONES, VALORES_COMBATE, estadisticasProtagonista } from "./resumenFicha.js";
+import { PROFESIONES, VALORES_COMBATE, estadisticasProtagonista, estadisticasSinUnderworld } from "./resumenFicha.js";
 import { ETIQUETAS_CARACTERISTICA, ETIQUETAS_HABILIDAD, ranurasUsadas, ranurasLibres, motivoInactiva, puedeTenerOniricas } from "./artes.js";
 import { iconoSao } from "./iconos.js";
 import { escaparHtml } from "./html.js";
@@ -842,6 +842,10 @@ const FILAS_PROTAGONISTAS = [
     { clave: "percepcionPasiva", etiqueta: "Percepción pasiva" }
 ];
 
+/* Ver las columnas de los protagonistas con las habilidades del Underworld habilitadas sin ellas (para balancear) */
+const CLAVE_SIN_UW_PROTAGONISTAS = "fichaSAO.protagonistasSinUw";
+let verSinUw = (() => { try { return localStorage.getItem(CLAVE_SIN_UW_PROTAGONISTAS) === "1"; } catch { return false; } })();
+
 function leerPanelGuardado() {
     try { return localStorage.getItem(CLAVE_PANEL_PROTAGONISTAS) === "1"; } catch { return false; }
 }
@@ -861,7 +865,7 @@ function abrirPanelProtagonistas(abrir, recordar = false) {
     if (abrir) pintarProtagonistas();
 }
 
-/* Protagonistas: [{ nombre, origen, conectado, stats }] */
+/* Protagonistas: [{ nombre, origen, conectado, stats, uw, statsSinUw }] */
 function protagonistas() {
     const lista = [];
     const sala = getSalaMaster();
@@ -872,7 +876,8 @@ function protagonistas() {
                 const estado = sala.estados[id];
                 if (!estado?.stats) continue;
                 lista.push({ id, nombre: estado.nombre || registro?.nombre || "Sin nombre", origen: "Sala",
-                    conectado: sala.conectados.has(`${jugador}|${id}`), stats: estado.stats });
+                    conectado: sala.conectados.has(`${jugador}|${id}`), stats: estado.stats,
+                    uw: estado.uw === true, statsSinUw: estado.statsSinUw ?? null });
             }
         }
     }
@@ -891,7 +896,8 @@ function protagonistas() {
             }
         }
         if (!pj.protagonista || pj.esNpc) continue;
-        lista.push({ id, nombre: pj.nombre || "Sin nombre", origen: "Máster", conectado: true, stats: estadisticasProtagonista(pj) });
+        lista.push({ id, nombre: pj.nombre || "Sin nombre", origen: "Máster", conectado: true, stats: estadisticasProtagonista(pj),
+            uw: pj.tieneUnderworldActivo(), statsSinUw: estadisticasSinUnderworld(pj) });
     }
     return lista.sort((a, b) => a.nombre.localeCompare(b.nombre));
 }
@@ -906,18 +912,26 @@ function pintarProtagonistas(refrescar = true) {
     const panel = el("panelProtagonistas");
     if (refrescar) cacheProtagonistas = protagonistas();
     // La que se edita: con los valores del borrador (si es la de la ficha, no se repite como protagonista)
-    const actual = borrador ? estadisticasProtagonista(borrador) : null;
     const lista = cacheProtagonistas.filter(p => !borrador || p.id !== borrador.idPersonaje);
+    // Con el Underworld habilitado (algún protagonista o el borrador): botón para verlas con y sin sus habilidades
+    const borradorUw = Boolean(borrador?.tieneUnderworldActivo?.());
+    const hayUw = borradorUw || lista.some(p => p.uw);
+    const sinUw = hayUw && verSinUw;
+    const actual = !borrador ? null : sinUw && borradorUw ? estadisticasSinUnderworld(borrador) : estadisticasProtagonista(borrador);
+    // Valores que se muestran de cada protagonista (un cliente antiguo con uw puede no publicar statsSinUw)
+    const mostrados = (p) => sinUw && p.uw && p.statsSinUw ? p.statsSinUw : p.stats;
     if (!lista.length) {
         panel.innerHTML = `<h3 class="panel-protagonistas-titulo">Protagonistas</h3>
             <p class="lista-vacia">No hay protagonistas. Salen los personajes marcados como protagonista de los jugadores de tu sala y los tuyos.</p>`;
         return;
     }
     const nombreActual = borrador?.nombre || (borrador?.esNpc ? "Este NPC" : "Este personaje");
-    const cabecera = lista.map(p => `<th scope="col" class="${p.conectado ? "" : "desconectado"}"
-        title="${escaparHtml(`${p.nombre} (${p.origen}${p.conectado ? "" : ", desconectado: últimos valores publicados"})`)}">${escaparHtml(p.nombre)}</th>`).join("");
+    const notaUw = (p) => !p.uw ? "" : !sinUw ? ", con las habilidades del Underworld"
+        : p.statsSinUw ? ", sin las habilidades del Underworld" : ", con las habilidades del Underworld: su ficha no publica los valores sin ellas";
+    const cabecera = lista.map(p => `<th scope="col" class="${p.conectado ? "" : "desconectado"}${p.uw ? " con-uw" : ""}"
+        title="${escaparHtml(`${p.nombre} (${p.origen}${p.conectado ? "" : ", desconectado: últimos valores publicados"}${notaUw(p)})`)}">${escaparHtml(p.nombre)}${p.uw ? `<small class="marca-uw">${sinUw && p.statsSinUw ? "sin UW" : "UW"}</small>` : ""}</th>`).join("");
     const filas = FILAS_PROTAGONISTAS.map(({ clave, etiqueta, sinMedia }) => {
-        const valores = lista.map(p => p.stats[clave]);
+        const valores = lista.map(p => mostrados(p)[clave]);
         const numeros = valores.filter(v => typeof v === "number");
         if (!numeros.length && typeof actual?.[clave] !== "number") return "";
         const maximo = numeros.length ? Math.max(...numeros) : null;
@@ -925,14 +939,19 @@ function pintarProtagonistas(refrescar = true) {
         const celdas = valores.map(v => `<td class="${typeof v === "number" && v === maximo && lista.length > 1 ? "maximo" : ""}">${cifra(v)}</td>`).join("");
         return `<tr><th scope="row">${etiqueta}</th>${celdas}<td class="media">${cifra(media)}</td><td class="actual">${cifra(actual?.[clave])}</td></tr>`;
     }).join("");
+    const botonUw = !hayUw ? "" : `<div class="form-sao fichas-uw-protagonistas"><div class="fichas-sao" role="radiogroup" aria-label="Habilidades del Underworld">
+            <button type="button" class="ficha-sao" role="radio" data-sin-uw="0" aria-checked="${!sinUw}">Con Underworld</button>
+            <button type="button" class="ficha-sao" role="radio" data-sin-uw="1" aria-checked="${sinUw}">Sin Underworld</button>
+        </div></div>`;
     panel.innerHTML = `<h3 class="panel-protagonistas-titulo">Protagonistas <small>${lista.length}</small></h3>
+        ${botonUw}
         <div class="tabla-protagonistas-marco">
             <table class="tabla-protagonistas">
-                <thead><tr><th scope="col"></th>${cabecera}<th scope="col" class="media">Media</th><th scope="col" class="actual" title="${escaparHtml(nombreActual)} (la ficha que estás editando)">${escaparHtml(nombreActual)}</th></tr></thead>
+                <thead><tr><th scope="col"></th>${cabecera}<th scope="col" class="media">Media</th><th scope="col" class="actual${borradorUw ? " con-uw" : ""}" title="${escaparHtml(nombreActual)} (la ficha que estás editando)">${escaparHtml(nombreActual)}${borradorUw ? `<small class="marca-uw">${sinUw ? "sin UW" : "UW"}</small>` : ""}</th></tr></thead>
                 <tbody>${filas}</tbody>
             </table>
         </div>
-        <p class="panel-protagonistas-nota">El valor más alto de cada fila entre los protagonistas, en dorado; la última columna es la ficha que estás editando. Los de la sala son lo último que publicaron sus jugadores.</p>`;
+        <p class="panel-protagonistas-nota">El valor más alto de cada fila entre los protagonistas, en dorado; la última columna es la ficha que estás editando. Los de la sala son lo último que publicaron sus jugadores.${hayUw ? " UW: con las habilidades del Underworld habilitadas; \"Sin Underworld\" muestra sus valores sin ellas." : ""}</p>`;
 }
 
 /* Fichas de la profesión en el perfil (crearFichas en inicializarPerfilMaster): se sincronizan en pintarPerfil */
@@ -1715,6 +1734,15 @@ function inicializarPerfilMaster() {
     });
     el("btnAceptarPerfilMaster").addEventListener("click", aceptarPerfil);
     // Abierto desde el compendio: al cerrarse (y no por abrir una ventana hija, que lo oculta un momento) vuelve a él
+    // Con / sin las habilidades del Underworld en el panel de protagonistas (se recuerda)
+    el("panelProtagonistas").addEventListener("click", (e) => {
+        const ficha = e.target.closest("[data-sin-uw]");
+        if (!ficha) return;
+        reproducir("click");
+        verSinUw = ficha.dataset.sinUw === "1";
+        try { localStorage.setItem(CLAVE_SIN_UW_PROTAGONISTAS, verSinUw ? "1" : "0"); } catch { /* sin almacenamiento */ }
+        pintarProtagonistas(false);
+    });
     el("btnProtagonistasPerfil").addEventListener("click", () => {
         reproducir("click");
         abrirPanelProtagonistas(el("panelProtagonistas").hidden, true);

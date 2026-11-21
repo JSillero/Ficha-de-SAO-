@@ -8,7 +8,7 @@ import { esReliquia, usarHabilidadReliquia, motivoNoUsarHabilidad, cargarHabilid
 import { partesDeEfecto, motivoNoUsarEfecto, usarEfectoEquipo, pasivasDeEquipo, cargarEfectos } from "./efectosEquipo.js";
 import Modificador, { TURNOS_PERMANENTE, numeroModificador, esModificadorDecimal } from "./modificador.js";
 import PJ, { HABILIDADES_UNDERWORLD } from "./PJ.js";
-import { VALORES_COMBATE, PROFESIONES, crearResumenFicha, estadisticasProtagonista } from "./resumenFicha.js";
+import { VALORES_COMBATE, PROFESIONES, crearResumenFicha, estadisticasProtagonista, estadisticasSinUnderworld } from "./resumenFicha.js";
 import {
     VALORES_NPC, MAX_TIRADAS_NPC, MAX_PARTES_NPC, cargarTiradaNpc, parteNpc, tieneParte, partesExtra, parteQueOcupa,
     partesDeEquipoNpc, motivoNoQuitarParte, quitarParte, anadirParte, anadirBrazo, esCuerpoPorDefecto, PARTE_DE_MANO, esPesadilla
@@ -36,6 +36,7 @@ import {
     TIPOS_OBJETO, TIPOS_MATERIAL, detalleMaterial, MAX_PILA_INVENTARIO, ELEMENTOS_ARROJADIZA, cargarObjeto, anadirAInventario, anadirABaul,
     transferirABaul, transferirAInventario, descartar, comer, beberPocion, aplicarPocionAArma, manosConArma,
     usarCristal, lanzarArrojadiza, manoParaUsar, categoriaEquipo, objetoEn, TIPOS_CINTURON, esCristalElemental, cristalConElemento, manosParaEquipar, motivoNoEquipar, equipar,
+    equiparIntercambia, destinosIntercambio, planIntercambio, equiparIntercambiando, equipoEnRanura, nombreEquipo as nombreDeEquipo, hayHuecoLibre,
     motivoNoGuardar, motivoNoBeber, guardarEquipado, ranuraTieneEquipo, getCantidadAccesoriosPorArmadura, ranurasAccesorio, cabenEnInventario,
     anadirCor, gastarCor, anadirEgo, gastarEgo, accesorioVacio, aplicarEfectoEnObjetivo, aplicarEfectosPrevios, inhabilitaEscudo, defensaSinEscudo, motivoEscudoInhabilitado, ofrecerObjeto, consumirOfrecido,
     capacidadInventario, ajustarInventario, cargarObjetosClave, motivoNoLanzar, lanzarArma, recogerArma, motivoNoRecoger, destinoRecoger,
@@ -504,6 +505,8 @@ function estadoParaGrupo(pj) {
         // las habilidades del Underworld habilitadas (aviso al matar un NPC)
         stats: pj.protagonista && !pj.esNpc ? estadisticasProtagonista(pj) : null,
         uw: pj.tieneUnderworldActivo(),
+        // Las mismas sin las habilidades del Underworld (panel de protagonistas del máster, para comparar)
+        statsSinUw: pj.protagonista && !pj.esNpc ? estadisticasSinUnderworld(pj) : null,
         // Notoriedad: la franja de color (la ven el grupo y el máster); alerta del sistema: solo el máster
         notoriedad: pj.notoriedad,
         alerta: pj.alertaSistema,
@@ -1515,7 +1518,10 @@ const PERMITIDOS_LECTURA = [
     // Muerte de uno de sus personajes (interfaz.js, bloque "Muerte de personajes")
     "#pantallaMuerte",
     // Pestaña de los jefes de la sala en la cabecera (interfazOnline.js, actualizarHudJefes)
-    "#hudJefes .hud-grupo-pestana"
+    "#hudJefes .hud-grupo-pestana",
+    // Ventanas del máster (magia, ambiente, creación, historial; y el formulario de objetos o de artes abierto desde
+    // ellas sobre un personaje falso): resolver lo que piden los jugadores no cambia la ficha que mira
+    ".ventana-master", "#modalConfirmar"
 ].join(", ");
 /* Opciones de los menús de la silueta que cambian algo (las demás solo abren ventanas para mirar) */
 const OPCIONES_BLOQUEADAS_LECTURA = new Set([
@@ -1556,7 +1562,7 @@ for (const tipo of ["pointerdown", "mousedown", "touchstart", "dblclick"]) {
 /* Desactiva los campos (los que ya lo estaban se quedan así al salir) */
 function aplicarBloqueoLectura() {
     document.querySelectorAll("input, select, textarea, [contenteditable='true']").forEach(campo => {
-        if (campo.closest("#hudMaster, #panelDebug, #modalCompendioObjetos, #modalTrueque, .navegador-paginas")) return;
+        if (campo.closest("#hudMaster, #panelDebug, #modalCompendioObjetos, #modalTrueque, .navegador-paginas, .ventana-master")) return;
         if (campo.isContentEditable) {
             campo.dataset.bloqueoLectura = "editable";
             campo.contentEditable = "false";
@@ -1567,13 +1573,18 @@ function aplicarBloqueoLectura() {
     });
 }
 
-function quitarBloqueoLectura() {
-    document.querySelectorAll("[data-bloqueo-lectura]").forEach(campo => {
+function quitarBloqueoLectura(contenedor = document) {
+    contenedor.querySelectorAll("[data-bloqueo-lectura]").forEach(campo => {
         if (campo.dataset.bloqueoLectura === "editable") campo.contentEditable = "true";
         else campo.disabled = false;
         delete campo.dataset.bloqueoLectura;
     });
 }
+
+// Una ventana del máster que se abre en modo lectura recupera los campos que se bloquearon mientras estaba cerrada
+document.addEventListener("show.bs.modal", (e) => {
+    if (lectura && e.target.classList?.contains("ventana-master")) quitarBloqueoLectura(e.target);
+});
 
 function pintarAvisoLectura() {
     const aviso = document.getElementById("avisoLectura");
@@ -3744,7 +3755,9 @@ function actualizarBotonGuardar(boton, ranura) {
     const coste = esZonaSegura(personaje) ? "en zona segura no gasta acciones"
         : ranura === "equipoArmadura" ? "gasta todas las acciones del turno"
         : ranura.startsWith("accesorio-") ? "gasta la acción de una mano libre" : "gasta la acción de esa mano";
-    boton.title = motivo ? `No se puede guardar: ${motivo}` : `Guardar en el inventario (${coste})`;
+    // En la base, con el inventario lleno, va al baúl (guardarEquipado)
+    const destino = baulAccesible(personaje) && !hayHuecoLibre(personaje) ? "Guardar en el baúl (el inventario está lleno)" : "Guardar en el inventario";
+    boton.title = motivo ? `No se puede guardar: ${motivo}` : `${destino} (${coste})`;
     boton.setAttribute("aria-label", boton.title);
     boton.classList.toggle("sin-accion", Boolean(motivo));
 }
@@ -6585,6 +6598,10 @@ function inicializarFormularioArte() {
     const modalEl = document.getElementById("modalCrearArte");
     const ventana = crearVentanaHija(modalEl);
     const campo = (id) => document.getElementById(id);
+    // Marca de ventana del máster (funciona en modo lectura): solo mientras edita un efecto de un objeto abierto desde
+    // una ventana del máster; se quita al cerrar
+    const ventanaArteMaster = (si) => modalEl.classList.toggle("ventana-master", si);
+    modalEl.addEventListener("hidden.bs.modal", () => ventanaArteMaster(false));
     const listaRequisitos = campo("listaRequisitosArte");
     const listaMods = campo("listaModsArte");
     const aviso = campo("avisoCrearArte");
@@ -6968,6 +6985,8 @@ function inicializarFormularioArte() {
         ventana.abrirDesde(origen);
     };
     abrirEditorEfecto = (efecto, origen, alGuardar) => {
+        // Un efecto del objeto que se edita desde una ventana del máster: también en modo lectura
+        ventanaArteMaster(Boolean(origen?.classList?.contains("ventana-master")));
         edicion = efecto;
         edicionSala = null;
         alGuardarEfecto = alGuardar;
@@ -7528,6 +7547,7 @@ const listaInventarioEl = document.getElementById("listaInventario");
 const listaBaulEl = document.getElementById("listaBaul");
 /* Fila del inventario que está mostrando sus formas de usar (p. ej. qué mano), o null */
 let eleccionUso = null;
+let eleccionBaul = null; // índice del baúl que está eligiendo dónde equiparse
 
 const ETIQUETAS_ATRIBUTO = Object.fromEntries(GRUPOS_ATRIBUTOS.flatMap(([, atributos]) => atributos));
 const ETIQUETAS_ARMADURA = { pesada: "Armadura pesada", media: "Armadura media", ligera: "Armadura ligera", ropa: "Ropa", real: "Armadura real" };
@@ -8327,19 +8347,81 @@ function opcionesUso(objeto) {
             return [{ accion: "cristal", etiqueta: "Usar cristal (mano libre)", motivo: sinManoLibre }];
         case "arrojadiza":
             return [{ accion: "lanzar", etiqueta: "Lanzar (mano libre)", motivo: sinManoLibre }];
-        case "equipo": {
-            const motivo = motivoNoEquipar(personaje, objeto);
-            if (motivo || categoriaEquipo(objeto.equipo.tipo) !== "mano") {
-                const coste = esZonaSegura(personaje) ? "" : categoriaEquipo(objeto.equipo.tipo) === "armadura" ? " (todas las acciones)" : " (mano libre)";
-                return [{ accion: "equipar", etiqueta: "Equipar" + coste, motivo }];
-            }
-            const manos = manosParaEquipar(personaje, objeto.equipo.tipo);
-            const dosManos = TIPOS_DOS_MANOS.includes(objeto.equipo.tipo);
-            return manos.map(mano => ({ accion: "equipar", mano, etiqueta: dosManos ? "Equipar a dos manos" : `Equipar en ${ETIQUETAS_MANO[mano].toLowerCase()}` }));
-        }
+        case "equipo":
+            return opcionesEquipar(objeto, "inventario");
         default:
             return [];
     }
+}
+
+/* Formas de equipar un objeto del inventario o del baúl. En zona segura o base se intercambia con lo que llevas
+   (destinosIntercambio de objetos.js): se elige mano o accesorio a sustituir; fuera, solo en huecos vacíos. */
+function opcionesEquipar(objeto, origen) {
+    const tipo = objeto.equipo.tipo;
+    if (equiparIntercambia(personaje)) {
+        const nombres = (ranuras) => ranuras.map(r => nombreDeEquipo(equipoEnRanura(personaje, r))).join(", ");
+        return destinosIntercambio(personaje, objeto).map(({ destino, quitar, motivo }) => {
+            let etiqueta = "Equipar";
+            if (categoriaEquipo(tipo) === "mano") {
+                etiqueta = TIPOS_DOS_MANOS.includes(tipo) ? "Equipar a dos manos" : `Equipar en ${ETIQUETAS_MANO[destino].toLowerCase()}`;
+            } else if (categoriaEquipo(tipo) === "accesorio" && quitar.length) {
+                etiqueta = `Sustituir ${nombres(quitar)}`;
+                quitar = [];
+            }
+            if (quitar.length) etiqueta += ` (sustituye a ${nombres(quitar)})`;
+            return { accion: "equipar", intercambio: true, origen, destino, etiqueta, motivo };
+        });
+    }
+    const motivo = motivoNoEquipar(personaje, objeto);
+    if (motivo || categoriaEquipo(tipo) !== "mano") {
+        const coste = categoriaEquipo(tipo) === "armadura" ? " (todas las acciones)" : " (mano libre)";
+        return [{ accion: "equipar", etiqueta: "Equipar" + coste, motivo }];
+    }
+    const manos = manosParaEquipar(personaje, tipo);
+    const dosManos = TIPOS_DOS_MANOS.includes(tipo);
+    return manos.map(mano => ({ accion: "equipar", mano, etiqueta: dosManos ? "Equipar a dos manos" : `Equipar en ${ETIQUETAS_MANO[mano].toLowerCase()}` }));
+}
+
+/* Equipar intercambiando (zona segura o base): confirma si se quita algo más que lo sustituido directamente o si algo
+   no cabe en el inventario y va al baúl */
+async function equiparConIntercambio(origen, indice, opcion) {
+    const objeto = (origen === "baul" ? personaje.baul : personaje.inventario)[indice];
+    if (!objeto) return;
+    const plan = planIntercambio(personaje, origen, indice, opcion.destino);
+    if (plan.motivo) return mostrarPopupInfo(escaparHtml(`No se puede: ${objeto.nombre}`), [escaparHtml(plan.motivo)]);
+    const nombre = (r) => nombreDeEquipo(equipoEnRanura(personaje, r));
+    const extra = plan.quitar.filter(r => r !== plan.ranura);
+    if (extra.length || plan.alBaul.length) {
+        const destino = origen === "baul" ? "al baúl" : "al inventario";
+        const texto = [
+            `Para equipar ${objeto.nombre} te quitas: ${plan.quitar.map(nombre).join(", ")}. Va${plan.quitar.length === 1 ? "" : "n"} ${destino}.`,
+            plan.alBaul.length ? `No cabe${plan.alBaul.length === 1 ? "" : "n"} en el inventario y va${plan.alBaul.length === 1 ? "" : "n"} al baúl: ${plan.alBaul.map(nombre).join(", ")}.` : ""
+        ].filter(Boolean).join(" ");
+        if (!(await confirmarSao({ titulo: "Equipar", texto }))) return;
+    }
+    const resultado = equiparIntercambiando(personaje, origen, indice, opcion.destino);
+    eleccionUso = null;
+    eleccionBaul = null;
+    actualizarTodo();
+    mostrarPopupInfo(escaparHtml(resultado.ok ? objeto.nombre : `No se puede: ${objeto.nombre}`), resultado.resumen.map(escaparHtml));
+}
+
+/* Botones de elegir cómo usar o equipar (las que no se pueden ahora salen desactivadas con el motivo) */
+function htmlEleccion(opciones) {
+    return `<div class="objeto-eleccion">
+        ${opciones.map((opcion, k) => `<button type="button" class="btn-eleccion" data-accion="elegir" data-opcion="${k}"
+            ${opcion.motivo ? `disabled title="${escaparHtml(opcion.motivo)}"` : ""}>${escaparHtml(opcion.etiqueta)}</button>`).join("")}
+        <button type="button" class="btn-eleccion cancelar" data-accion="cancelar">Cancelar</button>
+    </div>`;
+}
+
+/* Botón de equipar de una fila del baúl (solo equipo; en la base) */
+function botonEquiparBaul(objeto) {
+    if (objeto.tipo !== "equipo" || personaje.esNpc) return "";
+    const opciones = baulAccesible(personaje) ? opcionesEquipar(objeto, "baul") : [];
+    const disponibles = opciones.filter(opcion => !opcion.motivo);
+    const motivo = !baulAccesible(personaje) ? MOTIVOS_ZONA.baul : !disponibles.length ? opciones[0]?.motivo || "No se puede equipar" : "";
+    return botonObjeto("usar", "usar", motivo || (opciones.length === 1 ? opciones[0].etiqueta : "Equipar…"), Boolean(motivo));
 }
 
 function botonObjeto(accion, icono, titulo, deshabilitado = false) {
@@ -8375,13 +8457,7 @@ function filaObjeto(objeto, indice, enInventario) {
             + botonObjeto("descartar", "descartar", "Descartar 1")
             + botonObjeto("usar", "usar", tituloUsar, Boolean(motivo));
         // Con varias formas de usarlo se elige; las que no se pueden ahora (p. ej. sin mano libre) salen desactivadas
-        if (eleccionUso === indice && opciones.length > 1) {
-            eleccion = `<div class="objeto-eleccion">
-                ${opciones.map((opcion, k) => `<button type="button" class="btn-eleccion" data-accion="elegir" data-opcion="${k}"
-                    ${opcion.motivo ? `disabled title="${escaparHtml(opcion.motivo)}"` : ""}>${escaparHtml(opcion.etiqueta)}</button>`).join("")}
-                <button type="button" class="btn-eleccion cancelar" data-accion="cancelar">Cancelar</button>
-            </div>`;
-        }
+        if (eleccionUso === indice && opciones.length > 1) eleccion = htmlEleccion(opciones);
     } else {
         const cabe = cabenEnInventario(personaje, objeto) > 0;
         const tituloTransferir = !baulAccesible(personaje) ? MOTIVOS_ZONA.baul
@@ -8389,7 +8465,13 @@ function filaObjeto(objeto, indice, enInventario) {
         botones = botonObjeto("editar", "editar", "Editar")
             + botonObjeto("inventario", "inventario", tituloTransferir, !cabe || !baulAccesible(personaje))
             + botonCinturon(objeto, baulAccesible(personaje))
-            + botonObjeto("descartar", "descartar", "Descartar 1");
+            + botonObjeto("descartar", "descartar", "Descartar 1")
+            + botonEquiparBaul(objeto);
+        // Equipar desde el baúl (en la base): con varias formas se elige mano o accesorio a sustituir
+        if (eleccionBaul === indice && objeto.tipo === "equipo" && baulAccesible(personaje)) {
+            const opciones = opcionesEquipar(objeto, "baul");
+            if (opciones.length > 1) eleccion = htmlEleccion(opciones);
+        }
     }
 
     // Máster: añadirlo al compendio de objetos comunes (también en la ficha de un jugador en modo lectura)
@@ -8435,6 +8517,7 @@ function pintarLista(contenedor, html) {
 
 function actualizarObjetos() {
     if (eleccionUso !== null && !personaje.inventario[eleccionUso]) eleccionUso = null;
+    if (eleccionBaul !== null && personaje.baul[eleccionBaul]?.tipo !== "equipo") eleccionBaul = null;
     pintarLista(listaInventarioEl, personaje.inventario.map((objeto, i) => filaObjeto(objeto, i, true)).join(""));
     pintarLista(listaBaulEl, personaje.baul.length
         ? personaje.baul.map((objeto, i) => filaObjeto(objeto, i, false)).join("")
@@ -8722,6 +8805,7 @@ function confirmarDescarte(objeto) {
 
 /* indice: el del inventario o una referencia { origen: "cinturon", ranura, indice } (objetoEn de objetos.js) */
 function ejecutarUso(indice, opcion) {
+    if (opcion.accion === "equipar" && opcion.intercambio) return equiparConIntercambio(opcion.origen, indice, opcion);
     const objeto = objetoEn(personaje, indice);
     const gastar = gastarAccionesOConfirmar;
     let titulo = objeto.nombre;
@@ -8865,6 +8949,17 @@ function inicializarObjetos() {
             if (!confirmarDescarte(objeto)) return;
             descartar(personaje.baul, indice, false);
         }
+        // Equipar desde el baúl (en la base, intercambiando)
+        if (boton.dataset.accion === "usar" && objeto.tipo === "equipo" && baulAccesible(personaje)) {
+            const opciones = opcionesEquipar(objeto, "baul");
+            if (opciones.length === 1 && !opciones[0].motivo) return equiparConIntercambio("baul", indice, opciones[0]);
+            eleccionBaul = eleccionBaul === indice ? null : indice;
+        }
+        if (boton.dataset.accion === "elegir") {
+            const opcion = opcionesEquipar(objeto, "baul")[Number(boton.dataset.opcion)];
+            if (opcion && !opcion.motivo) return equiparConIntercambio("baul", indice, opcion);
+        }
+        if (boton.dataset.accion === "cancelar") eleccionBaul = null;
         actualizarTodo();
     });
 
@@ -8877,7 +8972,12 @@ function inicializarObjetos() {
             ordenarInventario(desde, hasta);
         }
     });
-    hacerOrdenable(listaBaulEl, { alSoltar: ordenarLista(() => personaje.baul) });
+    hacerOrdenable(listaBaulEl, {
+        alSoltar: (desde, hasta) => {
+            eleccionBaul = null;
+            ordenarLista(() => personaje.baul)(desde, hasta);
+        }
+    });
 
     // Al cerrar el inventario se olvida la elección de uso pendiente
     document.getElementById("modalInventario").addEventListener("hidden.bs.modal", () => {
@@ -9426,9 +9526,16 @@ function inicializarCrearObjeto() {
             destino = boton.dataset.destino;
             objetivo = { pj: personaje, libre: false, alTerminar: null };
             reiniciar();
+            marcarVentanaMaster(null);
             abrirDesde(boton.closest(".modal"));
         });
     });
+
+    // Abierto desde una ventana del máster (.ventana-master: magia, creación, historial) sobre un pj falso: también
+    // funciona en modo lectura. Si no, se le quita la marca.
+    const marcarVentanaMaster = (origen) => {
+        modalEl.classList.toggle("ventana-master", Boolean(origen?.classList?.contains("ventana-master")));
+    };
 
     // Editar un objeto ya creado (botón de cada fila; el click ya suena en la lista)
     abrirEditorObjeto = (lista, indice, opciones = {}) => {
@@ -9436,6 +9543,7 @@ function inicializarCrearObjeto() {
         const objeto = objetivo.pj[lista][indice];
         if (!objeto) return;
         reiniciar();
+        marcarVentanaMaster(opciones.origen);
         edicion = { lista, indice };
         ponerModo(true);
         rellenar(objeto);
@@ -9454,6 +9562,7 @@ function inicializarCrearObjeto() {
         destino = lista;
         objetivo = { pj: opciones.pj, libre: Boolean(opciones.libre), alTerminar: opciones.alTerminar ?? null };
         reiniciar();
+        marcarVentanaMaster(opciones.origen);
         // Tipo ya elegido (p. ej. equipo de un NPC desde el perfil del máster)
         if (opciones.tipo) selectTipo.value = opciones.tipo;
         if (opciones.tipoEquipo) selectTipoEquipo.value = opciones.tipoEquipo;

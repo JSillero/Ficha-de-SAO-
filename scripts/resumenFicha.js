@@ -4,7 +4,7 @@
 // Viaja en un evento privado (máx. 20 000 caracteres por evento, ver firestore.rules), así que los
 // textos se recortan. No toca el DOM: la interfaz lo pinta (pintarFichaResumen en interfaz.js).
 
-import { HABILIDADES_LISTA } from "./PJ.js";
+import PJ, { HABILIDADES_LISTA } from "./PJ.js";
 import { prepararAtaque, prepararAtaqueNpc } from "./ataque.js";
 import { equiposDePartes, esPesadilla } from "./npc.js";
 import { mediaDado } from "./dados.js";
@@ -74,6 +74,17 @@ function tiradaMediaSigilo(pj) {
     if (modo === null) return null;
     const valor = mediaDado(modo) + (Number(pj.reflejos) || 0) + Math.max(0, Number(pj.getGenerico("subterfugio")) || 0);
     return Math.round(valor * 10) / 10;
+}
+
+/** Estadísticas de protagonista con las habilidades del Underworld deshabilitadas (para comparar en el panel de
+ *  protagonistas del máster), o null si no las tiene habilitadas. Calcula sobre una copia: no toca el personaje. */
+export function estadisticasSinUnderworld(pj) {
+    if (!pj?.tieneUnderworldActivo?.()) return null;
+    const copia = new PJ();
+    copia.cargarJSON(JSON.parse(pj.toJSONString()));
+    copia.underworldHabilitado = false;
+    copia.calcularCaracteristicas();
+    return estadisticasProtagonista(copia);
 }
 
 export function estadisticasProtagonista(pj) {

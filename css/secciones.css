@@ -3707,12 +3707,12 @@ body.modo-pesadilla .valor-npc[data-valor="puntosArteMax"] {
 }
 
 /* En modo lectura no se ven los botones que cambian algo (las acciones ya están bloqueadas en interfaz.js) */
-/* (salvo lo marcado .permitido-lectura, el botón de añadir al compendio de objetos del máster y el botín de uno de
-   sus personajes, .botin-otro en #modalBotin) */
-body.modo-lectura .objeto-acciones > :not(.permitido-lectura):not(.btn-al-compendio):not(.botin-otro *),
-body.modo-lectura .objeto-eleccion:not(.botin-otro *),
-body.modo-lectura .btn-crear-objeto:not(.botin-otro *),
-body.modo-lectura .botones-cabecera-modal:not(.permitido-lectura),
+/* (salvo lo marcado .permitido-lectura, el botón de añadir al compendio de objetos del máster, el botín de uno de
+   sus personajes, .botin-otro en #modalBotin, y las ventanas del máster, .ventana-master: magia, creación...) */
+body.modo-lectura .objeto-acciones > :not(.permitido-lectura):not(.btn-al-compendio):not(.botin-otro *):not(.ventana-master *),
+body.modo-lectura .objeto-eleccion:not(.botin-otro *):not(.ventana-master *),
+body.modo-lectura .btn-crear-objeto:not(.botin-otro *):not(.ventana-master *),
+body.modo-lectura .botones-cabecera-modal:not(.permitido-lectura):not(.ventana-master *),
 body.modo-lectura .btn-h2:not(.hud-master-anadir):not(#btnSoloModsPropios),
 body.modo-lectura .btn-hab-mas,
 body.modo-lectura .btn-hab-menos,
@@ -5716,6 +5716,18 @@ body.modo-lectura #divEquipamiento .btn-extras-equipo {
     color: #8a6d2a;
 }
 
+/* Con / sin las habilidades del Underworld (pintarProtagonistas en interfazMaster.js, solo si algún protagonista o el
+   borrador las tiene habilitadas); marca "UW" / "sin UW" bajo el nombre de esas columnas */
+.fichas-uw-protagonistas {
+    margin-bottom: 8px;
+}
+
+.tabla-protagonistas .marca-uw {
+    display: block;
+    font-size: 10px;
+    color: #8a6d2a;
+}
+
 .tabla-protagonistas-marco {
     overflow-x: auto;
 }
@@ -6192,13 +6204,12 @@ body.modo-lectura #divEquipamiento .btn-extras-equipo {
 .sacro-fichas { display: flex; flex-wrap: wrap; gap: 6px; }
 .sacro-fuente .lista-vacia { margin: 0; font-size: 14px; }
 
-/* Ficha de un elemento para arrastrar a un dedo (o tocarla y después el dedo) */
+/* Ficha de un elemento para arrastrar a un dedo (o tocarla: va al dedo elegido o al primero libre, interfazSacro.js) */
 .ficha-elemento { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 2px; border: none; border-radius: 999px;
     background: #f4f4f4; color: #4D4D4D; font-size: 14px; cursor: grab; touch-action: none; user-select: none; }
 .ficha-elemento .icono-sao { width: 26px; height: 26px; }
 .ficha-elemento small { color: #888; }
 .ficha-elemento:hover { box-shadow: 0 0 0 2px #EBA601; }
-.ficha-elemento.elegida { box-shadow: 0 0 0 2px #EBA601; background: #fff; }
 .ficha-elemento:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
 .ficha-fantasma { position: fixed; pointer-events: none; z-index: 2000; transform: translate(-50%, -50%) scale(1.1); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3); }
 
@@ -6214,6 +6225,8 @@ body.modo-lectura #divEquipamiento .btn-extras-equipo {
 .dedo-sacro { cursor: pointer; }
 .dedo-sacro .anillo { fill: #FBFBFB; stroke: #b3b3b3; stroke-width: 2; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
 .dedo-sacro:hover .anillo, .dedo-sacro.diana .anillo { stroke: #EBA601; stroke-dasharray: none; stroke-width: 3; }
+/* Dedo vacío elegido (dedoElegido): el siguiente elemento tocado va ahí */
+.dedo-sacro.elegido .anillo { fill: #fff; stroke: #EBA601; stroke-dasharray: none; stroke-width: 4; }
 .dedo-sacro.lleno .anillo { stroke: none; }
 .dedo-sacro.lleno { cursor: grab; touch-action: none; } /* se arrastra a otro dedo o fuera (alApretar) */
 .dedo-sacro.bloqueado { cursor: not-allowed; opacity: 0.4; }

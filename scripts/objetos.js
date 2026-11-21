@@ -6,7 +6,7 @@ import Modificador, { cargarModificador, TURNOS_PERMANENTE } from "./modificador
 import Equipamiento, { ARMAS, TIPOS_DOS_MANOS, TIPOS_ARMADURA, TIPO_ACCESORIO, TIPO_RELIQUIA, cargarEquipamiento, tipoArmaduraDe } from "./equipamiento.js";
 import { activarEstado, quitarEstado, aplicarDanno, aplicarRotura, ESTADOS_INFO, TIPOS_DANNO, CURAR_NEGATIVOS, curaConTodosLosNegativos, estaActivo, noSeCura } from "./estados.js";
 import { MANOS, gastarVarias, gastarTodas, partesDeMano, parteDeMano, manoVacia, puedeGastar } from "./turno.js";
-import { esZonaSegura } from "./zonas.js";
+import { esZonaSegura, baulAccesible } from "./zonas.js";
 import { cargarEfectos } from "./efectosEquipo.js";
 import { cargarEstadosAlAcertar, cargarEstadoAlAcertar, MAX_ESTADOS_AL_ACERTAR } from "./estadosAlAcertar.js";
 import { esPesadilla, equiposDePartes } from "./npc.js";
@@ -858,10 +858,7 @@ export function equipar(pj, indice, destino, gastar = gastarEstricto(pj)) {
     const motivo = motivoNoEquipar(pj, objeto);
     if (motivo) return fallo(motivo);
 
-    const equipo = cargarEquipo(JSON.parse(JSON.stringify(objeto.equipo)));
-    equipo.nombre = objeto.nombre;
-    equipo.descripcion = objeto.descripcion;
-    equipo.enUso = false;
+    const equipo = equipoDeObjeto(objeto);
 
     switch (categoriaEquipo(equipo.tipo)) {
         case "mano": {
@@ -971,13 +968,14 @@ export function motivoNoGuardar(pj, ranura) {
     if (!ranuraTieneEquipo(pj, ranura)) return "No hay nada equipado.";
     const inhabilitado = motivoEscudoInhabilitado(pj, equipoEnRanura(pj, ranura));
     if (inhabilitado) return `${inhabilitado} No se puede guardar.`;
-    if (!hayHuecoLibre(pj)) return "El inventario está lleno.";
+    if (!hayHuecoLibre(pj) && !baulAccesible(pj)) return "El inventario está lleno.";
     if (equipoEnRanura(pj, ranura)?.cinturon?.objetos.some(Boolean)) return "Vacía antes el cinturón: no se puede quitar con objetos.";
     if (ranura.startsWith("accesorio-") && !manoParaUsar(pj) && !esZonaSegura(pj)) return "Necesitas una mano libre para quitarte el accesorio.";
     return null;
 }
 
-/** Guarda en el inventario lo equipado en una ranura, con el mismo coste en acciones que equiparlo. */
+/** Guarda en el inventario lo equipado en una ranura, con el mismo coste en acciones que equiparlo. En la base, con el
+ *  inventario lleno, va al baúl. */
 export function guardarEquipado(pj, ranura, gastar = gastarEstricto(pj)) {
     const motivo = motivoNoGuardar(pj, ranura);
     if (motivo) return fallo(motivo);
@@ -992,16 +990,213 @@ export function guardarEquipado(pj, ranura, gastar = gastarEstricto(pj)) {
         if (!gastar(partesManoAccesorio(pj), `Quitarte ${nombre}`)) return fallo("Sin acción en la mano libre.");
     }
 
-    equipo.enUso = false;
-    const datos = JSON.parse(JSON.stringify(equipo));
-    if (ranura.startsWith("accesorio-")) datos.tipo = TIPO_ACCESORIO;
-    anadirAInventario(pj, cargarObjeto({ tipo: "equipo", nombre, descripcion: equipo.descripcion || "", cantidad: 1, equipo: datos }));
+    const alBaul = !hayHuecoLibre(pj);
+    (alBaul ? anadirABaul : anadirAInventario)(pj, objetoDeRanura(pj, ranura));
+    vaciarRanura(pj, ranura);
+    pj.calcularCaracteristicas();
+    return exito(alBaul ? `${nombre} → baúl (el inventario está lleno)` : `${nombre} → inventario`);
+}
 
-    if (ranura.startsWith("accesorio-")) {
-        pj.accesorios[Number(ranura.slice("accesorio-".length))] = new Equipamiento("", "", TIPO_ACCESORIO);
+/* Equipo (Equipamiento) a partir de un objeto de equipo del inventario o del baúl */
+function equipoDeObjeto(objeto) {
+    const equipo = cargarEquipo(JSON.parse(JSON.stringify(objeto.equipo)));
+    equipo.nombre = objeto.nombre;
+    equipo.descripcion = objeto.descripcion;
+    equipo.enUso = false;
+    return equipo;
+}
+
+/** Nombre que se muestra de un equipo puesto */
+export function nombreEquipo(equipo) {
+    return equipo?.nombre?.trim() || ARMAS[equipo?.tipo]?.etiqueta || "Equipo";
+}
+
+/* Objeto de inventario con una copia de lo equipado en la ranura (no cambia la ranura) */
+function objetoDeRanura(pj, ranura) {
+    const equipo = equipoEnRanura(pj, ranura);
+    const datos = JSON.parse(JSON.stringify(equipo));
+    datos.enUso = false;
+    if (ranura.startsWith("accesorio-")) datos.tipo = TIPO_ACCESORIO;
+    return cargarObjeto({ tipo: "equipo", nombre: nombreEquipo(equipo), descripcion: equipo.descripcion || "", cantidad: 1, equipo: datos });
+}
+
+function vaciarRanura(pj, ranura) {
+    if (ranura.startsWith("accesorio-")) pj.accesorios[Number(ranura.slice("accesorio-".length))] = new Equipamiento("", "", TIPO_ACCESORIO);
+    else pj[ranura] = new Equipamiento("", "", "");
+}
+
+/* Equipar intercambiando (zona segura o base) _________________________________
+ * Allí no se gastan acciones, así que equipar sustituye lo que llevas: lo quitado va al mismo sitio del que sale el
+ * objeto nuevo (inventario o baúl; en la base también se equipa desde el baúl). Si el cambio obliga a quitar más
+ * cosas (la otra mano con un arma a dos manos o un estoque, los accesorios que no permite la armadura nueva), se
+ * quitan también. Lo que no cabe en el inventario va al baúl en la base; en zona segura no se puede. */
+
+/** ¿Equipar intercambia lo que llevas? Solo en zona segura o base */
+export const equiparIntercambia = (pj) => esZonaSegura(pj);
+
+const listaDeOrigen = (pj, origen) => origen === "baul" ? pj.baul : pj.inventario;
+
+/* Motivo por el que no se puede quitar lo de esa ranura al intercambiar, o null */
+function motivoNoQuitar(pj, ranura) {
+    const equipo = equipoEnRanura(pj, ranura);
+    const inhabilitado = motivoEscudoInhabilitado(pj, equipo);
+    if (inhabilitado) return `${inhabilitado} No se puede quitar.`;
+    if (equipo?.cinturon?.objetos.some(Boolean)) return `Vacía antes el cinturón de ${nombreEquipo(equipo)}: no se puede quitar con objetos.`;
+    return null;
+}
+
+/* Ranuras que habría que quitar para poner este equipo en destino: { ranura, quitar } o { motivo } */
+function quitarParaEquipar(pj, equipo, destino) {
+    const tipo = equipo.tipo;
+    let ranura = destino;
+    const quitar = [];
+    switch (categoriaEquipo(tipo)) {
+        case "mano": {
+            if (!MANOS.includes(destino)) return { motivo: "Elige una mano." };
+            const otra = destino === "manoIzquierda" ? "manoDerecha" : "manoIzquierda";
+            const conEnergia = (mano) => Boolean(pj.energiaManos?.[mano]) && !pj[mano]?.tipo;
+            if (TIPOS_DOS_MANOS.includes(tipo)) {
+                if (MANOS.some(conEnergia)) return { motivo: "Tienes energía de Sacro guardada en una mano." };
+                quitar.push(...MANOS.filter(mano => pj[mano]?.tipo));
+                break;
+            }
+            if (conEnergia(destino)) return { motivo: "En esa mano tienes energía de Sacro guardada." };
+            const tipoOtra = pj[otra]?.tipo || "";
+            if (pj[destino]?.tipo) quitar.push(destino);
+            if (TIPOS_DOS_MANOS.includes(tipoOtra)
+                || (tipo === "estoque" && tipoOtra && tipoOtra !== "escudo")
+                || (tipoOtra === "estoque" && tipo !== "escudo")) quitar.push(otra);
+            break;
+        }
+        case "armadura": {
+            ranura = "equipoArmadura";
+            if (pj.equipoArmadura?.tipo) quitar.push("equipoArmadura");
+            const penalizacion = Number(equipo.penalizacionAtletismo) || 0;
+            if (penalizacion > pj.getBaseHabilidad("atletismo")) {
+                return { motivo: `Penaliza ${penalizacion} de Atletismo y solo tienes ${pj.getBaseHabilidad("atletismo")}: no puedes llevarla.` };
+            }
+            if (!pj.esNpc) {
+                const permite = getCantidadAccesoriosPorArmadura(tipo);
+                (pj.accesorios ?? []).forEach((acc, i) => { if (i >= permite && !accesorioVacio(acc)) quitar.push(`accesorio-${i}`); });
+            }
+            break;
+        }
+        case "accesorio": {
+            const ranuras = ranurasAccesorio(pj);
+            const i = Number(String(destino).slice("accesorio-".length));
+            if (!String(destino).startsWith("accesorio-") || !(i >= 0 && i < ranuras)) {
+                return { motivo: ranuras ? "Elige una ranura de accesorio." : "Tu armadura no permite accesorios." };
+            }
+            if (!accesorioVacio(pj.accesorios[i])) quitar.push(destino);
+            break;
+        }
+        default:
+            return { motivo: "Este equipo no tiene un tipo válido." };
+    }
+    for (const r of quitar) {
+        const motivo = motivoNoQuitar(pj, r);
+        if (motivo) return { motivo };
+    }
+    return { ranura, quitar };
+}
+
+/**
+ * Dónde se puede equipar intercambiando: [{ destino, quitar: [ranuras], motivo? }].
+ * Manos: una por mano (un arma a dos manos, solo la derecha). Armadura: una. Accesorio: la primera ranura libre o,
+ * si no hay, una por accesorio puesto (se elige cuál sustituir).
+ */
+export function destinosIntercambio(pj, objeto) {
+    if (objeto?.tipo !== "equipo") return [];
+    const equipo = equipoDeObjeto(objeto);
+    const opcion = (destino) => {
+        const r = quitarParaEquipar(pj, equipo, destino);
+        return r.motivo ? { destino, quitar: [], motivo: r.motivo } : { destino, quitar: r.quitar };
+    };
+    switch (categoriaEquipo(equipo.tipo)) {
+        case "mano":
+            return TIPOS_DOS_MANOS.includes(equipo.tipo) ? [opcion("manoDerecha")] : MANOS.map(opcion);
+        case "armadura":
+            return [opcion("equipoArmadura")];
+        case "accesorio": {
+            const ranuras = ranurasAccesorio(pj);
+            if (!ranuras) return [{ destino: null, quitar: [], motivo: "Tu armadura no permite accesorios." }];
+            const libre = ranuraAccesorioLibre(pj);
+            if (libre >= 0) return [opcion(`accesorio-${libre}`)];
+            return Array.from({ length: ranuras }, (_, i) => opcion(`accesorio-${i}`));
+        }
+        default:
+            return [{ destino: null, quitar: [], motivo: "Este equipo no tiene un tipo válido." }];
+    }
+}
+
+/**
+ * Plan de equipar intercambiando, sin cambiar nada: { ranura, quitar: [ranuras], alBaul: [ranuras], motivo }.
+ * alBaul: lo quitado que no cabe en el inventario (solo desde el inventario; en la base va al baúl).
+ */
+export function planIntercambio(pj, origen, indice, destino) {
+    const vacio = { ranura: null, quitar: [], alBaul: [] };
+    if (!equiparIntercambia(pj)) return { ...vacio, motivo: "Solo se intercambia el equipo en zona segura o en la base." };
+    if (origen === "baul" && !baulAccesible(pj)) return { ...vacio, motivo: "Solo en la base se puede usar el baúl." };
+    const objeto = listaDeOrigen(pj, origen)[indice];
+    if (objeto?.tipo !== "equipo") return { ...vacio, motivo: "No es equipamiento." };
+    const r = quitarParaEquipar(pj, equipoDeObjeto(objeto), destino);
+    if (r.motivo) return { ...vacio, motivo: r.motivo };
+    const alBaul = [];
+    if (origen === "inventario") {
+        // Lo primero que se quita va al hueco que deja el objeto; el resto, donde quepa
+        const copia = pj.inventario.map(hueco => hueco && { ...hueco });
+        const capacidad = capacidadInventario(pj);
+        copia[indice] = null;
+        r.quitar.forEach((ranura, k) => {
+            const quitado = objetoDeRanura(pj, ranura);
+            if (k === 0 && indice < capacidad) copia[indice] = quitado;
+            else if (apilarEnInventario(pj, copia, quitado) > 0) alBaul.push(ranura);
+        });
+        if (alBaul.length && !baulAccesible(pj)) {
+            return { ...vacio, motivo: `No cabe${alBaul.length === 1 ? "" : "n"} en el inventario: ${alBaul.map(x => nombreEquipo(equipoEnRanura(pj, x))).join(", ")}.` };
+        }
+    }
+    return { ranura: r.ranura, quitar: r.quitar, alBaul, motivo: null };
+}
+
+/** Equipa desde el inventario o el baúl sustituyendo lo que haga falta (ver planIntercambio). No gasta acciones. */
+export function equiparIntercambiando(pj, origen, indice, destino) {
+    const plan = planIntercambio(pj, origen, indice, destino);
+    if (plan.motivo) return fallo(plan.motivo);
+    const lista = listaDeOrigen(pj, origen);
+    const objeto = lista[indice];
+    const equipo = equipoDeObjeto(objeto);
+    const quitados = plan.quitar.map(ranura => ({ ranura, objeto: objetoDeRanura(pj, ranura) }));
+    plan.quitar.forEach(ranura => vaciarRanura(pj, ranura));
+
+    // Sale el objeto de su sitio y entra lo quitado
+    const resumen = [`Equipas ${objeto.nombre}`];
+    if (origen === "baul") {
+        if (objeto.cantidad > 1) objeto.cantidad -= 1;
+        else lista.splice(indice, 1);
+        quitados.forEach(q => { anadirABaul(pj, q.objeto); resumen.push(`${q.objeto.nombre} → baúl`); });
     } else {
-        pj[ranura] = new Equipamiento("", "", "");
+        lista[indice] = null;
+        quitados.forEach((q, k) => {
+            if (plan.alBaul.includes(q.ranura)) {
+                anadirABaul(pj, q.objeto);
+                resumen.push(`${q.objeto.nombre} → baúl (no cabe en el inventario)`);
+                return;
+            }
+            if (k === 0 && indice < capacidadInventario(pj)) lista[indice] = q.objeto;
+            else anadirAInventario(pj, q.objeto);
+            resumen.push(`${q.objeto.nombre} → inventario`);
+        });
+    }
+
+    // Se pone el nuevo
+    if (plan.ranura.startsWith("accesorio-")) {
+        const i = Number(plan.ranura.slice("accesorio-".length));
+        for (let k = pj.accesorios.length; k < i; k++) pj.accesorios[k] = new Equipamiento("", "", TIPO_ACCESORIO);
+        pj.accesorios[i] = equipo;
+    } else {
+        pj[plan.ranura] = equipo;
     }
     pj.calcularCaracteristicas();
-    return exito(`${nombre} → inventario`);
+    return exito(...resumen);
 }
